@@ -35,6 +35,9 @@
 2. 双击安装后启动，点击主界面的「添加文件夹」选择你的媒体目录。
 3. 程序会在后台自动扫描并生成缩略图，立马就能使用！
 
+> ✅ **安装包已内置全部依赖**：.NET 运行时、**FFmpeg**（视频缩略图）、LibVLC（视频播放）。
+> 双击即用，**不需要额外安装任何东西，也不需要联网**。装完就能看视频封面、播视频、编辑图片。
+
 ---
 
 ## 🛠️ 技术栈与架构
@@ -62,8 +65,8 @@ MediaManager.sln
 ├─ src/MediaManager.App/               WPF UI（主窗口 / 查看器 / 视频播放器 / 设置）
 ├─ src/MediaManager.Core/              领域模型、接口、纯逻辑（编辑/媒体/Seek）
 ├─ src/MediaManager.Infrastructure/    SQLite、文件系统、缩略图、便携模式
-├─ tests/MediaManager.Tests/           单元测试（79 项）
-├─ tools/ffmpeg/                       ffmpeg.exe（需自行下载，不进仓库）
+├─ tests/MediaManager.Tests/           单元测试（81 项）
+├─ tools/ffmpeg/                       ffmpeg.exe（不进仓库；Release 安装包已内置）
 └─ build/installer.iss                 Inno Setup 安装脚本
 ```
 
@@ -84,7 +87,14 @@ dotnet test MediaManager.sln
 dotnet publish src/MediaManager.App -c Release -r win-x64 --self-contained false
 ```
 
-**FFmpeg 说明：** 视频缩略图需要 FFmpeg。`tools/ffmpeg/` 目录**不纳入 Git 仓库**（文件较大），请从 [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) 下载 `ffmpeg-release-essentials` 里的 `bin/ffmpeg.exe` 放入该目录，或在软件「设置」里手动指定路径。（官方 Release 安装包已自带，普通用户无需操作。）
+> 🎬 **FFmpeg 说明（只与源码构建者有关）**
+>
+> 官方 Release 安装包**已经内置** `tools/ffmpeg/ffmpeg.exe`，普通用户不用管。
+>
+> 自己从源码运行的话：视频缩略图需要 FFmpeg，而 `tools/ffmpeg/` 目录**不进 Git 仓库**（单个 exe 约 100MB）。
+> 请从 [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) 下载 `ffmpeg-release-essentials`，解压出 `bin/ffmpeg.exe`
+> 放到 `tools/ffmpeg/` 下；也可以启动后在软件「设置 → FFmpeg 路径」里手动指定。
+> 没有它程序照样能跑，只是视频格子不生成封面（显示占位图标），图片功能完全不受影响。
 
 ---
 

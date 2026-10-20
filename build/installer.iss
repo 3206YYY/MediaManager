@@ -40,7 +40,9 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 
 [Files]
 ; self-contained 发布输出（含 .NET runtime + FFmpeg + LibVLC）
-Source: "..\dist\MediaManager-win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Excludes 必须排除 logs：发布目录里残留的运行日志含本机路径/媒体路径，
+; 打进安装包等于把开发机的隐私带到每个用户机器上。
+Source: "..\dist\MediaManager-win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "logs\*,logs\*.*"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -63,6 +65,11 @@ Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFile
 Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.heic\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelHeic"
 Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.avif\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelAvif"
 Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\MediaManager"" /f"; Flags: runhidden; RunOnceId: "DelMarker"
+
+[UninstallDelete]
+; 旧版本（1.2.4 及以前）把日志写在程序目录，卸载时清掉；
+; 新版本日志改到 %LocalAppData%\MediaManager\logs，属于用户数据，卸载不删。
+Type: filesandordirs; Name: "{app}\logs"
 
 [Code]
 var
