@@ -1,0 +1,70 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\MediaManager.Core\MediaManager.Core.csproj" />
+    <ProjectReference Include="..\MediaManager.Infrastructure\MediaManager.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="LibVLCSharp.WPF" Version="3.10.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.1" />
+    <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.24" />
+    <PackageReference Include="VirtualizingWrapPanel" Version="2.5.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 移除 WinForms 的隐式 global using，避免与 WPF 的 Point/ListBox/MouseEventArgs 等冲突 -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 托盘图标：随输出目录一起发布，避免只能从 exe 里提取 32px 小图标 -->
+    <Content Include="MediaManager.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+
+    <!-- FFmpeg 二进制：仅保留 ffmpeg.exe（视频/特殊格式缩略图抽帧用）。
+         原来的 ffprobe.exe 全项目零引用，白白占 105MB，已删除。 -->
+    <Content Include="..\..\tools\ffmpeg\ffmpeg.exe">
+      <Link>tools\ffmpeg\ffmpeg.exe</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>MediaManager.ico</ApplicationIcon>
+    <Version>1.2.3</Version>
+    <AssemblyVersion>1.2.3.0</AssemblyVersion>
+    <FileVersion>1.2.3.0</FileVersion>
+    <Product>媒体管理器</Product>
+    <AssemblyTitle>媒体管理器</AssemblyTitle>
+    <Company>MediaManager</Company>
+
+    <!-- 只保留中文/英文的卫星资源程序集，去掉 ru/cs/de/es/fr/it/ja/ko/pl/pt/tr 等一堆用不上的翻译（省几 MB） -->
+    <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
+
+    <!-- 不生成调试符号包，减小发布体积 -->
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <!-- 发布后瘦身：LibVLC 包会同时塞入 x86 / x64 / arm64 三套原生库（共约 300MB），
+       win-x64 版本只需要 win-x64 一套，另外两套直接删掉。 -->
+  <Target Name="TrimUnusedNativePayload" AfterTargets="Publish">
+    <RemoveDir Directories="$(PublishDir)libvlc\win-x86;$(PublishDir)libvlc\win-arm64;" />
+    <ItemGroup>
+      <_UnusedPdb Include="$(PublishDir)*.pdb" />
+    </ItemGroup>
+    <Delete Files="@(_UnusedPdb)" ContinueOnError="true" />
+  </Target>
+
+</Project>

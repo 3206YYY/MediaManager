@@ -1,0 +1,38 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <sys:String x:Key="Nav.All">All Media</sys:String>
+    <sys:String x:Key="Nav.Favorites">Favorites</sys:String>
+    <sys:String x:Key="Nav.Unfiled">Unfiled</sys:String>
+    <sys:String x:Key="Nav.Recent">Recent</sys:String>
+    <sys:String x:Key="Nav.Images">Images</sys:String>
+    <sys:String x:Key="Nav.Videos">Videos</sys:String>
+    <sys:String x:Key="Nav.Folders">Folders</sys:String>
+    <sys:String x:Key="Nav.Tags">Tags</sys:String>
+    <sys:String x:Key="Nav.Categories">Categories</sys:String>
+
+    <sys:String x:Key="Toolbar.Search">Search…</sys:String>
+    <sys:String x:Key="Toolbar.Scan">Scan</sys:String>
+    <sys:String x:Key="Toolbar.Settings">Settings</sys:String>
+    <sys:String x:Key="Toolbar.AddFolder">Add Folder</sys:String>
+
+    <sys:String x:Key="Status.Total">{0} items</sys:String>
+    <sys:String x:Key="Status.Selected">{0} selected</sys:String>
+
+    <sys:String x:Key="Detail.Favorite">Favorite</sys:String>
+    <sys:String x:Key="Detail.Tags">Tags</sys:String>
+    <sys:String x:Key="Detail.Categories">Categories</sys:String>
+    <sys:String x:Key="Detail.Exif">EXIF</sys:String>
+    <sys:String x:Key="Detail.Size">Size</sys:String>
+    <sys:String x:Key="Detail.Dimension">Dimension</sys:String>
+    <sys:String x:Key="Detail.Duration">Duration</sys:String>
+    <sys:String x:Key="Detail.Date">Date</sys:String>
+
+    <sys:String x:Key="Common.Confirm">OK</sys:String>
+    <sys:String x:Key="Common.Cancel">Cancel</sys:String>
+    <sys:String x:Key="Common.Delete">Delete</sys:String>
+    <sys:String x:Key="Common.Rename">Rename</sys:String>
+    <sys:String x:Key="Common.Move">Move</sys:String>
+    <sys:String x:Key="Common.Copy">Copy</sys:String>
+</ResourceDictionary>

@@ -1,0 +1,619 @@
+<Window x:Class="MediaManager.App.Views.ViewerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="查看器"
+        Width="1200" Height="800"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgBrush}"
+        KeyDown="OnKeyDown"
+        KeyUp="OnKeyUp"
+        Closing="OnClosing">
+
+    <Window.Resources>
+        <!-- 右侧工具栏：大图标 + 名称，hover 放大 1.05，选中高亮 -->
+        <Style x:Key="ToolButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent" BorderThickness="1"
+                                CornerRadius="8" Padding="4,8" Margin="6,2"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="sc" ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
+                            <ContentPresenter HorizontalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleX"
+                                                             To="1.05" Duration="0:0:0.12" />
+                                            <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleY"
+                                                             To="1.05" Duration="0:0:0.12" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleX"
+                                                             To="1" Duration="0:0:0.16" />
+                                            <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleY"
+                                                             To="1" Duration="0:0:0.16" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.7" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ToolToggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="Transparent" BorderThickness="1"
+                                CornerRadius="8" Padding="4,8" Margin="6,2"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="sc" ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
+                            <ContentPresenter HorizontalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleX"
+                                                             To="1.05" Duration="0:0:0.12" />
+                                            <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleY"
+                                                             To="1.05" Duration="0:0:0.12" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleX"
+                                                             To="1" Duration="0:0:0.16" />
+                                            <DoubleAnimation Storyboard.TargetName="sc" Storyboard.TargetProperty="ScaleY"
+                                                             To="1" Duration="0:0:0.16" />
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource PrimaryLightBrush}" />
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 裁剪框 8 个手柄 -->
+        <Style x:Key="CropHandle" TargetType="Thumb">
+            <Setter Property="Width" Value="12" />
+            <Setter Property="Height" Value="12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Background="White" BorderBrush="#4A90D9" BorderThickness="2"
+                                CornerRadius="2" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 加粗 / 斜体等小开关 -->
+        <Style x:Key="CompactToggle" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="4" Padding="8,3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource PrimaryBrush}" />
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ChipButton" TargetType="Button">
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.75" />
+                            </Trigger>
+                            <!-- 禁用态只降透明度，不改底色，避免深色主题下变白块 -->
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ===================== 顶部：撤销 / 重做 / 对比 / 保存 ===================== -->
+        <Border Grid.Row="0" Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                Padding="10,7">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <Button x:Name="UndoButton" Click="OnUndoClick" IsEnabled="False"
+                            Style="{StaticResource ChipButton}" Margin="0,0,6,0"
+                            ToolTip="撤销上一步（Ctrl+Z）">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="↶" FontSize="15" Margin="0,0,5,0" VerticalAlignment="Center" />
+                            <TextBlock Text="撤销" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="RedoButton" Click="OnRedoClick" IsEnabled="False"
+                            Style="{StaticResource ChipButton}" Margin="0,0,12,0"
+                            ToolTip="重做（Ctrl+Y）">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="↷" FontSize="15" Margin="0,0,5,0" VerticalAlignment="Center" />
+                            <TextBlock Text="重做" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="0,2,12,2" />
+
+                    <Button x:Name="CompareButton" Style="{StaticResource ChipButton}"
+                            PreviewMouseLeftButtonDown="OnCompareDown"
+                            PreviewMouseLeftButtonUp="OnCompareUp"
+                            ToolTip="按住查看原图（也可按住键盘 \ 键）">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="👁" Margin="0,0,5,0" VerticalAlignment="Center" />
+                            <TextBlock Text="按住看原图" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="关闭" Style="{StaticResource ChipButton}" Click="OnCloseClick" Margin="8,0,0,0" />
+                    <Button x:Name="SaveButton" Content="💾 保存副本" Click="OnSaveClick"
+                            Background="{DynamicResource PrimaryBrush}" Foreground="White"
+                            BorderBrush="{DynamicResource PrimaryBrush}" Padding="14,5" Margin="8,0,0,0"
+                            ToolTip="把所有修改保存为 _edited 副本，原图不变" />
+                </StackPanel>
+
+                <TextBlock x:Name="ToolHint" VerticalAlignment="Center" Margin="14,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"
+                           TextTrimming="CharacterEllipsis"
+                           Text="提示：右侧选择工具，Ctrl+Z 撤销，按住 \ 看原图" />
+            </DockPanel>
+        </Border>
+
+        <!-- ===================== 主体：画布 + 工具栏 ===================== -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 画布区 -->
+            <Grid Grid.Column="0" Background="#101114">
+                <Border x:Name="ImageArea" Background="Transparent" ClipToBounds="True"
+                        MouseWheel="OnMouseWheel"
+                        MouseLeftButtonDown="OnCanvasMouseDown"
+                        MouseMove="OnCanvasMouseMove"
+                        MouseLeftButtonUp="OnCanvasMouseUp">
+                    <Grid>
+                        <Grid x:Name="ImageBox" HorizontalAlignment="Center" VerticalAlignment="Center"
+                              ClipToBounds="True" RenderTransformOrigin="0.5,0.5" Background="#0B0C0E">
+                            <Grid.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="ZoomScale" ScaleX="1" ScaleY="1" />
+                                    <TranslateTransform x:Name="PanTranslate" X="0" Y="0" />
+                                </TransformGroup>
+                            </Grid.RenderTransform>
+
+                            <Image x:Name="PreviewImage" Stretch="Fill" />
+
+                            <!-- 暖色 / 复古滤镜叠加层 -->
+                            <Rectangle x:Name="TintLayer" IsHitTestVisible="False" Visibility="Collapsed" />
+
+                            <!-- 马赛克 -->
+                            <Canvas x:Name="MosaicLayer" IsHitTestVisible="False" />
+
+                            <!-- 文字（非选中项显示为 TextBlock，选中项为 TextBox） -->
+                            <Canvas x:Name="TextLayer" />
+
+                            <!-- 涂鸦 -->
+                            <InkCanvas x:Name="InkLayer" Background="Transparent" IsHitTestVisible="False"
+                                       EditingMode="None" StrokeCollected="OnStrokeCollected" />
+
+                            <!-- 裁剪层 -->
+                            <Canvas x:Name="CropLayer" Visibility="Collapsed">
+                                <Rectangle x:Name="MaskTop" Fill="#A6000000" />
+                                <Rectangle x:Name="MaskBottom" Fill="#A6000000" />
+                                <Rectangle x:Name="MaskLeft" Fill="#A6000000" />
+                                <Rectangle x:Name="MaskRight" Fill="#A6000000" />
+                                <Border x:Name="CropBorder" BorderBrush="#4A90D9" BorderThickness="2"
+                                        IsHitTestVisible="False" />
+                                <Line x:Name="GridLineV1" Stroke="#66FFFFFF" StrokeThickness="1" IsHitTestVisible="False" />
+                                <Line x:Name="GridLineV2" Stroke="#66FFFFFF" StrokeThickness="1" IsHitTestVisible="False" />
+                                <Line x:Name="GridLineH1" Stroke="#66FFFFFF" StrokeThickness="1" IsHitTestVisible="False" />
+                                <Line x:Name="GridLineH2" Stroke="#66FFFFFF" StrokeThickness="1" IsHitTestVisible="False" />
+
+                                <Thumb x:Name="CropMoveThumb" Cursor="SizeAll"
+                                       DragDelta="OnCropMoveDelta">
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <!-- 透明可拖动区域，不能有可见外观，否则会盖住画面 -->
+                                            <Border Background="Transparent" />
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                                <Thumb x:Name="CropNW" Style="{StaticResource CropHandle}" Cursor="SizeNWSE" DragDelta="OnCropNW" />
+                                <Thumb x:Name="CropN" Style="{StaticResource CropHandle}" Cursor="SizeNS" DragDelta="OnCropN" />
+                                <Thumb x:Name="CropNE" Style="{StaticResource CropHandle}" Cursor="SizeNESW" DragDelta="OnCropNE" />
+                                <Thumb x:Name="CropE" Style="{StaticResource CropHandle}" Cursor="SizeWE" DragDelta="OnCropE" />
+                                <Thumb x:Name="CropSE" Style="{StaticResource CropHandle}" Cursor="SizeNWSE" DragDelta="OnCropSE" />
+                                <Thumb x:Name="CropS" Style="{StaticResource CropHandle}" Cursor="SizeNS" DragDelta="OnCropS" />
+                                <Thumb x:Name="CropSW" Style="{StaticResource CropHandle}" Cursor="SizeNESW" DragDelta="OnCropSW" />
+                                <Thumb x:Name="CropW" Style="{StaticResource CropHandle}" Cursor="SizeWE" DragDelta="OnCropW" />
+                            </Canvas>
+                        </Grid>
+
+                        <!-- 翻页 -->
+                        <Button Content="❮" Click="OnPrevious" Width="46" Height="88" FontSize="26"
+                                Foreground="White" Background="#42000000" BorderThickness="0"
+                                Cursor="Hand" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                Margin="8,0,0,0" IsEnabled="{Binding HasPrevious}" ToolTip="上一张（←）" />
+                        <Button Content="❯" Click="OnNext" Width="46" Height="88" FontSize="26"
+                                Foreground="White" Background="#42000000" BorderThickness="0"
+                                Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Margin="0,0,8,0" IsEnabled="{Binding HasNext}" ToolTip="下一张（→）" />
+
+                        <!-- 加载状态 -->
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="⏳" FontSize="40" Foreground="#888888" HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding LoadStatusText}" Foreground="#BBBBBB" FontSize="14"
+                                       HorizontalAlignment="Center" Margin="0,8,0,0" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding LoadStatusText}" Foreground="#DD6666" FontSize="14"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Visibility="{Binding LoadStatusText, Converter={StaticResource StringToVis}}"
+                                   TextWrapping="Wrap" MaxWidth="420" />
+                    </Grid>
+                </Border>
+
+                <!-- 裁剪确认条 -->
+                <Border x:Name="CropBar" Visibility="Collapsed"
+                        HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,18"
+                        Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="12,8">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="CropSizeText" VerticalAlignment="Center" Margin="0,0,14,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                        <Button Content="取消" Style="{StaticResource ChipButton}" Click="OnCancelCrop" />
+                        <Button Content="✅ 确认裁剪" Click="OnConfirmCrop" Margin="8,0,0,0"
+                                Background="{DynamicResource PrimaryBrush}" Foreground="White"
+                                BorderBrush="{DynamicResource PrimaryBrush}" Padding="12,4" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 文字属性面板 -->
+                <Border x:Name="TextPanel" Visibility="Collapsed"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0"
+                        Width="248" Background="{DynamicResource PanelBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8"
+                        Padding="14,12">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,8">
+                            <!-- 明确的「结束当前编辑」出口：结束后才允许新增下一段文字 -->
+                            <Button DockPanel.Dock="Right" Content="✓ 完成" Click="OnFinishTextClick"
+                                    Padding="10,2" FontSize="11" Margin="0,0,6,0"
+                                    Background="{DynamicResource PrimaryBrush}" Foreground="White"
+                                    BorderBrush="{DynamicResource PrimaryBrush}"
+                                    ToolTip="结束这段文字的编辑（也可以按 Esc 或点画面空白处）" />
+                            <Button DockPanel.Dock="Right" Content="删除" Click="OnDeleteTextClick"
+                                    Padding="8,2" FontSize="11" />
+                            <TextBlock Text="文字样式" FontWeight="Bold" VerticalAlignment="Center" />
+                        </DockPanel>
+
+                        <TextBlock Text="字体" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <ComboBox x:Name="FontCombo" Margin="0,4,0,8" SelectionChanged="OnFontChanged">
+                            <ComboBoxItem Content="微软雅黑" Tag="Microsoft YaHei" />
+                            <ComboBoxItem Content="黑体" Tag="SimHei" />
+                            <ComboBoxItem Content="宋体" Tag="SimSun" />
+                            <ComboBoxItem Content="楷体" Tag="KaiTi" />
+                            <ComboBoxItem Content="等线" Tag="DengXian" />
+                            <ComboBoxItem Content="Arial" Tag="Arial" />
+                        </ComboBox>
+
+                        <DockPanel Margin="0,0,0,2">
+                            <TextBlock DockPanel.Dock="Right" x:Name="FontSizeText" Text="32"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
+                            <TextBlock Text="字号" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </DockPanel>
+                        <Slider x:Name="FontSizeSlider" Minimum="12" Maximum="140" Value="32"
+                                IsSnapToTickEnabled="True" TickFrequency="1" Margin="0,2,0,8"
+                                ValueChanged="OnFontSizeChanged" />
+
+                        <TextBlock Text="颜色" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Margin="0,0,0,4" />
+                        <WrapPanel x:Name="TextColorPanel" Margin="0,0,0,8" />
+
+                        <StackPanel Orientation="Horizontal">
+                            <ToggleButton x:Name="BoldToggle" Content="B" Width="34" Height="26"
+                                          FontWeight="Bold" Click="OnTextStyleChanged"
+                                          Style="{StaticResource CompactToggle}" />
+                            <ToggleButton x:Name="ItalicToggle" Content="I" Width="34" Height="26"
+                                          FontStyle="Italic" Click="OnTextStyleChanged" Margin="4,0,0,0"
+                                          Style="{StaticResource CompactToggle}" />
+                            <TextBlock Text="加粗 / 斜体" VerticalAlignment="Center" Margin="10,0,0,0"
+                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+
+                        <TextBlock Text="编辑完成后点「✓ 完成」，再点「文字」即可添加新的一段。"
+                                   FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 涂鸦属性面板 -->
+                <Border x:Name="InkPanel" Visibility="Collapsed"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0"
+                        Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="14,10">
+                    <StackPanel>
+                        <TextBlock Text="画笔" FontWeight="Bold" Margin="0,0,0,6" />
+                        <WrapPanel x:Name="InkColorPanel" Margin="0,0,0,8" />
+                        <DockPanel Margin="0,0,0,6">
+                            <TextBlock DockPanel.Dock="Right" x:Name="InkWidthText" Text="4"
+                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="粗细" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </DockPanel>
+                        <Slider x:Name="InkWidthSlider" Minimum="1" Maximum="24" Value="4"
+                                IsSnapToTickEnabled="True" TickFrequency="1" Width="170"
+                                ValueChanged="OnInkWidthChanged" />
+                        <Button Content="↶ 撤销上一笔" Click="OnUndoStrokeClick" Margin="0,8,0,0"
+                                Padding="8,4" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 滤镜面板 -->
+                <Border x:Name="FilterPanel" Visibility="Collapsed"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0"
+                        Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="14,10">
+                    <StackPanel>
+                        <TextBlock Text="滤镜" FontWeight="Bold" Margin="0,0,0,8" />
+                        <StackPanel x:Name="FilterButtons" Orientation="Horizontal" />
+                        <TextBlock Text="随时可以切回「原图」，也可以用撤销回退。" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 压缩面板 -->
+                <Border x:Name="ResizePanel" Visibility="Collapsed"
+                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0"
+                        Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="14,10" Width="240">
+                    <StackPanel>
+                        <TextBlock Text="保存尺寸" FontWeight="Bold" Margin="0,0,0,8" />
+                        <ComboBox x:Name="ResizeCombo" SelectionChanged="OnResizeOptionChanged">
+                            <ComboBoxItem Content="保持原尺寸" Tag="0" />
+                            <ComboBoxItem Content="长边 2560 px" Tag="2560" />
+                            <ComboBoxItem Content="长边 1920 px" Tag="1920" />
+                            <ComboBoxItem Content="长边 1280 px" Tag="1280" />
+                        </ComboBox>
+                        <TextBlock Text="选择后点「保存副本」生效，原图不变。" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 保存成功强反馈：盖在画布底部中央，绿框卡片 + 文件名，明确「原图未修改」 -->
+                <Border x:Name="SaveResultBar" Visibility="Collapsed"
+                        HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,86"
+                        Background="{DynamicResource PanelBrush}"
+                        BorderBrush="#22C55E" BorderThickness="1.5"
+                        CornerRadius="10" Padding="16,12" MaxWidth="760">
+                    <DockPanel>
+                        <TextBlock Text="✅" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0" />
+
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                    VerticalAlignment="Center" Margin="16,0,0,0">
+                            <Button Content="打开所在文件夹" Style="{StaticResource ChipButton}"
+                                    Click="OnSaveResultOpenFolder" />
+                            <Button Content="知道了" Style="{StaticResource ChipButton}"
+                                    Click="OnSaveResultDismiss" Margin="8,0,0,0" />
+                        </StackPanel>
+
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="已保存为新文件（原图未修改）" FontWeight="Bold" FontSize="13"
+                                       Foreground="{DynamicResource TextBrush}" />
+                            <TextBlock x:Name="SaveResultName" Text="" FontWeight="Bold" FontSize="13"
+                                       Foreground="#16A34A" TextTrimming="CharacterEllipsis"
+                                       MaxWidth="420" Margin="0,3,0,0" />
+                            <TextBlock x:Name="SaveResultDetail" Text="" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- 底部提示 -->
+                <Border x:Name="ToastBar" Visibility="Collapsed"
+                        HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,74"
+                        Background="#E6000000" CornerRadius="6" Padding="14,7">
+                    <TextBlock x:Name="ToastText" Foreground="White" FontSize="12" />
+                </Border>
+            </Grid>
+
+            <!-- 右侧工具栏 -->
+            <Border Grid.Column="1" Background="{DynamicResource SidebarBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0" Width="92">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,10,0,10">
+                        <TextBlock Text="编辑工具" FontSize="11" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
+
+                        <Button Style="{StaticResource ToolButton}" Click="OnRotateClick" ToolTip="旋转 90°（顺时针）">
+                            <StackPanel>
+                                <TextBlock Text="↻" FontSize="22" HorizontalAlignment="Center" />
+                                <TextBlock Text="旋转" FontSize="11" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Button>
+
+                        <ToggleButton x:Name="CropTool" Style="{StaticResource ToolToggle}" Click="OnCropToolClick"
+                                      ToolTip="裁剪：拖动边框调整，框内可移动">
+                            <StackPanel>
+                                <TextBlock Text="✂" FontSize="22" HorizontalAlignment="Center" />
+                                <TextBlock Text="裁剪" FontSize="11" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </ToggleButton>
+
+                        <ToggleButton x:Name="TextTool" Style="{StaticResource ToolToggle}" Click="OnTextToolClick"
+                                      ToolTip="添加文字：可直接输入、拖动、调字体颜色">
+                            <StackPanel>
+                                <TextBlock Text="🔤" FontSize="22" HorizontalAlignment="Center" />
+                                <TextBlock Text="文字" FontSize="11" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </ToggleButton>
+
+                        <Button Style="{StaticResource ToolButton}" Click="OnWatermarkClick"
+                                ToolTip="添加半透明水印文字">
+                            <StackPanel>
+                                <TextBlock Text="💧" FontSize="22" HorizontalAlignment="Center" />
+                                <TextBlock Text="水印" FontSize="11" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Button>
+
+                        <ToggleButton x:Name="InkTool" Style="{StaticResource ToolToggle}" Click="OnInkToolClick"
+                                      ToolTip="涂鸦：按住鼠标画线，可调颜色和粗细">
+                            <StackPanel>
+                                <TextBlock Text="✏" FontSize="22" HorizontalAlignment="Center" />
+                                <TextBlock Text="涂鸦" FontSize="11" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </ToggleButton>
+
+                        <ToggleButton x:Name="MosaicTool" Style="{StaticResource ToolToggle}" Click="OnMosaicToolClick"
+                                      ToolTip="马赛克：在画面上拖出一个矩形进行打码">
+                            <StackPanel>
+                                <TextBlock Text="▦" FontSize="22" HorizontalAlignment="Center" />
+                                <TextBlock Text="马赛克" FontSize="11" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </ToggleButton>
+
+                        <Button Style="{StaticResource ToolButton}" Click="OnFilterClick" ToolTip="滤镜：黑白 / 暖色 / 复古">
+                            <StackPanel>
+                                <TextBlock Text="🎨" FontSize="22" HorizontalAlignment="Center" />
+                                <TextBlock Text="滤镜" FontSize="11" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Style="{StaticResource ToolButton}" Click="OnResizeClick" ToolTip="保存时压缩到指定尺寸">
+                            <StackPanel>
+                                <TextBlock Text="📦" FontSize="22" HorizontalAlignment="Center" />
+                                <TextBlock Text="压缩" FontSize="11" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- ===================== 底部状态栏 ===================== -->
+        <Border Grid.Row="2" Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="10,5">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="{Binding Title}" FontWeight="SemiBold"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320" />
+                <TextBlock DockPanel.Dock="Left" Text="{Binding InfoText}" Margin="14,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                <TextBlock DockPanel.Dock="Left" Text="{Binding ResolutionText}" Margin="0,0,14,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                <TextBlock DockPanel.Dock="Left" Text="{Binding NoteText}" Foreground="#CCAA55"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="320" />
+
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="−" Click="OnZoomOut" Width="28" Style="{StaticResource ChipButton}"
+                            Padding="0" Margin="0,0,4,0" ToolTip="缩小（滚轮向下）" />
+                    <TextBlock x:Name="ZoomText" Text="适应窗口" MinWidth="62" TextAlignment="Center"
+                               VerticalAlignment="Center" Margin="0,0,4,0" FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Button Content="＋" Click="OnZoomIn" Width="28" Style="{StaticResource ChipButton}"
+                            Padding="0" Margin="0,0,10,0" ToolTip="放大（滚轮向上）" />
+                    <Button Content="适应窗口" Click="OnFit" Style="{StaticResource ChipButton}" Margin="0,0,4,0"
+                            ToolTip="双击画面也可以回到适应窗口（Ctrl+0）" />
+                    <Button Content="全屏" Click="OnFullScreen" Style="{StaticResource ChipButton}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,120 @@
+<Window x:Class="MediaManager.App.Views.Dialogs.BatchExportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="批量导出"
+        Width="540"
+        SizeToContent="Height"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True"
+        KeyDown="OnWindowKeyDown">
+
+    <Window.Resources>
+        <Style x:Key="PrimaryButton" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="MinWidth" Value="96" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.86" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.7" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="NormalButton" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="MinWidth" Value="96" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="DragArea" Margin="0" CornerRadius="10"
+            Background="{DynamicResource PanelBrush}"
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+
+        <StackPanel Margin="18,16,18,16">
+            <TextBlock Text="批量导出" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextBrush}" />
+            <TextBlock x:Name="CountText" FontSize="12" Margin="0,4,0,14" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
+            <TextBlock Text="导出到" Margin="0,0,0,6" Foreground="{DynamicResource TextBrush}" />
+            <DockPanel Margin="0,0,0,14">
+                <Button DockPanel.Dock="Right" Content="浏览…" Margin="8,0,0,0" Click="OnBrowse" />
+                <TextBox x:Name="OutputBox" MinHeight="30" />
+            </DockPanel>
+
+            <TextBlock Text="统一尺寸" Margin="0,0,0,6" Foreground="{DynamicResource TextBrush}" />
+            <ComboBox x:Name="SizeBox" Margin="0,0,0,14" SelectedIndex="0">
+                <ComboBoxItem Content="保持原尺寸" Tag="0" />
+                <ComboBoxItem Content="长边 2560 像素（2K，适合高分屏）" Tag="2560" />
+                <ComboBoxItem Content="长边 1920 像素（1080P，通用）" Tag="1920" />
+                <ComboBoxItem Content="长边 1280 像素（720P，省空间）" Tag="1280" />
+                <ComboBoxItem Content="长边 854 像素（小图，发消息用）" Tag="854" />
+            </ComboBox>
+
+            <TextBlock Text="JPEG 画质（越小越省空间，只影响 jpg）" Margin="0,0,0,6"
+                       Foreground="{DynamicResource TextBrush}" />
+            <ComboBox x:Name="QualityBox" Margin="0,0,0,10" SelectedIndex="1">
+                <ComboBoxItem Content="95（几乎无损）" Tag="95" />
+                <ComboBoxItem Content="90（推荐）" Tag="90" />
+                <ComboBoxItem Content="85（体积明显变小）" Tag="85" />
+                <ComboBoxItem Content="75（更省空间）" Tag="75" />
+                <ComboBoxItem Content="60（最大压缩）" Tag="60" />
+            </ComboBox>
+
+            <TextBlock Text="原图不会被修改或删除，导出的是副本；同名文件会自动加 (2)(3) 避免覆盖。视频暂不参与尺寸/压缩。"
+                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"
+                       Margin="0,0,0,4" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button Content="开始导出" Style="{StaticResource PrimaryButton}" IsDefault="True"
+                        Click="OnOk" />
+                <Button Content="取消" Style="{StaticResource NormalButton}" IsCancel="True"
+                        Margin="8,0,0,0" Click="OnCancel" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
