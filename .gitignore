@@ -47,3 +47,10 @@ tools/ffmpeg/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# ---------- 本地 UI 自动化 / 截图测试脚本（含本机绝对路径） ----------
+build/uia_*.py
+build/capture_main_window.py
+build/*_log.txt
+build/skel_*.jpg
+build/screen_now.jpg
