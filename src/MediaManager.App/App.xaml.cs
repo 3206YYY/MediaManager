@@ -369,6 +369,22 @@ public partial class App : Application
         foreach (Window w in Application.Current.Windows)
             WindowThemeHelper.ApplyTitleBarDarkMode(w, isDark);
 
+        // 同步内存配置：否则设置窗口会用启动时的旧主题初始化下拉框，
+        // 用户再保存任何其他设置时又把旧主题写回数据库（表现为「主题自己变回去」）。
+        try
+        {
+            if (Current is App app &&
+                app._provider?.GetService(typeof(IAppConfigService)) is IAppConfigService cfg)
+            {
+                cfg.UpdateTheme(isDark ? MediaManager.Core.Enums.AppTheme.Dark
+                                       : MediaManager.Core.Enums.AppTheme.Light);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Debug(ex, "同步主题配置失败（不影响界面）");
+        }
+
         WriteCachedTheme(isDark);
     }
 

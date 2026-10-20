@@ -46,6 +46,37 @@
             </Setter>
         </Style>
 
+        <!-- 中央提示面板的操作按钮：hover / pressed 只改透明度。
+             继承 OverlayButton 的话，模板触发器会把背景换成半透明白，
+             实心蓝按钮一悬停反而变淡，看起来像被禁用。 -->
+        <Style x:Key="CenterActionButton" TargetType="Button" BasedOn="{StaticResource OverlayButton}">
+            <Setter Property="Foreground" Value="#FFFFFFFF" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Padding" Value="20,9" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" CornerRadius="8"
+                                Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.7" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 播放/暂停主按钮：圆形亮底 -->
         <Style x:Key="PrimaryRoundButton" TargetType="Button" BasedOn="{StaticResource OverlayButton}">
             <Setter Property="Width" Value="34" />
@@ -249,7 +280,7 @@
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8EE;"
                                                        FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                            <TextBlock x:Name="ModeText" Text="连续播放" FontSize="12" Foreground="#F2FFFFFF"
+                                            <TextBlock x:Name="ModeText" Text="播完暂停" FontSize="12" Foreground="#F2FFFFFF"
                                                        VerticalAlignment="Center" />
                                             <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE70D;"
                                                        FontSize="8" VerticalAlignment="Center"
@@ -300,30 +331,33 @@
                         </Border>
                     </Grid>
 
-                    <!-- 中央提示：播放失败 / 播放结束（不跟随控制栏淡出） -->
+                    <!-- 中央提示：播放失败 / 播放结束（不跟随控制栏淡出）
+                         面板必须足够不透明：视频画面经常是高对比度彩条/白底，
+                         半透明面板会让标题和按钮「糊」在画面里看不清。 -->
                     <Border x:Name="CenterPanel" Visibility="Collapsed"
                             HorizontalAlignment="Center" VerticalAlignment="Center"
-                            Background="#E0141518" CornerRadius="14"
-                            BorderBrush="#26FFFFFF" BorderThickness="1"
+                            Background="#F5161719" CornerRadius="14"
+                            BorderBrush="#3DFFFFFF" BorderThickness="1"
                             Padding="30,24" MaxWidth="560">
                         <StackPanel>
                             <TextBlock x:Name="CenterTitle" Text="无法播放此视频"
-                                       FontSize="15" FontWeight="SemiBold"
-                                       Foreground="#F5FFFFFF" TextAlignment="Center"
+                                       FontSize="15.5" FontWeight="SemiBold"
+                                       Foreground="#FFFFFFFF" TextAlignment="Center"
                                        TextWrapping="Wrap" />
                             <TextBlock x:Name="CenterDetail" Text=""
-                                       FontSize="12" Foreground="#AFFFFFFF"
+                                       FontSize="12.5" Foreground="#D6FFFFFF"
                                        TextAlignment="Center" TextWrapping="Wrap"
+                                       LineHeight="19"
                                        Margin="0,9,0,0" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
                                         Margin="0,18,0,0">
                                 <Button x:Name="CenterPrimaryButton" Content="重试"
-                                        Style="{StaticResource OverlayButton}"
-                                        Background="#336FB4FF" Padding="18,7"
+                                        Style="{StaticResource CenterActionButton}"
+                                        Background="#FF2F7CF6"
                                         Click="OnCenterPrimaryClick" />
                                 <Button x:Name="CenterSecondaryButton" Content="播放下一个"
-                                        Style="{StaticResource OverlayButton}"
-                                        Background="#1AFFFFFF" Padding="18,7"
+                                        Style="{StaticResource CenterActionButton}"
+                                        Background="#33FFFFFF"
                                         Margin="10,0,0,0" Click="OnCenterSecondaryClick" />
                             </StackPanel>
                         </StackPanel>

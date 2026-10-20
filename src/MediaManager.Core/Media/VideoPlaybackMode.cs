@@ -25,12 +25,16 @@ public static class VideoPlaybackModes
         _ => "sequential",
     };
 
-    /// <summary>解析库里的值；无法识别时回落到「连续播放」。</summary>
+    /// <summary>默认行为：播完就停，等用户自己决定。</summary>
+    public const VideoPlaybackMode Default = VideoPlaybackMode.PauseAtEnd;
+
+    /// <summary>解析库里的值；无法识别（或从未设置）时回落到「播完暂停」。</summary>
     public static VideoPlaybackMode Parse(string? value) => value?.Trim().ToLowerInvariant() switch
     {
-        "pause" or "pauseatend" or "stop" => VideoPlaybackMode.PauseAtEnd,
+        "sequential" or "next" or "auto" => VideoPlaybackMode.Sequential,
         "random" or "shuffle" => VideoPlaybackMode.Random,
-        _ => VideoPlaybackMode.Sequential,
+        "pause" or "pauseatend" or "stop" => VideoPlaybackMode.PauseAtEnd,
+        _ => Default,
     };
 
     /// <summary>界面显示名。</summary>

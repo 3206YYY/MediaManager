@@ -34,6 +34,18 @@ public class AppConfigService : IAppConfigService
 
     public Task EnsureLoadedAsync() => _loadTask.Value;
 
+    /// <summary>
+    /// 运行时切换主题后同步缓存值（界面已经换了主题，这里把内存配置对齐）。
+    /// 缺了这一步，设置窗口会一直显示启动时读到的旧主题。
+    /// </summary>
+    public void UpdateTheme(AppTheme theme) => _theme = theme;
+
+    /// <summary>
+    /// 重新从数据库拉一遍配置。设置窗口保存后调用，
+    /// 避免内存快照过期导致「再保存一次其他设置就把刚才的改动冲掉」。
+    /// </summary>
+    public Task ReloadAsync() => LoadAsync();
+
     private async Task LoadAsync()
     {
         _ffmpegPath = await _repo.GetSettingAsync("FfmpegPath");

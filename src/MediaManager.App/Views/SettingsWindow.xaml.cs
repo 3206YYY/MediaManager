@@ -46,7 +46,10 @@ public partial class SettingsWindow : Window
         FfmpegBox.Text = _config.FfmpegPath ?? string.Empty;
         ConcurrencySlider.Value = _config.Concurrency;
 
-        ThemeBox.SelectedIndex = _config.Theme == Core.Enums.AppTheme.Light ? 0 : 1;
+        // 主题下拉必须反映「当前真正生效的主题」（App.IsDarkTheme），
+        // 不能用 _config.Theme：那是启动时读进内存的快照，运行中切过主题不会自动更新。
+        // 曾经因为读快照，用户切成浅色后这里仍显示「深色」，一保存其他设置就又被写回深色。
+        ThemeBox.SelectedIndex = App.IsDarkTheme ? 1 : 0;
         // 语言切换入口已隐藏（仅保留中文）：这里不再读 LanguageBox。
         DeleteBox.SelectedIndex = _config.DeleteBehavior switch
         {
@@ -344,6 +347,18 @@ public partial class SettingsWindow : Window
                 string.IsNullOrWhiteSpace(BackupDirBox.Text) ? null : BackupDirBox.Text.Trim());
             var autoBackupTag = (AutoBackupBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "0";
             await _repo.SetSettingAsync("AutoBackupIntervalMinutes", autoBackupTag);
+
+            // 内存配置必须跟刚写入的值对齐。
+            // 否则它还是启动时的快照：下次打开设置窗口显示旧值，
+            // 用户再改别的设置一保存，就把刚才这些改动全部写回旧值。
+            try
+            {
+                await _config.ReloadAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("刷新内存配置失败：" + ex.Message);
+            }
 
             // 主题立即生效（无需重启）
             try
