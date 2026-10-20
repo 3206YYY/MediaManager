@@ -19,14 +19,23 @@ public class VideoPlaybackModeTests
         }
     }
 
+    /// <summary>
+    /// 从未设置（null / 空字符串）或无法识别的值 → 回落到默认的「播完暂停」。
+    /// 默认值必须是「播完暂停」：不替用户决定要不要接着放下一个。
+    /// </summary>
     [Theory]
-    [InlineData(null, VideoPlaybackMode.Sequential)]
-    [InlineData("", VideoPlaybackMode.Sequential)]
+    [InlineData(null, VideoPlaybackMode.PauseAtEnd)]
+    [InlineData("", VideoPlaybackMode.PauseAtEnd)]
+    [InlineData("垃圾值", VideoPlaybackMode.PauseAtEnd)]
+    [InlineData("sequential", VideoPlaybackMode.Sequential)]
     [InlineData("  PAUSE ", VideoPlaybackMode.PauseAtEnd)]
     [InlineData("shuffle", VideoPlaybackMode.Random)]
-    [InlineData("垃圾值", VideoPlaybackMode.Sequential)]
-    public void Parse_FallsBackToSequential(string? raw, VideoPlaybackMode expected)
+    public void Parse_FallsBackToPauseAtEnd(string? raw, VideoPlaybackMode expected)
         => Assert.Equal(expected, VideoPlaybackModes.Parse(raw));
+
+    [Fact]
+    public void Default_IsPauseAtEnd()
+        => Assert.Equal(VideoPlaybackMode.PauseAtEnd, VideoPlaybackModes.Default);
 
     [Fact]
     public void Display_IsNotEmpty()

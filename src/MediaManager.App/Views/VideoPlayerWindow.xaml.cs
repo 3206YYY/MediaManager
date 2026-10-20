@@ -50,7 +50,9 @@ public partial class VideoPlayerWindow : Window
     // ---------- 播放列表 ----------
     private List<string> _playlist = new();
     private int _playlistIndex = -1;
-    private VideoPlaybackMode _playMode = VideoPlaybackMode.Sequential;
+    // 默认「播完暂停」：一部片子播完就停下，不替用户决定要不要继续看下一个。
+    // 用户可在左下角自己切「连续播放 / 随机播放」，选择会写进 AppSetting 记住。
+    private VideoPlaybackMode _playMode = VideoPlaybackMode.PauseAtEnd;
     private bool _endHandled;
 
     // ---------- 进度条状态 ----------
@@ -825,7 +827,8 @@ public partial class VideoPlayerWindow : Window
         UpdateModeUi();
         ShowToast($"播放结束：{mode.ToDisplay()}");
         PingActivity();
-        ScheduleSavePreferences();
+        // 单击切换，立即落库（不要走防抖：用户切完常常直接关窗）
+        ScheduleSavePreferences(0);
     }
 
     private void UpdateModeUi()
@@ -1397,19 +1400,23 @@ public partial class VideoPlayerWindow : Window
         }
     }
 
-    private void ScheduleSavePreferences()
+    /// <summary>
+    /// 防抖保存偏好。播放模式是单击操作，传 0 立即落库；
+    /// 音量拖动才需要 400ms 防抖，否则拖一次滑块会写几十次数据库。
+    /// </summary>
+    private void ScheduleSavePreferences(int delayMs = 400)
     {
         _prefSaveCts?.Cancel();
         _prefSaveCts = new CancellationTokenSource();
         var token = _prefSaveCts.Token;
-        _ = SavePreferencesAsync(token);
+        _ = SavePreferencesAsync(token, delayMs);
     }
 
-    private async Task SavePreferencesAsync(CancellationToken token)
+    private async Task SavePreferencesAsync(CancellationToken token, int delayMs)
     {
         try
         {
-            await Task.Delay(400, token);
+            if (delayMs > 0) await Task.Delay(delayMs, token);
             if (token.IsCancellationRequested) return;
 
             var repo = App.Services.GetService(typeof(IMediaRepository)) as IMediaRepository;
@@ -1426,6 +1433,40 @@ public partial class VideoPlayerWindow : Window
         }
     }
 
+    /// <summary>
+    /// 关窗前把还没落库的偏好立刻写一次。
+    /// 之前 OnClosed 只做 Cancel，用户「切完模式马上关窗」（400ms 内）的改动会直接丢失。
+    /// </summary>
+    private void FlushPreferences()
+    {
+        try
+        {
+            var repo = App.Services.GetService(typeof(IMediaRepository)) as IMediaRepository;
+            if (repo == null) return;
+
+            var mode = _playMode;
+            var volume = _volume;
+            var muted = _muted;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await repo.SetSettingAsync(VideoPlaybackModes.SettingKey, mode.ToStorageValue());
+                    await repo.SetSettingAsync("VideoVolume", volume.ToString());
+                    await repo.SetSettingAsync("VideoMuted", muted ? "1" : "0");
+                }
+                catch
+                {
+                    // 关窗兜底写入失败无副作用
+                }
+            });
+        }
+        catch
+        {
+            // 忽略
+        }
+    }
+
     // ===================================================================
     //  释放
     // ===================================================================
@@ -1438,6 +1479,9 @@ public partial class VideoPlayerWindow : Window
         _toastTimer.Stop();
         _seekCoalescer.Reset();
         _resyncCts?.Cancel();
+        // 先把还没落库的偏好立刻写一次，再取消防抖任务：
+        // 否则「切完播放模式 / 拖完音量马上关窗」的改动会全部丢失。
+        FlushPreferences();
         _prefSaveCts?.Cancel();
 
         var player = _player;
