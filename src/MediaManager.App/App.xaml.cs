@@ -42,7 +42,7 @@ public partial class App : Application
             .MinimumLevel.Debug()
             .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
             .WriteTo.File(
-                System.IO.Path.Combine(AppContext.BaseDirectory, "logs", "app-.log"),
+                System.IO.Path.Combine(ResolveLogDirectory(), "app-.log"),
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 7)
             .CreateLogger();
@@ -86,6 +86,32 @@ public partial class App : Application
     /// <summary>进程启动至今的毫秒数（用于分段计时，排查启动瓶颈）。</summary>
     private static double ElapsedMs()
         => (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
+
+    /// <summary>
+    /// 日志目录必须可写。用户若在安装时选「为所有用户安装」，程序会落到 Program Files，
+    /// 那里普通权限写不进去——日志初始化失败会连带拖垮整个启动。
+    /// 所以日志跟随数据目录：便携模式 Data\logs，安装模式 %LocalAppData%\MediaManager\logs。
+    /// </summary>
+    private static string ResolveLogDirectory()
+    {
+        try
+        {
+            var programDir = AppContext.BaseDirectory;
+            var dir = File.Exists(System.IO.Path.Combine(programDir, "portable.marker"))
+                ? System.IO.Path.Combine(programDir, "Data", "logs")
+                : System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "MediaManager", "logs");
+
+            Directory.CreateDirectory(dir);
+            return dir;
+        }
+        catch
+        {
+            // 极端情况（连数据目录都建不出来）：退回临时目录，保证程序仍然能起来
+            return System.IO.Path.GetTempPath();
+        }
+    }
 
     /// <summary>后台引导：数据库初始化 → 主题校验 → 数据加载 → 托盘 → 备份循环。</summary>
     private async Task BootstrapAsync(MainWindow mainWindow, string[] args)
