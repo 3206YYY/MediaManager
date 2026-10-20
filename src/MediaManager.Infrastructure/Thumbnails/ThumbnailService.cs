@@ -42,7 +42,10 @@ public class ThumbnailService : IThumbnailService, IDisposable
 
     public void Enqueue(MediaItem item)
     {
-        _channel.Writer.TryWrite(item);
+        // 通道有界（2000），满了会 DropWrite：只有真正写进去的才算「待办」，
+        // 否则计数只增不减，状态栏会永远显示"正在生成"。
+        if (_channel.Writer.TryWrite(item))
+            Core.Diagnostics.ThumbnailActivity.GenerationQueued();
     }
 
     public string? GetCachedPath(MediaItem item)
@@ -69,6 +72,11 @@ public class ThumbnailService : IThumbnailService, IDisposable
                     else
                         _logger.LogWarning(ex, "缩略图生成失败：{Path}", item.Path);
                 }
+                finally
+                {
+                    // 成功、失败、设备掉线都要结账，否则状态栏的待办数永远降不下去
+                    Core.Diagnostics.ThumbnailActivity.GenerationFinished();
+                }
             }
         }
     }
@@ -76,7 +84,15 @@ public class ThumbnailService : IThumbnailService, IDisposable
     private async Task GenerateAsync(MediaItem item, CancellationToken ct)
     {
         var output = Path.Combine(_config.ThumbnailDirectory, $"{item.Id}_{item.QuickHash ?? "0"}.jpg");
-        if (File.Exists(output)) return;
+
+        // 缓存文件早就在盘上、只是内存/数据库里的路径丢了（清过缓存标记、
+        // 备份恢复、老库升级…）：以前直接 return，这一格就永远是空白灰块。
+        // 这里补一次「已就绪」通知，让界面自己把图取回去。
+        if (File.Exists(output))
+        {
+            await PublishReadyAsync(item, output).ConfigureAwait(false);
+            return;
+        }
 
         if (!File.Exists(item.Path)) return;
 
@@ -85,11 +101,29 @@ public class ThumbnailService : IThumbnailService, IDisposable
             : await GenerateVideoAsync(item.Path, output, ct);
 
         if (ok && File.Exists(output))
+            await PublishReadyAsync(item, output).ConfigureAwait(false);
+    }
+
+    /// <summary>缩略图可用：写回模型/数据库，并通知 UI 来取图。</summary>
+    private async Task PublishReadyAsync(MediaItem item, string output)
+    {
+        var changed = !string.Equals(item.ThumbnailPath, output, StringComparison.OrdinalIgnoreCase);
+        item.ThumbnailPath = output;
+
+        if (changed)
         {
-            item.ThumbnailPath = output;
-            await _repo.UpdateMediaAsync(item);
-            ThumbnailReady?.Invoke(item.Id, output);
+            try
+            {
+                await _repo.UpdateMediaAsync(item).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // 数据库写失败不该阻止缩略图显示（内存里已经有了，滚动时会用上）
+                _logger.LogDebug(ex, "缩略图路径写库失败：{Path}", output);
+            }
         }
+
+        ThumbnailReady?.Invoke(item.Id, output);
     }
 
     private async Task<bool> GenerateImageAsync(string input, string output, CancellationToken ct)

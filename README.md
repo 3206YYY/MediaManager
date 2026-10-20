@@ -2,10 +2,11 @@
 
 > 一款免费、开源、纯本地无广告的 Windows 媒体管理工具。帮你集中浏览、整理、编辑电脑与移动硬盘里的照片和视频，数据始终掌握在自己手里。
 
-**[📥 点击这里下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[☕ 赞助开发者](#-赞助与支持)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
+**[📥 点击这里下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
 
-![软件主界面截图](docs/screenshot_dark.jpg)
-*(👆 这里放一张你软件深色模式的漂亮截图，会极其增加下载率！先在软件里截一张，命名为 `docs/screenshot_dark.jpg` 提交即可。)*
+| ☀️ 浅色模式 | 🌙 深色模式 |
+|:---:|:---:|
+| ![主界面 · 浅色模式](docs/screenshot_light.jpg) | ![主界面 · 深色模式](docs/screenshot_dark.jpg) |
 
 ---
 
@@ -102,6 +103,8 @@ dotnet publish src/MediaManager.App -c Release -r win-x64 --self-contained false
 > 视频播放器内还支持：空格播放 / 暂停、↑ / ↓ 音量 ±5%、M 静音、F 或双击画面切全屏。
 
 ---
+
+<a name="sponsor"></a>
 
 ## ☕ 赞助与支持 (Support the Developer)
 

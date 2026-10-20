@@ -345,7 +345,25 @@
                                 <Border Background="{DynamicResource PanelBrush}"
                                         BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                         CornerRadius="4">
-                                    <Grid>
+                                    <Grid ClipToBounds="True">
+                                        <!-- 骨架屏：缩略图未就绪时的柔和底色 + 极简照片占位标识。
+                                             刻意放在 Image **下面**（不是上面）：图片加载完会把它完全盖住，
+                                             这样就不需要任何逐项的 Visibility 绑定，也就没有逐项布局重算。
+                                             纯静态图形、零动画 —— 虚拟化列表里才不会掉帧。 -->
+                                        <Border Background="{DynamicResource SkeletonBrush}">
+                                            <Grid Width="32" Height="26" Opacity="0.2"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Border BorderBrush="{DynamicResource TextSecondaryBrush}"
+                                                        BorderThickness="1.2" CornerRadius="3" />
+                                                <Ellipse Width="4.2" Height="4.2"
+                                                         Fill="{DynamicResource TextSecondaryBrush}"
+                                                         HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                         Margin="5,4,0,0" />
+                                                <Path Data="M0,10 L6,2 L10.5,6.5 L13.5,3.5 L20,10 Z"
+                                                      Fill="{DynamicResource TextSecondaryBrush}"
+                                                      Stretch="Fill" Margin="6,11,6,4" />
+                                            </Grid>
+                                        </Border>
                                         <Image ctl:AsyncThumbnail.SourcePath="{Binding ThumbnailPath}"
                                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                                                Stretch="UniformToFill"
@@ -391,7 +409,14 @@
                                         </Style>
                                     </StackPanel.Style>
                                 </StackPanel>
-                                <Border Background="#00000000" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                <!-- 文件名压在图上的底部渐变遮罩：白字压浅色图片也能看清（浅色主题下尤其明显） -->
+                                <Border HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0.6" EndPoint="0,1">
+                                            <GradientStop Color="#00000000" Offset="0" />
+                                            <GradientStop Color="#A6000000" Offset="1" />
+                                        </LinearGradientBrush>
+                                    </Border.Background>
                                     <TextBlock Text="{Binding FileName}" FontSize="11" Foreground="White"
                                                HorizontalAlignment="Center" VerticalAlignment="Bottom"
                                                Margin="4" TextTrimming="CharacterEllipsis" />
@@ -541,6 +566,25 @@
                 Padding="10,5">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Left" Text="{Binding StatusText}" />
+
+                <!-- 缩略图加载指示：队列清空后自动隐藏。
+                     数据来自 ThumbnailLoadMonitor 的 250ms 聚合，不订阅逐图事件（否则 UI 线程会被回调淹没）。 -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
+                            Margin="0,0,10,0"
+                            Visibility="{Binding ThumbLoading.IsBusy, Converter={StaticResource BoolToVis}}">
+                    <ProgressBar Width="68" Height="6" Maximum="100" VerticalAlignment="Center"
+                                 Margin="0,0,7,0" Value="{Binding ThumbLoading.Progress, Mode=OneWay}" />
+                    <TextBlock Text="{Binding ThumbLoading.StatusText}" VerticalAlignment="Center"
+                               FontSize="12" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+
+                <!-- 调试帧率：启动前设环境变量 MM_FPS=1 才显示，正常用户看不到 -->
+                <TextBlock DockPanel.Dock="Right" Text="{Binding ThumbLoading.FpsText}"
+                           VerticalAlignment="Center" Margin="0,0,10,0" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Visibility="{Binding ThumbLoading.ShowFps, Converter={StaticResource BoolToVis}}" />
+
                 <ProgressBar DockPanel.Dock="Right" Width="200" Height="14"
                              Value="{Binding ScanProgress}"
                              Visibility="{Binding IsScanning, Converter={StaticResource BoolToVis}}"

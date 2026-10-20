@@ -67,7 +67,14 @@ public partial class MainViewModel : ObservableObject
 
         _watcher.Changed += OnFileSystemChanged;
         _thumbnailService.ThumbnailReady += OnThumbnailReady;
+
+        // 必须在 UI 线程构造：内部 DispatcherTimer 绑定构造线程的 Dispatcher，
+        // 在后台线程 new 出来的 Timer 永远不会 Tick。
+        ThumbLoading = new MediaManager.App.Services.ThumbnailLoadMonitor();
     }
+
+    /// <summary>缩略图加载状态（状态栏指示：骨架屏之外的第二层反馈）。</summary>
+    public MediaManager.App.Services.ThumbnailLoadMonitor ThumbLoading { get; }
 
     private int _initState;   // 0=未开始 1=已完成/进行中（防重复初始化）
 

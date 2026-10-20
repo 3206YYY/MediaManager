@@ -49,6 +49,24 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         // 窗口句柄就绪后，按当前主题设置标题栏深浅（Win10/11 沉浸式深色标题栏）
         SourceInitialized += (_, _) => WindowThemeHelper.ApplyTitleBarDarkMode(this, App.IsDarkTheme);
+
+        // 拖动滚动条 / End 键跳到列表深处时，状态栏要立刻告诉用户「正在定位并加载…」，
+        // 否则一片空白灰块看起来就像卡死了。ScrollChanged 是冒泡事件，挂在 ListBox 上即可收到。
+        ThumbList.AddHandler(ScrollViewer.ScrollChangedEvent,
+            new ScrollChangedEventHandler(OnThumbListScrollChanged));
+    }
+
+    /// <summary>
+    /// 跨屏跳转（拖滚动条、End/Ctrl+End、点击滚动条空白区）时通知状态栏进入「定位中」。
+    /// 阈值取 8 项或 1.2 屏：滚轮的一格（3 项）和 PageDown 一屏都不触发，避免提示条一直在闪。
+    /// </summary>
+    private void OnThumbListScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.VerticalChange == 0) return;
+
+        var threshold = Math.Max(8, e.ViewportHeight * 1.2);
+        if (Math.Abs(e.VerticalChange) >= threshold)
+            _viewModel.ThumbLoading.NotifyJump();
     }
 
     // ---------- 导航 ----------

@@ -11,6 +11,8 @@
     <Color x:Key="BorderColor">#3F3F46</Color>
     <Color x:Key="HoverColor">#3E3E42</Color>
     <Color x:Key="SelectedColor">#1E3A5F</Color>
+    <!-- 骨架屏底色：比面板再暗一档的深灰，不能纯黑（纯黑会被当成"没内容"） -->
+    <Color x:Key="SkeletonColor">#1C1C1E</Color>
 
     <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource PrimaryColor}" />
     <SolidColorBrush x:Key="PrimaryLightBrush" Color="{StaticResource PrimaryLightColor}" />
@@ -22,6 +24,7 @@
     <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
     <SolidColorBrush x:Key="HoverBrush" Color="{StaticResource HoverColor}" />
     <SolidColorBrush x:Key="SelectedBrush" Color="{StaticResource SelectedColor}" />
+    <SolidColorBrush x:Key="SkeletonBrush" Color="{StaticResource SkeletonColor}" />
 
     <Style TargetType="Window">
         <Setter Property="Background" Value="{DynamicResource BgBrush}" />
