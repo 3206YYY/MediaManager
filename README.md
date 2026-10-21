@@ -84,7 +84,7 @@ dotnet test MediaManager.sln
 dotnet publish src/MediaManager.App -c Release -r win-x64 --self-contained false
 ```
 
-**FFmpeg 说明：** 视频缩略图需要 FFmpeg。`tools/ffmpeg/` 目录**不纳入 Git 仓库**（文件较大），请从 [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) 下载 `ffmpeg-release-essentials` 里的 `bin/ffmpeg.exe` 放入该目录，或在软件「设置」里手动指定路径。（官方 Release 安装包已自带，普通用户无需操作。）
+**FFmpeg 说明：** 视频缩略图需要 FFmpeg。（官方 Release 安装包已自带，普通用户无需操作。）`tools/ffmpeg/` 目录**不纳入 Git 仓库**（文件较大），请从 [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) 下载 `ffmpeg-release-essentials` 里的 `bin/ffmpeg.exe` 放入该目录，或在软件「设置」里手动指定路径。
 
 ---
 
