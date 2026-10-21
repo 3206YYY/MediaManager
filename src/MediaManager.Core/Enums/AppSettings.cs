@@ -3,6 +3,8 @@ namespace MediaManager.Core.Enums;
 /// <summary>主题。</summary>
 public enum AppTheme
 {
+    /// <summary>跟随 Windows 应用模式（全新安装的默认值）。</summary>
+    System,
     Light,
     Dark,
 }

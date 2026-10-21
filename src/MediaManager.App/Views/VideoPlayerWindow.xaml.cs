@@ -50,9 +50,15 @@ public partial class VideoPlayerWindow : Window
     // ---------- 播放列表 ----------
     private List<string> _playlist = new();
     private int _playlistIndex = -1;
+
+    /// <summary>设置项：是否记住播放模式（"1" 记住 / "0" 每次回到播完暂停）。默认记住。</summary>
+    public const string RememberModeSettingKey = "RememberVideoPlaybackMode";
     // 默认「播完暂停」：一部片子播完就停下，不替用户决定要不要继续看下一个。
-    // 用户可在左下角自己切「连续播放 / 随机播放」，选择会写进 AppSetting 记住。
+    // 用户可在左下角自己切「列表循环 / 单曲循环 / 随机播放」，选择会写进 AppSetting 记住。
     private VideoPlaybackMode _playMode = VideoPlaybackMode.PauseAtEnd;
+
+    /// <summary>是否记住用户选的播放模式（设置页可关；关掉后每次打开都是「播完暂停」）。</summary>
+    private bool _rememberMode = true;
     private bool _endHandled;
 
     // ---------- 进度条状态 ----------
@@ -309,7 +315,12 @@ public partial class VideoPlayerWindow : Window
         {
             _playlistIndex = next;
             PlayCurrent();
-            ShowToast(_playMode == VideoPlaybackMode.Random ? "随机播放下一集" : "自动播放下一个");
+            ShowToast(_playMode switch
+            {
+                VideoPlaybackMode.LoopSingle => "单曲循环：重新播放",
+                VideoPlaybackMode.Random => "随机播放下一个",
+                _ => "列表循环：播放下一个",
+            });
             return;
         }
 
@@ -343,8 +354,8 @@ public partial class VideoPlayerWindow : Window
             : string.Empty;
 
         var detail = _playMode == VideoPlaybackMode.PauseAtEnd
-            ? "按当前设置「播完暂停」。可以在左下角切换为「连续播放」或「随机播放」。"
-            : "列表里已经没有下一个视频了。";
+            ? "按当前设置「播完暂停」。可以在左下角切换为「列表循环」「单曲循环」或「随机播放」。"
+            : "列表里已经没有可播放的视频了。";
 
         ShowCenterMessage("播放结束", string.IsNullOrEmpty(name) ? detail : $"{name}\n{detail}", CenterAction.Replay);
         UpdateTransportUi();
@@ -799,18 +810,36 @@ public partial class VideoPlayerWindow : Window
 
     private void BuildModeMenu()
     {
+        // 顺序固定：最保守的「播完暂停」排第一，后面才是各种自动继续
         foreach (var mode in new[]
                  {
-                     VideoPlaybackMode.Sequential,
                      VideoPlaybackMode.PauseAtEnd,
+                     VideoPlaybackMode.LoopList,
+                     VideoPlaybackMode.LoopSingle,
                      VideoPlaybackMode.Random,
                  })
         {
+            // 两行：主标题 + 一句说明。
+            // 只写「列表循环 / 单曲循环」还是会有人分不清，干脆在菜单里直接解释清楚。
+            var title = new TextBlock { FontSize = 13 };
+            var hint = new TextBlock
+            {
+                FontSize = 10.5,
+                Opacity = 0.6,
+                Margin = new Thickness(0, 2, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 238,
+                Text = mode.ToHint(),
+            };
+            var panel = new StackPanel();
+            panel.Children.Add(title);
+            panel.Children.Add(hint);
+
             var button = new Button
             {
                 Style = (Style)FindResource("PopupItem"),
                 Tag = mode,
-                Content = new TextBlock { Text = mode.ToDisplay() },
+                Content = panel,
             };
             button.Click += (s, _) =>
             {
@@ -825,7 +854,7 @@ public partial class VideoPlayerWindow : Window
     {
         _playMode = mode;
         UpdateModeUi();
-        ShowToast($"播放结束：{mode.ToDisplay()}");
+        ShowToast($"播放结束后：{mode.ToDisplay()}");
         PingActivity();
         // 单击切换，立即落库（不要走防抖：用户切完常常直接关窗）
         ScheduleSavePreferences(0);
@@ -837,8 +866,20 @@ public partial class VideoPlayerWindow : Window
         foreach (var child in ModeList.Children)
         {
             if (child is not Button b || b.Tag is not VideoPlaybackMode m) continue;
+            if (b.Content is not StackPanel panel || panel.Children.Count == 0) continue;
+            if (panel.Children[0] is not TextBlock title) continue;
+
             var active = m == _playMode;
-            SetMenuText(b, active ? $"✓  {m.ToDisplay()}" : m.ToDisplay(), active);
+            title.Text = (active ? "✓  " : "     ") + m.ToDisplay();
+            title.FontWeight = active ? FontWeights.SemiBold : FontWeights.Normal;
+            title.Foreground = active
+                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x6F, 0xB4, 0xFF))
+                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0xE8, 0xFF, 0xFF, 0xFF));
+
+            // 说明文字始终是暗白：隐式 TextBlock 样式会覆盖继承色，必须显式给
+            if (panel.Children[1] is TextBlock hint)
+                hint.Foreground = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromArgb(active ? (byte)0xB4 : (byte)0x8A, 0xFF, 0xFF, 0xFF));
         }
     }
 
@@ -1235,7 +1276,8 @@ public partial class VideoPlayerWindow : Window
     {
         if (_playlist.Count == 0) return;
         HideCenterMessage();
-        var next = PlaybackQueue.Next(VideoPlaybackMode.Sequential, _playlistIndex, _playlist.Count, 0);
+        // 手动「下一个」永远按列表顺序走（到末尾回到第一个），与自动播放模式无关
+        var next = PlaybackQueue.Next(VideoPlaybackMode.LoopList, _playlistIndex, _playlist.Count, 0);
         if (next < 0)
         {
             ShowToast("没有下一个视频了");
@@ -1382,7 +1424,10 @@ public partial class VideoPlayerWindow : Window
             if (repo == null) return;
 
             var modeValue = await repo.GetSettingAsync(VideoPlaybackModes.SettingKey);
-            _playMode = VideoPlaybackModes.Parse(modeValue);
+            // 只有「记住播放模式」打开时才沿用上次的选择；关掉就固定从播完暂停开始
+            var rememberValue = await repo.GetSettingAsync(RememberModeSettingKey);
+            _rememberMode = rememberValue != "0";
+            _playMode = _rememberMode ? VideoPlaybackModes.Parse(modeValue) : VideoPlaybackMode.PauseAtEnd;
 
             var volumeValue = await repo.GetSettingAsync("VideoVolume");
             if (int.TryParse(volumeValue, out var volume)) _volume = Math.Clamp(volume, 0, 100);
@@ -1422,7 +1467,9 @@ public partial class VideoPlayerWindow : Window
             var repo = App.Services.GetService(typeof(IMediaRepository)) as IMediaRepository;
             if (repo == null) return;
 
-            await repo.SetSettingAsync(VideoPlaybackModes.SettingKey, _playMode.ToStorageValue());
+            // 「记住播放模式」关掉后，每次打开都回到默认的播完暂停（音量/静音仍然记住）
+            if (_rememberMode)
+                await repo.SetSettingAsync(VideoPlaybackModes.SettingKey, _playMode.ToStorageValue());
             await repo.SetSettingAsync("VideoVolume", _volume.ToString());
             await repo.SetSettingAsync("VideoMuted", _muted ? "1" : "0");
         }

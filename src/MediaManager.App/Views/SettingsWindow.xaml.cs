@@ -1,9 +1,12 @@
 ﻿using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
+using MediaManager.App.Plugins;
 using MediaManager.App.Services;
 using MediaManager.App.ViewModels;
 using MediaManager.App.Views.Dialogs;
 using MediaManager.Core.Diagnostics;
+using MediaManager.Core.Plugins;
 using MediaManager.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
@@ -27,29 +30,94 @@ public partial class SettingsWindow : Window
         _config = App.Services.GetRequiredService<IAppConfigService>();
         // 窗口句柄就绪后，按当前主题设置标题栏深浅
         SourceInitialized += (_, _) => WindowThemeHelper.ApplyTitleBarDarkMode(this, App.IsDarkTheme);
+
+        InitializePages();
+
         // 不要在构造里同步等数据库：设置窗口打开时卡一下是最容易被感知的
         _ = LoadSettingsAsync();
         _ = RefreshCacheInfoAsync();
     }
 
+    // ===================================================================
+    //  左侧分类导航
+    // ===================================================================
+
+    private IReadOnlyList<FrameworkElement> Pages => new[]
+    {
+        PageGeneral, PageMedia, PageIntegration, PageStorage, PagePlugins, PageAbout,
+    };
+
+    private void InitializePages()
+    {
+        // XAML 里给第一项设了 IsSelected，事件可能在字段赋值前就触发，
+        // 所以这里统一显式指定一次初始页，别依赖事件时序
+        ShowPage("general");
+
+        var version = UpdateChecker.CurrentVersion;
+        SidebarVersionText.Text = $"v{version}";
+        VersionText.Text = $"v{version}";
+    }
+
+    private void OnNavChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (NavList.SelectedItem is not ListBoxItem item) return;
+        ShowPage(item.Tag?.ToString());
+    }
+
+    /// <summary>同一时刻只显示一个分类页（和查看器的工具面板一样，不做「叠着看」）。</summary>
+    private void ShowPage(string? key)
+    {
+        var target = key switch
+        {
+            "media" => PageMedia,
+            "integration" => PageIntegration,
+            "storage" => PageStorage,
+            "plugins" => PagePlugins,
+            "about" => PageAbout,
+            _ => PageGeneral,
+        };
+
+        if (target == null) return;
+
+        foreach (var page in Pages)
+        {
+            if (page == null) continue;
+            page.Visibility = ReferenceEquals(page, target) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        ContentScroll?.ScrollToTop();
+
+        if (key == "plugins") RefreshPluginPage();
+    }
+
     private async Task LoadSettingsAsync()
     {
-        // 一次性把 4 个设置项从数据库取回（后台线程），避免 4 次同步阻塞
-        var (discCountStr, closeStr, autoBackupStr, backupDir) = await Task.Run(async () => (
+        // 一次性把 5 个设置项从数据库取回（后台线程），避免 5 次同步阻塞
+        var (discCountStr, closeStr, autoBackupStr, backupDir, rememberModeStr, themeStr) = await Task.Run(async () => (
             await _repo.GetSettingAsync("DiscoveryCount"),
             await _repo.GetSettingAsync("CloseBehavior"),
             await _repo.GetSettingAsync("AutoBackupIntervalMinutes"),
-            await _repo.GetSettingAsync("BackupDirectory")));
+            await _repo.GetSettingAsync("BackupDirectory"),
+            await _repo.GetSettingAsync(VideoPlayerWindow.RememberModeSettingKey),
+            await _repo.GetSettingAsync("Theme")));
 
         DataDirBox.Text = _config.DataDirectory;
         CacheDirBox.Text = _config.ThumbnailDirectory;
         FfmpegBox.Text = _config.FfmpegPath ?? string.Empty;
         ConcurrencySlider.Value = _config.Concurrency;
+        UpdateConcurrencyText();
 
-        // 主题下拉必须反映「当前真正生效的主题」（App.IsDarkTheme），
-        // 不能用 _config.Theme：那是启动时读进内存的快照，运行中切过主题不会自动更新。
-        // 曾经因为读快照，用户切成浅色后这里仍显示「深色」，一保存其他设置就又被写回深色。
-        ThemeBox.SelectedIndex = App.IsDarkTheme ? 1 : 0;
+        // 「记住播放模式」：只有明确存了 "0" 才是关闭，其余（含从未设置）都算开启
+        RememberVideoModeBox.IsChecked = rememberModeStr != "0";
+
+        // 主题下拉反映的是「用户选择的偏好」（跟随系统 / 浅色 / 深色），不是当前实际深浅。
+        // 直接读库，不用 _config.Theme：那是启动时的快照，运行中切过主题不会自动更新。
+        ThemeBox.SelectedIndex = themeStr?.Trim().ToLowerInvariant() switch
+        {
+            "dark" => 2,
+            "light" => 1,
+            _ => 0,
+        };
         // 语言切换入口已隐藏（仅保留中文）：这里不再读 LanguageBox。
         DeleteBox.SelectedIndex = _config.DeleteBehavior switch
         {
@@ -335,12 +403,15 @@ public partial class SettingsWindow : Window
 
             await _repo.SetSettingAsync("FfmpegPath", FfmpegBox.Text);
             await _repo.SetSettingAsync("Concurrency", ((int)ConcurrencySlider.Value).ToString());
-            await _repo.SetSettingAsync("Theme", themeTag);
             // 语言切换入口已隐藏：保存时固定写回中文，不覆盖用户将来可能的手动配置以外的值
             await _repo.SetSettingAsync("Language", "Chinese");
             await _repo.SetSettingAsync("DeleteBehavior", deleteTag);
             await _repo.SetSettingAsync("DiscoveryCount", discoveryTag);
             await _repo.SetSettingAsync("CloseBehavior", closeTag);
+
+            // 视频播放模式是否记忆（关掉后每次打开都是播完暂停）
+            await _repo.SetSettingAsync(VideoPlayerWindow.RememberModeSettingKey,
+                RememberVideoModeBox.IsChecked == true ? "1" : "0");
 
             // 备份目录 + 自动备份间隔
             await _repo.SetSettingAsync("BackupDirectory",
@@ -360,15 +431,9 @@ public partial class SettingsWindow : Window
                 System.Diagnostics.Debug.WriteLine("刷新内存配置失败：" + ex.Message);
             }
 
-            // 主题立即生效（无需重启）
-            try
-            {
-                App.ApplyThemeNow(string.Equals(themeTag, "Dark", StringComparison.OrdinalIgnoreCase));
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine("切换主题失败：" + ex.Message);
-            }
+            // 主题立即生效（无需重启）：跟随系统 / 浅色 / 深色统一走这里，
+            // 它会同时落库、写缓存并同步内存配置，避免只改界面不改库。
+            await App.SetThemePreferenceAsync(themeTag ?? App.ThemeModeSystem);
 
             CustomMessageBox.Success("设置已保存。主题已立即生效，其余设置重启后生效。", "保存成功");
             DialogResult = true;
@@ -423,5 +488,260 @@ public partial class SettingsWindow : Window
                 "无法打开赞助链接，请手动访问：\nhttps://afdian.com/a/3206YYY\n\n" + ex.Message,
                 "赞助");
         }
+    }
+
+    // ===================================================================
+    //  插件扩展
+    // ===================================================================
+
+    private PluginService? _pluginService;
+
+    private PluginService? PluginSvc => _pluginService ??= TryGetPluginService();
+
+    private static PluginService? TryGetPluginService()
+    {
+        try { return App.Services.GetService<PluginService>(); }
+        catch { return null; }
+    }
+
+    /// <summary>按宿主里的最新状态重画插件列表（加载/扫描完成后调用）。</summary>
+    private void RefreshPluginPage()
+    {
+        var svc = PluginSvc;
+        if (svc == null)
+        {
+            PluginSummaryText.Text = "插件服务未初始化（仅影响插件，其它设置照常可用）。";
+            return;
+        }
+
+        PluginDirBox.Text = svc.PluginDirectory;
+
+        var report = svc.LastReport;
+        var list = report.Plugins;
+
+        PluginSummaryText.Text = list.Count == 0
+            ? "还没有插件。把插件文件夹（或 dll）放进上面的目录，然后点「重新扫描」。"
+            : $"共 {list.Count} 个插件：{report.LoadedCount} 个已加载"
+              + (report.FailedCount > 0 ? $"，{report.FailedCount} 个加载失败（见下方红框）" : string.Empty);
+
+        PluginListPanel.Children.Clear();
+
+        foreach (var info in list.OrderByDescending(p => p.IsLoaded).ThenBy(p => p.Name))
+            PluginListPanel.Children.Add(BuildPluginRow(info));
+
+        if (list.Count == 0)
+        {
+            PluginListPanel.Children.Add(new Border
+            {
+                Background = (System.Windows.Media.Brush)FindResource("PanelBrush"),
+                BorderBrush = (System.Windows.Media.Brush)FindResource("BorderBrush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(14, 12, 14, 12),
+                Child = new TextBlock
+                {
+                    Text = "（空）把别人写好的插件解压到插件目录，重启或点「重新扫描」即可。",
+                    FontSize = 12,
+                    Foreground = (System.Windows.Media.Brush)FindResource("TextSecondaryBrush"),
+                    TextWrapping = TextWrapping.Wrap,
+                },
+            });
+        }
+    }
+
+    private Border BuildPluginRow(PluginInfo info)
+    {
+        var card = new Border
+        {
+            Background = (System.Windows.Media.Brush)FindResource("PanelBrush"),
+            BorderBrush = info.IsLoaded
+                ? (System.Windows.Media.Brush)FindResource("BorderBrush")
+                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xC0, 0x39, 0x2B)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(14, 11, 14, 11),
+            Margin = new Thickness(0, 0, 0, 8),
+        };
+
+        var panel = new StackPanel();
+
+        var header = new DockPanel();
+        var state = new TextBlock
+        {
+            Text = info.IsLoaded ? "● 已加载" : "● 加载失败",
+            FontSize = 11,
+            Margin = new Thickness(10, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = info.IsLoaded
+                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2E, 0xA0, 0x43))
+                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xC0, 0x39, 0x2B)),
+        };
+        DockPanel.SetDock(state, Dock.Right);
+
+        header.Children.Add(state);
+        header.Children.Add(new TextBlock
+        {
+            Text = info.IsLoaded ? $"{info.Name}  v{info.Version}" : info.Name,
+            FontWeight = FontWeights.SemiBold,
+        });
+        panel.Children.Add(header);
+
+        var meta = new List<string>();
+        if (!string.IsNullOrWhiteSpace(info.Author)) meta.Add("作者 " + info.Author);
+        if (info.IsLoaded) meta.Add($"菜单动作 {info.ActionCount} 个");
+        if (meta.Count > 0)
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = string.Join(" · ", meta),
+                FontSize = 11,
+                Margin = new Thickness(0, 3, 0, 0),
+                Foreground = (System.Windows.Media.Brush)FindResource("TextSecondaryBrush"),
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(info.Description))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = info.Description,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 5, 0, 0),
+                Foreground = (System.Windows.Media.Brush)FindResource("TextSecondaryBrush"),
+            });
+        }
+
+        if (!info.IsLoaded && !string.IsNullOrWhiteSpace(info.Error))
+        {
+            panel.Children.Add(new TextBlock
+            {
+                Text = "原因：" + info.Error,
+                FontSize = 11.5,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 6, 0, 0),
+                Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xC0, 0x39, 0x2B)),
+            });
+        }
+
+        card.Child = panel;
+        return card;
+    }
+
+    private void OnOpenPluginDir(object sender, RoutedEventArgs e)
+    {
+        var dir = PluginSvc?.PluginDirectory;
+        if (string.IsNullOrWhiteSpace(dir)) return;
+
+        try
+        {
+            System.IO.Directory.CreateDirectory(dir);
+        }
+        catch { /* 建不出来就在下面统一提示 */ }
+
+        OpenFolderSafely(dir, "打开插件目录");
+    }
+
+    private async void OnRescanPlugins(object sender, RoutedEventArgs e)
+    {
+        var svc = PluginSvc;
+        if (svc == null) return;
+
+        PluginSummaryText.Text = "正在扫描…";
+        try
+        {
+            var report = await svc.ReloadAsync();
+            RefreshPluginPage();
+
+            FooterHint.Text = report.LoadedCount > 0
+                ? $"已加载 {report.LoadedCount} 个插件，主界面右上角会出现「🧩 插件」菜单。"
+                : "没有发现可用插件。";
+        }
+        catch (Exception ex)
+        {
+            RefreshPluginPage();
+            CustomMessageBox.Error("扫描插件失败：" + ex.Message, "插件");
+        }
+    }
+
+    private void OnOpenPluginDocs(object sender, RoutedEventArgs e)
+        => OpenUrl($"{UpdateChecker.RepositoryUrl}/blob/main/docs/plugin-api.md");
+
+    private void OnOpenPluginTemplate(object sender, RoutedEventArgs e)
+        => OpenUrl($"{UpdateChecker.RepositoryUrl}/tree/main/docs/plugin-template");
+
+    // ===================================================================
+    //  版本 / 更新
+    // ===================================================================
+
+    private async void OnCheckUpdate(object sender, RoutedEventArgs e)
+    {
+        CheckUpdateButton.IsEnabled = false;
+        UpdateStatusText.Text = "正在连接 GitHub…";
+
+        try
+        {
+            var result = await UpdateChecker.CheckAsync();
+
+            if (!result.Succeeded)
+            {
+                UpdateStatusText.Text =
+                    $"检查失败：{result.Error}\n可以点右边的「打开 GitHub 主页」自己看看。";
+                return;
+            }
+
+            if (result.HasUpdate)
+            {
+                UpdateStatusText.Text = $"发现新版本 v{result.LatestVersion}（当前 v{result.CurrentVersion}）";
+
+                var go = CustomMessageBox.Confirm(
+                    $"发现新版本 v{result.LatestVersion}（当前 v{result.CurrentVersion}）。\n\n"
+                    + "现在打开 GitHub 下载页吗？下载安装包覆盖安装即可，你的数据会保留。",
+                    "有新版本", confirmText: "去下载");
+                if (go) OpenUrl(result.ReleaseUrl ?? UpdateChecker.ReleasesUrl);
+            }
+            else
+            {
+                UpdateStatusText.Text = string.IsNullOrWhiteSpace(result.LatestVersion)
+                    ? "GitHub 上还没有正式发布的版本记录。"
+                    : $"已是最新版本（v{result.CurrentVersion}）。";
+            }
+        }
+        catch (Exception ex)
+        {
+            UpdateStatusText.Text = "检查更新失败：" + ex.Message;
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+        }
+    }
+
+    private void OnOpenRepository(object sender, RoutedEventArgs e) => OpenUrl(UpdateChecker.RepositoryUrl);
+
+    /// <summary>用系统默认浏览器打开链接（explorer.exe 比 Process.Start(url) 更稳）。</summary>
+    private void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start("explorer.exe", url);
+        }
+        catch (Exception ex)
+        {
+            CustomMessageBox.Error($"无法打开链接，请手动访问：\n{url}\n\n{ex.Message}", "打开链接失败");
+        }
+    }
+
+    // ===================================================================
+    //  其它小交互
+    // ===================================================================
+
+    private void OnConcurrencyChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        => UpdateConcurrencyText();
+
+    private void UpdateConcurrencyText()
+    {
+        if (ConcurrencyText == null) return;
+        ConcurrencyText.Text = ((int)Math.Round(ConcurrencySlider.Value)).ToString();
     }
 }

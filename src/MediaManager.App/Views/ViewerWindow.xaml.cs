@@ -5,6 +5,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Ink;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -69,13 +70,20 @@ public partial class ViewerWindow : Window
     // 裁剪
     private Rect _cropRect;
 
+    // 浮动面板拖动
+    private FrameworkElement? _dragPanel;
+    private Point _dragOrigin;
+
     private DispatcherTimer? _toastTimer;
     private DispatcherTimer? _saveResultTimer;
     private bool _saving;
     private string? _lastSavedPath;
 
-    /// <summary>副本保存成功（参数：副本完整路径）。主界面据此刷新列表并定位到新副本。</summary>
-    public event EventHandler<string>? CopySaved;
+    /// <summary>
+    /// 保存完成（参数：保存结果，含「是否原地覆盖了副本」）。
+    /// 主界面据此刷新列表并定位到这张图；原地覆盖时还要重建缩略图。
+    /// </summary>
+    public event EventHandler<SaveResult>? CopySaved;
 
     public ViewerWindow(ViewerViewModel viewModel)
     {
@@ -85,7 +93,12 @@ public partial class ViewerWindow : Window
 
         SourceInitialized += (_, _) => WindowThemeHelper.ApplyTitleBarDarkMode(this, App.IsDarkTheme);
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        ImageArea.SizeChanged += (_, _) => LayoutCanvas();
+        ImageArea.SizeChanged += (_, _) =>
+        {
+            LayoutCanvas();
+            // 窗口变小后，之前拖到右边的面板可能已经跑到画布外，重新压回可视区
+            ClampPanelOffsets();
+        };
         ImageBox.SizeChanged += (_, _) =>
         {
             if (!_suppressOverlayRebuild) RebuildOverlays();
@@ -113,6 +126,7 @@ public partial class ViewerWindow : Window
     private void LoadDocument()
     {
         DetachDocument();
+        UpdateSaveButtonLabel();   // 换图先同步按钮文案（原图=保存副本 / 副本=更新副本）
 
         if (_viewModel.ImageSource is not BitmapSource bitmap)
         {
@@ -132,6 +146,7 @@ public partial class ViewerWindow : Window
 
         ResetToolState();
         ApplyBase();
+        ResetNavArrows();
         UpdateHistoryButtons();
         ToolHint.Text = "提示：右侧选择工具，Ctrl+Z 撤销，按住 \\ 看原图";
     }
@@ -168,10 +183,7 @@ public partial class ViewerWindow : Window
         TextTool.IsChecked = false;
         InkTool.IsChecked = false;
         MosaicTool.IsChecked = false;
-        TextPanel.Visibility = Visibility.Collapsed;
-        InkPanel.Visibility = Visibility.Collapsed;
-        FilterPanel.Visibility = Visibility.Collapsed;
-        ResizePanel.Visibility = Visibility.Collapsed;
+        ShowPanel(null);
         InkLayer.IsHitTestVisible = false;
         InkLayer.EditingMode = InkCanvasEditingMode.None;
         _activeText = null;
@@ -601,26 +613,26 @@ public partial class ViewerWindow : Window
             }
 
             HideSaveResult();
-            ToolHint.Text = "正在保存副本…";
+            ToolHint.Text = EditorRenderer.IsEditedCopy(item.Path) ? "正在更新副本…" : "正在保存副本…";
 
             var result = await EditorRenderer.SaveAsync(_doc, _outputMaxEdge);
             _doc.SavedUndoCount = _doc.History.UndoCount;
 
-            // 强反馈：文件名 + 尺寸 + 原图未修改，10 秒内一直可见（可手动关闭）
+            // 强反馈：文件名 + 尺寸 + 是否动了原图，10 秒内一直可见（可手动关闭）
             ShowSaveResult(result);
 
-            // 通知主界面：刷新网格并选中这张新副本
-            CopySaved?.Invoke(this, result.Path);
+            // 通知主界面：刷新网格并选中这张图（原地更新时同时重建缩略图）
+            CopySaved?.Invoke(this, result);
         }
         catch (Exception ex)
         {
             // 绝不静默失败：硬盘满 / 无权限 / 设备断开 都要明确告诉用户
             Serilog.Log.Error(ex, "保存编辑副本失败");
-            ToolHint.Text = "保存失败（原图未修改）";
+            ToolHint.Text = "保存失败（文件未改动）";
             HideSaveResult();
             CustomMessageBox.Error(
                 StorageErrors.WithAction(ex, "保存编辑副本")
-                + "\n\n原图没有被修改。请检查磁盘剩余空间、目标文件夹权限，或换一个位置后再试。",
+                + "\n\n正在编辑的文件没有被改动。请检查磁盘剩余空间、目标文件夹权限，或换一个位置后再试。",
                 "保存失败");
         }
         finally
@@ -630,16 +642,37 @@ public partial class ViewerWindow : Window
         }
     }
 
+    /// <summary>
+    /// 保存按钮文案跟随「当前这张是不是副本」：
+    /// 原图 → 「保存副本」（会新建 _edited，原图不动）；副本 → 「更新副本」（直接改它自己）。
+    /// </summary>
+    private void UpdateSaveButtonLabel()
+    {
+        if (SaveButton == null) return;
+
+        var isCopy = EditorRenderer.IsEditedCopy(_viewModel.CurrentItem?.Path);
+        SaveButton.Content = isCopy ? "💾 更新副本" : "💾 保存副本";
+        SaveButton.ToolTip = isCopy
+            ? "当前这张就是编辑副本，保存会直接覆盖它"
+            : "把所有修改保存为 _edited 副本，原图不变";
+    }
+
     /// <summary>保存成功的醒目反馈（画布底部中央的绿色卡片）。</summary>
     private void ShowSaveResult(SaveResult result)
     {
         _lastSavedPath = result.Path;
 
+        SaveResultTitle.Text = result.OverwroteSource
+            ? "已更新这个副本"
+            : "已保存为新文件（原图未修改）";
         SaveResultName.Text = result.FileName;
+        var tag = result.OverwroteSource ? "原文件已被覆盖" : "原图未修改";
         SaveResultDetail.Text =
-            $"{result.Width} × {result.Height} 像素 · {FormatFileSize(result.SizeBytes)} · 原图未修改";
+            $"{result.Width} × {result.Height} 像素 · {FormatFileSize(result.SizeBytes)} · {tag}";
         SaveResultBar.Visibility = Visibility.Visible;
-        ToolHint.Text = $"✅ 已保存为新文件：{result.FileName}（原图未修改）";
+        ToolHint.Text = result.OverwroteSource
+            ? $"✅ 已更新副本：{result.FileName}"
+            : $"✅ 已保存为新文件：{result.FileName}（原图未修改）";
 
         // 同时收起普通 toast，避免两条提示叠在一起
         ToastBar.Visibility = Visibility.Collapsed;
@@ -718,11 +751,9 @@ public partial class ViewerWindow : Window
     private void OnFilterClick(object sender, RoutedEventArgs e)
     {
         // 打开滤镜面板前先退出裁剪/涂鸦/马赛克等模式，避免工具高亮与实际状态不一致
+        EndTextEditing();   // 切工具 = 结束文字编辑会话（否则面板收起了、文本框还在偷偷接收输入）
         EndOtherModes(except: ToolMode.None);
         TogglePanel(FilterPanel);
-        TextPanel.Visibility = Visibility.Collapsed;
-        InkPanel.Visibility = Visibility.Collapsed;
-        ResizePanel.Visibility = Visibility.Collapsed;
     }
 
     private void BuildFilterButtons()
@@ -758,11 +789,9 @@ public partial class ViewerWindow : Window
 
     private void OnResizeClick(object sender, RoutedEventArgs e)
     {
+        EndTextEditing();   // 同上：切工具就结束文字编辑会话
         EndOtherModes(except: ToolMode.None);
         TogglePanel(ResizePanel);
-        TextPanel.Visibility = Visibility.Collapsed;
-        InkPanel.Visibility = Visibility.Collapsed;
-        FilterPanel.Visibility = Visibility.Collapsed;
     }
 
     private void OnResizeOptionChanged(object sender, SelectionChangedEventArgs e)
@@ -772,9 +801,156 @@ public partial class ViewerWindow : Window
         _outputMaxEdge = int.TryParse(tag, out var v) && v > 0 ? v : null;
     }
 
-    private static void TogglePanel(UIElement panel)
+    // ================= 浮动工具面板：互斥 / 拖动 / 折叠 =================
+
+    /// <summary>所有可显示的浮动面板（按同一套规则管理，新增面板记得加进来）。</summary>
+    private FrameworkElement[] AllPanels() => new FrameworkElement[] { TextPanel, InkPanel, FilterPanel, ResizePanel };
+
+    private FrameworkElement? PanelByKey(object? key) => key is string id
+        ? id switch
+        {
+            "TextPanel" => TextPanel,
+            "InkPanel" => InkPanel,
+            "FilterPanel" => FilterPanel,
+            "ResizePanel" => ResizePanel,
+            _ => null,
+        }
+        : null;
+
+    private FrameworkElement? PanelBodyByKey(object? key) => key is string id
+        ? id switch
+        {
+            "TextPanel" => TextPanelBody,
+            "InkPanel" => InkPanelBody,
+            "FilterPanel" => FilterPanelBody,
+            "ResizePanel" => ResizePanelBody,
+            _ => null,
+        }
+        : null;
+
+    /// <summary>
+    /// 同一时刻只允许一个面板可见。传 null = 全部收起。
+    /// 「不保存就能同时出现好几个工具面板」原本是 bug：旧代码里 TogglePanel 只切自己，
+    /// 而每个入口又各写了几行 Visibility.Collapsed（有的漏了），
+    /// 于是裁剪/马赛克进来时一个都不关，能叠 3-4 个面板。现在统一收敛到这里。
+    /// </summary>
+    private void ShowPanel(FrameworkElement? target)
     {
-        panel.Visibility = panel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        foreach (var panel in AllPanels())
+            if (!ReferenceEquals(panel, target))
+                panel.Visibility = Visibility.Collapsed;
+
+        if (target != null) target.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>再点一次工具按钮 = 收起（已经是唯一可见的那个就收起，否则换成它）。</summary>
+    private void TogglePanel(FrameworkElement panel) =>
+        ShowPanel(panel.Visibility == Visibility.Visible ? null : panel);
+
+    /// <summary>折叠（只留标题栏）按钮：用户嫌面板挡视野时可以先折起来，随时再展开。</summary>
+    private void OnPanelCollapseClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn) return;
+
+        var body = PanelBodyByKey(btn.Tag);
+        if (body == null) return;
+
+        var collapsed = body.Visibility == Visibility.Visible;
+        body.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        btn.Content = collapsed ? "▸" : "▾";
+        btn.ToolTip = collapsed ? "展开面板" : "折叠面板（只留标题栏）";
+    }
+
+    private TranslateTransform? OffsetOf(FrameworkElement panel) => panel.RenderTransform as TranslateTransform;
+
+    /// <summary>标题栏按下 = 开始拖动面板（按钮/Slider 会自己吃掉事件，不会误触发）。</summary>
+    private void OnPanelHeaderDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement header) return;
+        if (header.Tag is null) return;
+        if (Mouse.Captured != null) return;
+
+        var panel = PanelByKey(header.Tag);
+        if (panel == null) return;
+
+        _dragPanel = panel;
+        _dragOrigin = e.GetPosition(this);
+        header.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnPanelHeaderMove(object sender, MouseEventArgs e)
+    {
+        if (_dragPanel == null) return;
+
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            EndPanelDrag();
+            return;
+        }
+
+        var t = OffsetOf(_dragPanel);
+        if (t == null) return;
+        if (_dragPanel.Parent is not FrameworkElement host) return;
+
+        var hostW = host.ActualWidth;
+        var hostH = host.ActualHeight;
+        var pw = _dragPanel.ActualWidth;
+        var ph = _dragPanel.ActualHeight;
+        if (hostW <= 0 || hostH <= 0 || pw <= 0 || ph <= 0) return;
+
+        // 面板未平移时的原始左上角：TranslatePoint 会带上 RenderTransform，先减掉当前偏移
+        var visual = _dragPanel.TranslatePoint(new Point(0, 0), host);
+        var baseX = visual.X - t.X;
+        var baseY = visual.Y - t.Y;
+
+        var p = e.GetPosition(this);
+        var targetX = baseX + (p.X - _dragOrigin.X);
+        var targetY = baseY + (p.Y - _dragOrigin.Y);
+
+        // 钳制在画布区内：绝不允许把面板拖到看不见的地方（否则用户找不回来）
+        targetX = Math.Clamp(targetX, 6, Math.Max(6, hostW - pw - 6));
+        targetY = Math.Clamp(targetY, 6, Math.Max(6, hostH - ph - 6));
+
+        t.X = targetX - baseX;
+        t.Y = targetY - baseY;
+    }
+
+    private void OnPanelHeaderUp(object sender, MouseButtonEventArgs e) => EndPanelDrag();
+
+    private void EndPanelDrag()
+    {
+        if (_dragPanel == null) return;
+        _dragPanel = null;
+        if (Mouse.Captured != null) Mouse.Capture(null);
+    }
+
+    /// <summary>窗口尺寸变化后把已拖动的面板压回可视区，避免它跑到画布外再也点不到。</summary>
+    private void ClampPanelOffsets()
+    {
+        foreach (var panel in AllPanels())
+        {
+            if (panel.Visibility != Visibility.Visible) continue;
+            var t = OffsetOf(panel);
+            if (t == null || (Math.Abs(t.X) < 0.5 && Math.Abs(t.Y) < 0.5)) continue;
+            if (panel.Parent is not FrameworkElement host) continue;
+
+            var hostW = host.ActualWidth;
+            var hostH = host.ActualHeight;
+            var pw = panel.ActualWidth;
+            var ph = panel.ActualHeight;
+            if (hostW <= 0 || hostH <= 0 || pw <= 0 || ph <= 0) continue;
+
+            var visual = panel.TranslatePoint(new Point(0, 0), host);
+            var baseX = visual.X - t.X;
+            var baseY = visual.Y - t.Y;
+
+            var targetX = Math.Clamp(baseX + t.X, 6, Math.Max(6, hostW - pw - 6));
+            var targetY = Math.Clamp(baseY + t.Y, 6, Math.Max(6, hostH - ph - 6));
+
+            t.X = targetX - baseX;
+            t.Y = targetY - baseY;
+        }
     }
 
     // ================= 工具：裁剪 =================
@@ -790,6 +966,7 @@ public partial class ViewerWindow : Window
     {
         EndTextEditing();
         EndOtherModes(except: ToolMode.Crop);
+        ShowPanel(null);   // 裁剪没有属性面板，全部收起，别和面板叠在一起挡画面
 
         ApplyZoom(1.0);
         PanTranslate.X = 0;
@@ -988,7 +1165,7 @@ public partial class ViewerWindow : Window
         {
             // 取消高亮 = 结束会话（此时已没有编辑中的框，只是收起面板）
             EndTextEditing();
-            TextPanel.Visibility = Visibility.Collapsed;
+            ShowPanel(null);
         }
     }
 
@@ -1012,7 +1189,7 @@ public partial class ViewerWindow : Window
     private void OnFinishTextClick(object sender, RoutedEventArgs e)
     {
         EndTextEditing();
-        TextPanel.Visibility = Visibility.Collapsed;
+        ShowPanel(null);
         ShowToast("已完成这段文字，可以再点「文字」添加新的一段");
     }
 
@@ -1068,10 +1245,7 @@ public partial class ViewerWindow : Window
         _textDirty = false;
         _textEditSnapshot = EditorSnapshot.Capture(_doc);
 
-        TextPanel.Visibility = Visibility.Visible;
-        InkPanel.Visibility = Visibility.Collapsed;
-        FilterPanel.Visibility = Visibility.Collapsed;
-        ResizePanel.Visibility = Visibility.Collapsed;
+        ShowPanel(TextPanel);
 
         // 文字工具按钮的高亮 = 「正在编辑文字」，统一在这里点亮，避免两处各改一半导致状态不一致
         TextTool.IsChecked = true;
@@ -1088,7 +1262,7 @@ public partial class ViewerWindow : Window
     {
         if (_doc == null || _activeText == null) return;
 
-        TextPanel.Visibility = Visibility.Visible;
+        ShowPanel(TextPanel);
 
         // 编辑框可能被强制重建掉了（改样式/改颜色），补建一个
         if (_activeTextBox == null) RebuildOverlays(forceText: true);
@@ -1212,7 +1386,7 @@ public partial class ViewerWindow : Window
         if (_doc.Texts.Contains(target))
             _doc.Mutate("删除文字", () => _doc.Texts.Remove(target));
 
-        TextPanel.Visibility = Visibility.Collapsed;
+        ShowPanel(null);
         RebuildOverlays();
     }
 
@@ -1247,8 +1421,7 @@ public partial class ViewerWindow : Window
         InkTool.IsChecked = true;
         InkLayer.IsHitTestVisible = true;
         InkLayer.EditingMode = InkCanvasEditingMode.Ink;
-        InkPanel.Visibility = Visibility.Visible;
-        TextPanel.Visibility = Visibility.Collapsed;
+        ShowPanel(InkPanel);
         ToolHint.Text = "涂鸦：按住鼠标画线；可换颜色/粗细，Ctrl+Z 撤销";
         RebuildInk(ImageBox.ActualWidth, ImageBox.ActualHeight);
     }
@@ -1259,7 +1432,7 @@ public partial class ViewerWindow : Window
         InkTool.IsChecked = false;
         InkLayer.IsHitTestVisible = false;
         InkLayer.EditingMode = InkCanvasEditingMode.None;
-        InkPanel.Visibility = Visibility.Collapsed;
+        ShowPanel(null);
         ToolHint.Text = "提示：右侧选择工具，Ctrl+Z 撤销，按住 \\ 看原图";
     }
 
@@ -1337,6 +1510,7 @@ public partial class ViewerWindow : Window
     {
         EndTextEditing();
         EndOtherModes(except: ToolMode.Mosaic);
+        ShowPanel(null);   // 马赛克没有属性面板，全部收起
         ApplyZoom(1.0);
         PanTranslate.X = 0;
         PanTranslate.Y = 0;
@@ -1385,25 +1559,83 @@ public partial class ViewerWindow : Window
 
     /// <summary>
     /// 缩放基于「适应窗口」的倍数：1.0 = 正好铺满可视区。
-    /// 下限锁死在 1.0——缩到比适应窗口更小没有任何意义，之前允许缩到 0.2，
-    /// 用户滚几下滚轮图片就变成画面中间的一小块，看起来像「图坏了」。
+    /// 下限放到 0.15：用户明确要求能缩到比适应窗口更小（对比细节、看整张排版）。
+    /// 上限 4.0 保持不变。缩到 1.0 以下时图像仍居中，不会偏到角落。
     /// </summary>
+    private const double MinZoom = 0.15;
+    private const double MaxZoom = 4.0;
+
     private void ApplyZoom(double zoom)
     {
-        zoom = Math.Clamp(zoom, 1.0, 4.0);
+        var previous = _viewModel.Zoom;
+        zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
         _viewModel.Zoom = zoom;
         ZoomScale.ScaleX = zoom;
         ZoomScale.ScaleY = zoom;
 
         if (ZoomText != null)
-            ZoomText.Text = zoom <= 1.001 ? "适应窗口" : $"{zoom * 100:F0}%";
+            ZoomText.Text = zoom <= 1.001 && zoom >= 0.999 ? "适应窗口" : $"{zoom * 100:F0}%";
 
-        // 回到适应窗口时顺便把平移归零，避免「放大再缩回来，图却歪在一边」
-        if (zoom <= 1.001)
+        // 回到「适应窗口」以上时把平移归零，避免「放大再缩回来，图却歪在一边」
+        if (zoom >= 0.999 && previous < 0.999)
         {
             PanTranslate.X = 0;
             PanTranslate.Y = 0;
         }
+
+        // 缩小到 1.0 以下时同样归零平移：否则会看到图片偏在一侧，像加载错了
+        if (zoom < 1.0)
+        {
+            PanTranslate.X = 0;
+            PanTranslate.Y = 0;
+        }
+    }
+
+    /// <summary>翻页按钮的「热区」宽度：鼠标进入距左右边缘这么近的范围才淡入。</summary>
+    private const double NavHotZone = 110;
+
+    /// <summary>
+    /// 翻页按钮按需显隐：常驻会挡住画面（尤其是窄图两侧留白处）。
+    /// 只做透明度动画（纯合成，不触发重排），120ms 淡入淡出。
+    /// </summary>
+    private void UpdateNavArrows()
+    {
+        if (ImageArea == null || PrevButton == null || NextButton == null) return;
+
+        Point p;
+        try { p = Mouse.GetPosition(ImageArea); }
+        catch { return; }
+
+        var w = ImageArea.ActualWidth;
+        var h = ImageArea.ActualHeight;
+        var inside = p.X >= 0 && p.Y >= 0 && p.X <= w && p.Y <= h;
+
+        FadeArrow(PrevButton, inside && p.X <= NavHotZone);
+        FadeArrow(NextButton, inside && p.X >= w - NavHotZone);
+    }
+
+    private void OnImageAreaMouseLeave(object sender, MouseEventArgs e)
+    {
+        FadeArrow(PrevButton, false);
+        FadeArrow(NextButton, false);
+    }
+
+    private static void FadeArrow(UIElement? element, bool show)
+    {
+        if (element == null) return;
+        var target = show ? 1.0 : 0.0;
+        if (Math.Abs(element.Opacity - target) < 0.02) return;
+        element.BeginAnimation(OpacityProperty,
+            new DoubleAnimation(target, TimeSpan.FromMilliseconds(show ? 110 : 180)));
+    }
+
+    /// <summary>应用启动/切换图片后重置翻页按钮，避免上一张的可见状态带过来。</summary>
+    private void ResetNavArrows()
+    {
+        PrevButton?.BeginAnimation(OpacityProperty, null);
+        NextButton?.BeginAnimation(OpacityProperty, null);
+        if (PrevButton != null) PrevButton.Opacity = 0;
+        if (NextButton != null) NextButton.Opacity = 0;
     }
 
     private void OnCanvasMouseDown(object sender, MouseButtonEventArgs e)
@@ -1458,6 +1690,7 @@ public partial class ViewerWindow : Window
 
     private void OnCanvasMouseMove(object sender, MouseEventArgs e)
     {
+        UpdateNavArrows();
         if (_mode == ToolMode.Mosaic && _mosaicPreview != null && e.LeftButton == MouseButtonState.Pressed)
         {
             var p = e.GetPosition(ImageBox);

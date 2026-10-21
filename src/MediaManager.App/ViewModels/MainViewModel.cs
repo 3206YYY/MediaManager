@@ -380,7 +380,7 @@ public partial class MainViewModel : ObservableObject
     /// 之前保存完只弹一个 2 秒的小 toast，主界面完全不动，用户会以为「保存没生效」。
     /// 这里保证副本一定能出现在列表里（当前筛选看不到时自动切到它所在的根目录）。
     /// </summary>
-    public async Task<SaveRefreshResult> RefreshAfterSaveAsync(string savedPath)
+    public async Task<SaveRefreshResult> RefreshAfterSaveAsync(string savedPath, bool overwritten = false)
     {
         if (string.IsNullOrWhiteSpace(savedPath)) return SaveRefreshResult.None;
 
@@ -419,6 +419,11 @@ public partial class MainViewModel : ObservableObject
             }
 
             await DbAsync(() => _repo.UpsertMediaAsync(item));
+
+            // 原地覆盖了副本：磁盘上的缩略图还是旧画面，必须让它失效并重建，
+            // 否则列表里永远显示编辑前的样子（缓存文件名带 QuickHash，只改 mtime 不会变）。
+            if (overwritten && item.Id > 0)
+                await DbAsync(() => _repo.InvalidateThumbnailAsync(item.Id));
         }
         catch (Exception ex)
         {
@@ -462,7 +467,7 @@ public partial class MainViewModel : ObservableObject
         {
             SelectedItem = vm;
             await RefreshStatusAsync();
-            StatusText = $"已保存新副本：{vm.FileName}";
+            StatusText = overwritten ? $"已更新副本：{vm.FileName}" : $"已保存新副本：{vm.FileName}";
         }
 
         return new SaveRefreshResult(vm, viewChanged, folderId);

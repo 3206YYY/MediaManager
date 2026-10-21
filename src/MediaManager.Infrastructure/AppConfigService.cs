@@ -22,7 +22,7 @@ public class AppConfigService : IAppConfigService
 
     private string? _ffmpegPath;
     private int _concurrency = 4;
-    private AppTheme _theme = AppTheme.Light;
+    private AppTheme _theme = AppTheme.System;
     private AppLanguage _language = AppLanguage.Chinese;
     private DeleteBehavior _deleteBehavior = DeleteBehavior.RecycleBin;
 
@@ -54,7 +54,7 @@ public class AppConfigService : IAppConfigService
             _ffmpegPath = DetectFfmpeg();
 
         _concurrency = ParseInt(await _repo.GetSettingAsync("Concurrency"), 4);
-        _theme = ParseEnum(await _repo.GetSettingAsync("Theme"), AppTheme.Light);
+        _theme = ParseEnum(await _repo.GetSettingAsync("Theme"), AppTheme.System);
         // 语言切换 UI 已隐藏（仅保留中文）：无论库中曾存何值，一律按中文加载。
         _language = AppLanguage.Chinese;
         _deleteBehavior = ParseEnum(await _repo.GetSettingAsync("DeleteBehavior"), DeleteBehavior.RecycleBin);

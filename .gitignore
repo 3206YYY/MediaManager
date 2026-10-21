@@ -51,8 +51,11 @@ Desktop.ini
 # ---------- 本地 UI 自动化 / 截图测试脚本（含本机绝对路径） ----------
 build/uia_*.py
 build/verify*.py
+build/probe_*.py
 build/capture_main_window.py
 build/publish_release.py
 build/*_log.txt
+build/verify_shots/
+build/testmedia/
 build/skel_*.jpg
 build/screen_now.jpg

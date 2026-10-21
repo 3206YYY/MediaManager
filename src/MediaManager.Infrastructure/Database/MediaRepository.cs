@@ -920,6 +920,16 @@ public class MediaRepository : IMediaRepository
         await conn.ExecuteAsync("UPDATE MediaItem SET ThumbnailPath = NULL;");
     }
 
+    public async Task InvalidateThumbnailAsync(long mediaId)
+    {
+        using var conn = _factory.CreateConnection();
+        // QuickHash 一并清掉：缓存文件名是 {Id}_{QuickHash}.jpg，
+        // 只清 ThumbnailPath 会让 EnsureThumbnails 又算回同一个旧文件名，结果还是旧图。
+        await conn.ExecuteAsync(
+            "UPDATE MediaItem SET ThumbnailPath = NULL, QuickHash = NULL WHERE Id = @mediaId;",
+            new { mediaId });
+    }
+
     /// <summary>
     /// 还原媒体项：尽量沿用原 Id（这样标签/分类/收藏夹关联、收藏状态都能恢复）；
     /// 若原 Id 已被新记录占用，则退化为按原路径查找/新插入。

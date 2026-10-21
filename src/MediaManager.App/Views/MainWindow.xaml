@@ -51,6 +51,31 @@
                 </StackPanel>
 
                 <Button DockPanel.Dock="Right" Content="⚙ 设置" Margin="10,0,0,0" Click="OnSettings" />
+                <!-- 最常用的设置直接放主界面：一键切深浅色（其余收进设置页侧边栏分类） -->
+                <!-- 用矢量图标而不是彩色 emoji：和旁边按钮的线条图标风格一致，
+                     也不受 emoji 字形行框影响，18x18 的 Grid 里天然居中 -->
+                <Button x:Name="ThemeButton" DockPanel.Dock="Right" Width="36" Height="30" Padding="0"
+                        Margin="10,0,0,0" VerticalAlignment="Center"
+                        Click="OnThemeToggleClick" ToolTip="切换深色 / 浅色模式">
+                    <Grid Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Viewbox x:Name="MoonIconHost" Stretch="Uniform">
+                            <Path Data="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"
+                                  Stroke="{DynamicResource TextBrush}" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Fill="Transparent" />
+                        </Viewbox>
+                        <Viewbox x:Name="SunIconHost" Stretch="Uniform" Visibility="Collapsed">
+                            <Path Data="M12 6.5A5.5 5.5 0 1 0 12 17.5 5.5 5.5 0 1 0 12 6.5Z M12 1.5V4.5 M12 19.5V22.5 M1.5 12H4.5 M19.5 12H22.5 M4.6 4.6L6.7 6.7 M17.3 17.3L19.4 19.4 M4.6 19.4L6.7 17.3 M17.3 6.7L19.4 4.6"
+                                  Stroke="{DynamicResource TextBrush}" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  Fill="Transparent" />
+                        </Viewbox>
+                    </Grid>
+                </Button>
+                <!-- 插件入口：默认隐藏，只有真的加载到插件才出现（没插件时不占地方、不误导） -->
+                <Button x:Name="PluginButton" DockPanel.Dock="Right" Content="🧩 插件" Margin="10,0,0,0"
+                        Visibility="Collapsed" Click="OnPluginMenuClick"
+                        ToolTip="由插件提供的扩展功能" />
                 <Button DockPanel.Dock="Right" Content="🔄 刷新" Command="{Binding RefreshCommand}" />
                 <Button DockPanel.Dock="Right" Content="🗂 去重" Click="OnFindDuplicates" />
                 <Button DockPanel.Dock="Right" Content="扫描" Command="{Binding ScanAllCommand}" />

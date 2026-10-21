@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    插件工程模板。用法见同目录 README.md。
+
+    关键点：
+    - TargetFramework 必须和主程序一致（net8.0），否则加载时会报类型不匹配。
+    - 只引用 MediaManager.Core.dll（主程序目录里自带），不要引用 App/Infrastructure。
+    - Private=false：不要把 Core.dll 拷进插件目录，避免两份同名程序集打架。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>HelloPlugin</AssemblyName>
+    <RootNamespace>HelloPlugin</RootNamespace>
+    <!-- 编译时用 -p:MediaManagerCorePath=... 指定；默认值是本机安装版的常见路径 -->
+    <MediaManagerCorePath Condition="'$(MediaManagerCorePath)' == ''">C:\Program Files\MediaManager\MediaManager.Core.dll</MediaManagerCorePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="MediaManager.Core">
+      <HintPath>$(MediaManagerCorePath)</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
