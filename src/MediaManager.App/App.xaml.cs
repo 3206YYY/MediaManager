@@ -134,7 +134,8 @@ public partial class App : Application
             // 3) 托盘图标（必须在 UI 线程创建）
             _tray = new TrayIconService(
                 showMainWindow: () => mainWindow.Dispatcher.Invoke(ShowMainWindow),
-                exitApplication: () => mainWindow.Dispatcher.Invoke(ShutdownApp));
+                exitApplication: () => mainWindow.Dispatcher.Invoke(ShutdownApp),
+                dataDirectory: provider.GetRequiredService<IPortableModeDetector>().DataDirectory);
             mainWindow.TrayService = _tray;
 
             // 4) 加载数据（内部把 SQLite 查询放到线程池，UI 线程只做集合填充）
