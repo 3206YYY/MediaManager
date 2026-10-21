@@ -7,12 +7,7 @@ public class VideoPlaybackModeTests
     [Fact]
     public void StorageValue_RoundTrips()
     {
-        foreach (var mode in new[]
-                 {
-                     VideoPlaybackMode.Sequential,
-                     VideoPlaybackMode.PauseAtEnd,
-                     VideoPlaybackMode.Random,
-                 })
+        foreach (var mode in Enum.GetValues<VideoPlaybackMode>())
         {
             var raw = mode.ToStorageValue();
             Assert.Equal(mode, VideoPlaybackModes.Parse(raw));
@@ -27,11 +22,20 @@ public class VideoPlaybackModeTests
     [InlineData(null, VideoPlaybackMode.PauseAtEnd)]
     [InlineData("", VideoPlaybackMode.PauseAtEnd)]
     [InlineData("垃圾值", VideoPlaybackMode.PauseAtEnd)]
-    [InlineData("sequential", VideoPlaybackMode.Sequential)]
     [InlineData("  PAUSE ", VideoPlaybackMode.PauseAtEnd)]
+    [InlineData("list", VideoPlaybackMode.LoopList)]
+    [InlineData("single", VideoPlaybackMode.LoopSingle)]
     [InlineData("shuffle", VideoPlaybackMode.Random)]
     public void Parse_FallsBackToPauseAtEnd(string? raw, VideoPlaybackMode expected)
         => Assert.Equal(expected, VideoPlaybackModes.Parse(raw));
+
+    /// <summary>V1.2.4 存的是 "sequential"（旧的「连续播放」）→ 迁移成「列表循环」。</summary>
+    [Theory]
+    [InlineData("sequential")]
+    [InlineData("next")]
+    [InlineData("auto")]
+    public void Parse_MigratesLegacySequentialToListLoop(string raw)
+        => Assert.Equal(VideoPlaybackMode.LoopList, VideoPlaybackModes.Parse(raw));
 
     [Fact]
     public void Default_IsPauseAtEnd()
@@ -41,7 +45,18 @@ public class VideoPlaybackModeTests
     public void Display_IsNotEmpty()
     {
         foreach (var mode in Enum.GetValues<VideoPlaybackMode>())
+        {
             Assert.False(string.IsNullOrWhiteSpace(mode.ToDisplay()));
+            Assert.False(string.IsNullOrWhiteSpace(mode.ToHint()));
+        }
+    }
+
+    /// <summary>四种模式的名字必须互不相同，否则用户还是分不清。</summary>
+    [Fact]
+    public void Display_AllDistinct()
+    {
+        var names = Enum.GetValues<VideoPlaybackMode>().Select(m => m.ToDisplay()).ToArray();
+        Assert.Equal(names.Length, names.Distinct().Count());
     }
 }
 
@@ -49,15 +64,7 @@ public class PlaybackQueueTests
 {
     [Fact]
     public void EmptyList_HasNoNext()
-        => Assert.Equal(-1, PlaybackQueue.Next(VideoPlaybackMode.Sequential, 0, 0, 0));
-
-    [Fact]
-    public void SingleVideo_HasNoNext()
-    {
-        // 只有一个视频时「下一个」还是自己，会导致播完立刻从头再来 → 判定为结束
-        Assert.Equal(-1, PlaybackQueue.Next(VideoPlaybackMode.Sequential, 0, 1, 7));
-        Assert.Equal(-1, PlaybackQueue.Next(VideoPlaybackMode.Random, 0, 1, 7));
-    }
+        => Assert.Equal(-1, PlaybackQueue.Next(VideoPlaybackMode.LoopList, 0, 0, 0));
 
     [Fact]
     public void PauseAtEnd_AlwaysStops()
@@ -66,16 +73,39 @@ public class PlaybackQueueTests
         Assert.Equal(-1, PlaybackQueue.Next(VideoPlaybackMode.PauseAtEnd, 5, 10, 3));
     }
 
+    /// <summary>
+    /// 单个视频 + 列表循环 → 重播自己。
+    /// 这是 V1.2.4 的 bug：选了「连续播放」仍停在结束画面，因为旧实现把 count==1 直接判定为结束。
+    /// </summary>
     [Fact]
-    public void Sequential_AdvancesAndLoops()
+    public void LoopList_SingleVideo_ReplaysItself()
+        => Assert.Equal(0, PlaybackQueue.Next(VideoPlaybackMode.LoopList, 0, 1, 7));
+
+    [Fact]
+    public void LoopSingle_AlwaysReplaysCurrent()
     {
-        Assert.Equal(4, PlaybackQueue.Next(VideoPlaybackMode.Sequential, 3, 10, 0));
-        Assert.Equal(0, PlaybackQueue.Next(VideoPlaybackMode.Sequential, 9, 10, 0));
+        Assert.Equal(3, PlaybackQueue.Next(VideoPlaybackMode.LoopSingle, 3, 10, 0));
+        Assert.Equal(0, PlaybackQueue.Next(VideoPlaybackMode.LoopSingle, 0, 1, 0));
     }
 
     [Fact]
-    public void Sequential_FromUnknownIndex_StartsAtFirst()
-        => Assert.Equal(0, PlaybackQueue.Next(VideoPlaybackMode.Sequential, -1, 5, 0));
+    public void LoopSingle_FromUnknownIndex_StartsAtFirst()
+        => Assert.Equal(0, PlaybackQueue.Next(VideoPlaybackMode.LoopSingle, -1, 5, 0));
+
+    [Fact]
+    public void LoopList_AdvancesAndWraps()
+    {
+        Assert.Equal(4, PlaybackQueue.Next(VideoPlaybackMode.LoopList, 3, 10, 0));
+        Assert.Equal(0, PlaybackQueue.Next(VideoPlaybackMode.LoopList, 9, 10, 0));
+    }
+
+    [Fact]
+    public void LoopList_FromUnknownIndex_StartsAtFirst()
+        => Assert.Equal(0, PlaybackQueue.Next(VideoPlaybackMode.LoopList, -1, 5, 0));
+
+    [Fact]
+    public void Random_SingleVideo_ReplaysItself()
+        => Assert.Equal(0, PlaybackQueue.Next(VideoPlaybackMode.Random, 0, 1, 7));
 
     [Theory]
     [InlineData(0)]

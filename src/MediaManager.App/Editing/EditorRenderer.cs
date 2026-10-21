@@ -10,7 +10,9 @@ using IOPath = System.IO.Path;
 namespace MediaManager.App.Editing;
 
 /// <summary>一次保存的结果（供界面做明确反馈）。</summary>
-public sealed record SaveResult(string Path, string FileName, int Width, int Height, long SizeBytes);
+/// <param name="OverwroteSource">true = 直接覆盖了正在编辑的副本；false = 生成了新副本（原图未动）。</param>
+public sealed record SaveResult(
+    string Path, string FileName, int Width, int Height, long SizeBytes, bool OverwroteSource);
 
 /// <summary>
 /// 把编辑文档渲染成最终图片：
@@ -120,6 +122,9 @@ public static class EditorRenderer
             throw new InvalidOperationException("生成的图片尺寸为 0，无法保存副本。");
 
         var output = BuildOutputPath(doc.SourcePath);
+        var overwrote = string.Equals(
+            IOPath.GetFullPath(output), IOPath.GetFullPath(doc.SourcePath), StringComparison.OrdinalIgnoreCase);
+
         var dir = IOPath.GetDirectoryName(output);
         if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
             throw new DirectoryNotFoundException($"目标文件夹不存在或已断开：{dir}");
@@ -172,7 +177,8 @@ public static class EditorRenderer
             IOPath.GetFileName(output),
             bitmap.PixelWidth,
             bitmap.PixelHeight,
-            info.Exists ? info.Length : 0);
+            info.Exists ? info.Length : 0,
+            overwrote);
     }
 
     private static void TryDelete(string path)
@@ -222,18 +228,18 @@ public static class EditorRenderer
         };
     }
 
-    /// <summary>生成「原名_edited.扩展名」路径；已带后缀时先去掉，避免无限套娃。</summary>
-    public static string BuildOutputPath(string input)
-    {
-        var dir = IOPath.GetDirectoryName(input) ?? ".";
-        var name = IOPath.GetFileNameWithoutExtension(input);
-        const string suffix = "_edited";
+    /// <summary>
+    /// 决定保存目标路径（V1.2.5 起的规则）：
+    /// 「编辑原图 → 新建副本；编辑副本 → 直接改副本」。
+    /// 具体规则见 <see cref="EditedFileNaming"/>（放在 Core 便于单测覆盖）。
+    /// </summary>
+    public static string BuildOutputPath(string input) => EditedFileNaming.BuildOutputPath(input);
 
-        while (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-            name = name[..^suffix.Length];
-
-        return IOPath.Combine(dir, $"{name}{suffix}{IOPath.GetExtension(input)}");
-    }
+    /// <summary>
+    /// 判断一个路径是不是「编辑副本」（文件名主体以 <c>_edited</c> 结尾）。
+    /// 界面用它决定按钮文案与保存结果提示语。
+    /// </summary>
+    public static bool IsEditedCopy(string? path) => EditedFileNaming.IsEditedCopy(path);
 
     // ---------- 元素构建 ----------
 

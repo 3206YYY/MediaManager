@@ -1,0 +1,7 @@
+{
+  "name": "示例插件",
+  "version": "1.0.0",
+  "author": "你的名字",
+  "description": "演示插件接口：统计选中文件、把路径写进日志、在状态栏打招呼",
+  "entry": "HelloPlugin.dll"
+}

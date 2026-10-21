@@ -123,4 +123,10 @@ public interface IMediaRepository
 
     /// <summary>清空所有媒体项的缩略图路径（清理缓存后调用，迫使重新生成）。</summary>
     Task ClearThumbnailPathsAsync();
+
+    /// <summary>
+    /// 让单张图的缩略图失效（清空 ThumbnailPath / QuickHash）。
+    /// 编辑副本被原地覆盖后必须调用：缓存文件名带 QuickHash，不清就会一直显示旧画面。
+    /// </summary>
+    Task InvalidateThumbnailAsync(long mediaId);
 }

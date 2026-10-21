@@ -57,6 +57,7 @@ public partial class App : Application
         services.AddLogging(b => b.AddSerilog(Log.Logger, dispose: false));
         services.AddInfrastructure();
         services.AddSingleton<Services.DeletedItemsService>();
+        services.AddSingleton<Plugins.PluginService>();
         services.AddSingleton<MainViewModel>();
         services.AddTransient<ViewerViewModel>();
         services.AddTransient<DuplicateViewModel>();
@@ -69,6 +70,9 @@ public partial class App : Application
         // 保证窗口第一帧就是正确配色，同时不把「打开 SQLite」这一步拉进关键路径。
         var detector = _provider.GetRequiredService<IPortableModeDetector>();
         ApplyTheme(ReadCachedTheme(detector), persist: false);
+
+        // 「跟随系统」时，Windows 改深浅色后界面要跟着走（只在偏好为 System 时生效）
+        Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
         // ---- 主窗口立刻显示 ----
         _mainWindow = _provider.GetRequiredService<MainWindow>();
@@ -150,6 +154,9 @@ public partial class App : Application
             // 5) 右键集成路径修正 + 命令行打开文件：都不影响主界面可用
             await Task.Run(ShellIntegrationService.EnsureRegistered);
             OpenFileFromCommandLine(args, mainWindow);
+
+            // 5.5) 插件：后台加载，慢插件不会挡住开窗；加载失败只影响它自己
+            _ = provider.GetRequiredService<Plugins.PluginService>().ReloadAsync();
 
             // 6) 补齐历史数据缺失的图片宽高（老库全是空值，界面一直显示「未知」）
             _ = Task.Run(async () =>
@@ -304,34 +311,49 @@ public partial class App : Application
     // ---------- 主题 ----------
 
     private const string ThemeFileName = "ui.theme";
+    public const string ThemeModeSystem = "System";
+    public const string ThemeModeLight = "Light";
+    public const string ThemeModeDark = "Dark";
+
+    /// <summary>用户选择的主题偏好（System / Light / Dark），不等同于「当前实际深浅」。</summary>
+    public static string ThemePreference { get; private set; } = ThemeModeSystem;
 
     private static string ThemeCachePath(IPortableModeDetector detector)
         => System.IO.Path.Combine(detector.DataDirectory, ThemeFileName);
 
-    /// <summary>读取上次保存的主题（只读一个小文本文件，微秒级）。</summary>
-    private static bool ReadCachedTheme(IPortableModeDetector detector)
+    /// <summary>把任意存值规整成三种主题偏好之一（无法识别时按「跟随系统」）。</summary>
+    private static string NormalizeThemeMode(string? mode)
+        => mode?.Trim().ToLowerInvariant() switch
+        {
+            "light" => ThemeModeLight,
+            "dark" => ThemeModeDark,
+            _ => ThemeModeSystem,
+        };
+
+    /// <summary>读取上次保存的主题偏好（只读一个小文本文件，微秒级）。</summary>
+    private static string ReadCachedTheme(IPortableModeDetector detector)
     {
         try
         {
             var file = ThemeCachePath(detector);
-            if (!File.Exists(file)) return false;
-            return string.Equals(File.ReadAllText(file).Trim(), "Dark", StringComparison.OrdinalIgnoreCase);
+            if (!File.Exists(file)) return ThemeModeSystem;   // 全新安装：跟随系统
+            return NormalizeThemeMode(File.ReadAllText(file));
         }
         catch
         {
-            return false;
+            return ThemeModeSystem;
         }
     }
 
-    /// <summary>把主题写进缓存文件，供下次启动秒读。</summary>
-    private static void WriteCachedTheme(bool isDark)
+    /// <summary>把主题偏好写进缓存文件，供下次启动秒读。</summary>
+    private static void WriteCachedTheme(string mode)
     {
         try
         {
             var detector = Services.GetRequiredService<IPortableModeDetector>();
             var file = ThemeCachePath(detector);
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(file)!);
-            var text = isDark ? "Dark" : "Light";
+            var text = NormalizeThemeMode(mode);
             if (File.Exists(file) && File.ReadAllText(file).Trim() == text) return;   // 避免每次都重写磁盘
             File.WriteAllText(file, text);
         }
@@ -341,13 +363,36 @@ public partial class App : Application
         }
     }
 
-    /// <summary>启动时按缓存应用主题；随后在后台用数据库里的真实设置校准一次。</summary>
-    private static void ApplyTheme(bool isDark, bool persist)
+    /// <summary>读 Windows「应用模式」：AppsUseLightTheme=0 为深色、1 为浅色。</summary>
+    private static bool ResolveSystemIsDark()
     {
         try
         {
-            ApplyThemeNow(isDark);
-            if (persist) WriteCachedTheme(isDark);
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return key?.GetValue("AppsUseLightTheme") is int value && value == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool ResolveIsDark(string mode) => NormalizeThemeMode(mode) switch
+    {
+        ThemeModeDark => true,
+        ThemeModeLight => false,
+        _ => ResolveSystemIsDark(),
+    };
+
+    /// <summary>按偏好应用主题（System 会实时读系统设置），可选择是否写缓存。</summary>
+    private static void ApplyThemePreference(string mode, bool persistCache)
+    {
+        try
+        {
+            ThemePreference = NormalizeThemeMode(mode);
+            ApplyThemeNow(ResolveIsDark(ThemePreference));
+            if (persistCache) WriteCachedTheme(ThemePreference);
         }
         catch (Exception ex)
         {
@@ -355,22 +400,26 @@ public partial class App : Application
         }
     }
 
+    /// <summary>启动时按缓存应用主题；随后在后台用数据库里的真实设置校准一次。</summary>
+    private static void ApplyTheme(string mode, bool persist)
+        => ApplyThemePreference(mode, persist);
+
     private static async Task SyncThemeFromDatabaseAsync(IServiceProvider provider)
     {
         try
         {
             var repo = provider.GetRequiredService<IMediaRepository>();
             var theme = await Task.Run(() => repo.GetSettingAsync("Theme"));
-            var isDark = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase);
-            if (isDark != IsDarkTheme)
+            var mode = NormalizeThemeMode(theme);
+            if (mode != ThemePreference || ResolveIsDark(mode) != IsDarkTheme)
             {
-                ApplyTheme(isDark, persist: true);
-                Log.Information("已按数据库设置切换主题：{Theme}", isDark ? "深色" : "浅色");
+                ApplyThemePreference(mode, persistCache: true);
+                Log.Information("已按数据库设置切换主题：{Mode}", mode);
             }
             else
             {
                 // 数据库与缓存一致，补齐缓存文件（老版本用户第一次升级时没有这个文件）
-                WriteCachedTheme(isDark);
+                WriteCachedTheme(mode);
             }
         }
         catch (Exception ex)
@@ -402,8 +451,13 @@ public partial class App : Application
             if (Current is App app &&
                 app._provider?.GetService(typeof(IAppConfigService)) is IAppConfigService cfg)
             {
-                cfg.UpdateTheme(isDark ? MediaManager.Core.Enums.AppTheme.Dark
-                                       : MediaManager.Core.Enums.AppTheme.Light);
+                // 这里同步的是「偏好」，不是实际深浅：否则设置页会把 System 当成具体主题存回去。
+                cfg.UpdateTheme(ThemePreference switch
+                {
+                    ThemeModeDark => MediaManager.Core.Enums.AppTheme.Dark,
+                    ThemeModeLight => MediaManager.Core.Enums.AppTheme.Light,
+                    _ => MediaManager.Core.Enums.AppTheme.System,
+                });
             }
         }
         catch (Exception ex)
@@ -411,7 +465,47 @@ public partial class App : Application
             Log.Debug(ex, "同步主题配置失败（不影响界面）");
         }
 
-        WriteCachedTheme(isDark);
+        WriteCachedTheme(ThemePreference);
+    }
+
+    /// <summary>系统主题变化时，仅当偏好为「跟随系统」才重刷界面。</summary>
+    private void OnUserPreferenceChanged(object? sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+    {
+        if (ThemePreference != ThemeModeSystem) return;
+        if (e.Category != Microsoft.Win32.UserPreferenceCategory.General
+            && e.Category != Microsoft.Win32.UserPreferenceCategory.VisualStyle) return;
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var isDark = ResolveSystemIsDark();
+            if (isDark == IsDarkTheme) return;
+            ApplyThemeNow(isDark);
+            Log.Information("系统主题变化，已跟随切换：{Theme}", isDark ? "深色" : "浅色");
+        }));
+    }
+
+    /// <summary>
+    /// 运行时切换主题并持久化（主界面快捷开关用）。
+    /// 只调 <see cref="ApplyThemeNow"/> 的话，数据库里还是旧值，重启就变回去。
+    /// </summary>
+    public static Task SetThemeAsync(bool isDark)
+        => SetThemePreferenceAsync(isDark ? ThemeModeDark : ThemeModeLight);
+
+    /// <summary>保存主题偏好（跟随系统 / 浅色 / 深色）并立即生效、落库。</summary>
+    public static async Task SetThemePreferenceAsync(string mode)
+    {
+        var normalized = NormalizeThemeMode(mode);
+        ApplyThemePreference(normalized, persistCache: true);
+
+        try
+        {
+            await Services.GetRequiredService<IMediaRepository>()
+                .SetSettingAsync("Theme", normalized);
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "保存主题设置失败");
+        }
     }
 
     /// <summary>
@@ -465,11 +559,16 @@ public partial class App : Application
     {
         try
         {
+            Microsoft.Win32.SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             _tray?.Dispose();
             _tray = null;
 
             if (_provider != null)
             {
+                // 给插件一个收尾机会（异常已在内部吞掉，不会拖慢退出）
+                try { _provider.GetRequiredService<Plugins.PluginService>().ShutdownAll(); }
+                catch (Exception ex) { Log.Warning(ex, "插件退出清理失败"); }
+
                 // 关闭前备份一次（涵盖本次会话的所有修改）
                 try
                 {

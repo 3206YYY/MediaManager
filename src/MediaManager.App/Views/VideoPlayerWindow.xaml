@@ -274,7 +274,7 @@
                                                    Foreground="#A8FFFFFF" VerticalAlignment="Center" />
                                     </StackPanel>
 
-                                    <!-- 播放模式（左下角）：连播 / 播完暂停 / 随机 -->
+                                    <!-- 播放模式（左下角）：播完暂停 / 列表循环 / 单曲循环 / 随机 -->
                                     <Button x:Name="ModeButton" Grid.Column="2" Style="{StaticResource OverlayButton}"
                                             Click="OnModeButtonClick" ToolTip="播放结束后的行为">
                                         <StackPanel Orientation="Horizontal">

@@ -54,6 +54,121 @@ public partial class MainWindow : Window
         // 否则一片空白灰块看起来就像卡死了。ScrollChanged 是冒泡事件，挂在 ListBox 上即可收到。
         ThumbList.AddHandler(ScrollViewer.ScrollChangedEvent,
             new ScrollChangedEventHandler(OnThumbListScrollChanged));
+
+        AttachPlugins();
+
+        UpdateThemeGlyph();
+        // 设置页里也可能改主题：回到主窗口时对齐图标，不要出现「明明是浅色却显示月亮」
+        Activated += (_, _) => UpdateThemeGlyph();
+    }
+
+    // ===================================================================
+    //  主题快捷开关（最常用，所以放主界面）
+    // ===================================================================
+
+    private void UpdateThemeGlyph()
+    {
+        if (MoonIconHost == null || SunIconHost == null) return;
+        // 深色模式时显示太阳（点它回到浅色），浅色模式时显示月亮
+        SunIconHost.Visibility = App.IsDarkTheme ? Visibility.Visible : Visibility.Collapsed;
+        MoonIconHost.Visibility = App.IsDarkTheme ? Visibility.Collapsed : Visibility.Visible;
+        ThemeButton.ToolTip = App.IsDarkTheme ? "切换到浅色模式" : "切换到深色模式";
+    }
+
+    private async void OnThemeToggleClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await App.SetThemeAsync(!App.IsDarkTheme);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine("切换主题失败：" + ex.Message);
+        }
+        UpdateThemeGlyph();
+    }
+
+    // ===================================================================
+    //  插件
+    // ===================================================================
+
+    private Plugins.PluginService? _plugins;
+
+    /// <summary>
+    /// 接上插件宿主：加载完成、插件增删时刷新入口按钮；
+    /// 插件想提示用户时写到状态栏（不弹窗打断）。
+    /// </summary>
+    private void AttachPlugins()
+    {
+        try
+        {
+            _plugins = App.Services.GetRequiredService<Plugins.PluginService>();
+        }
+        catch
+        {
+            return;
+        }
+
+        _plugins.Changed += (_, _) => Dispatcher.BeginInvoke(new Action(RefreshPluginEntry));
+        _plugins.NotificationRequested += (_, message) => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            _viewModel.StatusText = message;
+        }));
+
+        RefreshPluginEntry();
+    }
+
+    /// <summary>没有插件时整个按钮都不显示，避免用户点开一个空菜单。</summary>
+    private void RefreshPluginEntry()
+    {
+        PluginButton.Visibility = _plugins is { Actions.Count: > 0 }
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void OnPluginMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (_plugins == null) return;
+
+        var actions = _plugins.Actions;
+        if (actions.Count == 0)
+        {
+            RefreshPluginEntry();
+            return;
+        }
+
+        var menu = new ContextMenu { PlacementTarget = PluginButton, Placement = PlacementMode.Bottom };
+
+        foreach (var action in actions)
+        {
+            var item = new MenuItem
+            {
+                Header = action.Title,
+                ToolTip = string.IsNullOrWhiteSpace(action.Description)
+                    ? $"来自插件：{action.PluginName}"
+                    : $"{action.Description}\n（来自插件：{action.PluginName}）",
+            };
+            var captured = action;
+            item.Click += (_, _) => captured.Handler(CurrentPluginSelection());
+            menu.Items.Add(item);
+        }
+
+        menu.IsOpen = true;
+    }
+
+    /// <summary>把当前选中的媒体包成插件能用的形状（插件看不到主程序的 ViewModel 类型）。</summary>
+    private MediaManager.Core.Plugins.PluginSelection CurrentPluginSelection()
+    {
+        var items = GetSelectedItems();
+        if (items.Count == 0) return MediaManager.Core.Plugins.PluginSelection.Empty;
+
+        var paths = items
+            .Select(i => i.Path)
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return new MediaManager.Core.Plugins.PluginSelection(paths, items[0].Path);
     }
 
     /// <summary>
@@ -345,18 +460,20 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 编辑器保存副本后：刷新主网格并选中 / 滚动到这张新副本，
+    /// 编辑器保存后：刷新主网格并选中 / 滚动到这张图，
     /// 让用户关闭查看器时一眼看到结果（而不是以为没保存）。
+    /// 编辑副本被原地覆盖时，还会让缩略图失效并重建。
     /// </summary>
-    private async void OnViewerCopySaved(object? sender, string path)
+    private async void OnViewerCopySaved(object? sender, MediaManager.App.Editing.SaveResult result)
     {
+        var path = result.Path;
         try
         {
-            var result = await _viewModel.RefreshAfterSaveAsync(path);
-            if (result.ViewChanged)
-                SyncNavToSavedView(result.FolderId);
+            var refreshed = await _viewModel.RefreshAfterSaveAsync(path, result.OverwroteSource);
+            if (refreshed.ViewChanged)
+                SyncNavToSavedView(refreshed.FolderId);
 
-            var target = result.Item;
+            var target = refreshed.Item;
             if (target == null)
             {
                 Serilog.Log.Debug("副本已保存但不在库内（独立打开的文件）：{Path}", path);

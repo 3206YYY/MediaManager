@@ -195,6 +195,83 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- ===== 画布左右翻页按钮：半透明黑胶囊 + 白箭头，禁用态只压暗不换底 ===== -->
+        <!-- 必须自带模板：默认 Button 模板在禁用态会画一块系统浅灰底，压在深色画面上非常脏 -->
+        <Style x:Key="NavArrowButton" TargetType="Button">
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Height" Value="96" />
+            <Setter Property="FontSize" Value="26" />
+            <Setter Property="Foreground" Value="#FFFFFFFF" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="#7A000000" CornerRadius="10"
+                                Opacity="{Binding Opacity, RelativeSource={RelativeSource TemplatedParent}}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#A6000000" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#C6000000" />
+                            </Trigger>
+                            <!-- 禁用（第一张/最后一张）只压暗字色和底，不动 Opacity，
+                                 否则淡入淡出会被触发器钉死，箭头会一直挂在那里 -->
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Background" Value="#3A000000" />
+                                <Setter Property="Foreground" Value="#7AFFFFFF" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ===== 浮动工具面板：标题栏（整条都是拖动抓手，背景透明但要能命中测试） ===== -->
+        <Style x:Key="PanelHeader" TargetType="DockPanel">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="SizeAll" />
+            <Setter Property="LastChildFill" Value="True" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="ToolTip" Value="按住标题栏可以拖动这个面板" />
+        </Style>
+
+        <!-- 标题栏右侧的折叠按钮：小、透明底、hover 只加浅底 -->
+        <Style x:Key="PanelChromeButton" TargetType="Button">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="4"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.Foreground="{TemplateBinding Foreground}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.7" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -268,6 +345,7 @@
                         MouseWheel="OnMouseWheel"
                         MouseLeftButtonDown="OnCanvasMouseDown"
                         MouseMove="OnCanvasMouseMove"
+                        MouseLeave="OnImageAreaMouseLeave"
                         MouseLeftButtonUp="OnCanvasMouseUp">
                     <Grid>
                         <Grid x:Name="ImageBox" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -327,14 +405,14 @@
                             </Canvas>
                         </Grid>
 
-                        <!-- 翻页 -->
-                        <Button Content="❮" Click="OnPrevious" Width="46" Height="88" FontSize="26"
-                                Foreground="White" Background="#42000000" BorderThickness="0"
-                                Cursor="Hand" HorizontalAlignment="Left" VerticalAlignment="Center"
+                        <!-- 翻页：默认隐藏，鼠标移到左右边缘附近才淡入（常驻会挡住画面） -->
+                        <Button x:Name="PrevButton" Content="❮" Click="OnPrevious"
+                                Style="{StaticResource NavArrowButton}" Opacity="0"
+                                HorizontalAlignment="Left" VerticalAlignment="Center"
                                 Margin="8,0,0,0" IsEnabled="{Binding HasPrevious}" ToolTip="上一张（←）" />
-                        <Button Content="❯" Click="OnNext" Width="46" Height="88" FontSize="26"
-                                Foreground="White" Background="#42000000" BorderThickness="0"
-                                Cursor="Hand" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        <Button x:Name="NextButton" Content="❯" Click="OnNext"
+                                Style="{StaticResource NavArrowButton}" Opacity="0"
+                                HorizontalAlignment="Right" VerticalAlignment="Center"
                                 Margin="0,0,8,0" IsEnabled="{Binding HasNext}" ToolTip="下一张（→）" />
 
                         <!-- 加载状态 -->
@@ -366,62 +444,78 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 文字属性面板 -->
+                <!-- 文字属性面板（标题栏可拖动，右上角可折叠） -->
                 <Border x:Name="TextPanel" Visibility="Collapsed"
                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0"
                         Width="248" Background="{DynamicResource PanelBrush}"
                         BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8"
                         Padding="14,12">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="TextPanelOffset" />
+                    </Border.RenderTransform>
                     <StackPanel>
-                        <DockPanel Margin="0,0,0,8">
-                            <!-- 明确的「结束当前编辑」出口：结束后才允许新增下一段文字 -->
-                            <Button DockPanel.Dock="Right" Content="✓ 完成" Click="OnFinishTextClick"
-                                    Padding="10,2" FontSize="11" Margin="0,0,6,0"
-                                    Background="{DynamicResource PrimaryBrush}" Foreground="White"
-                                    BorderBrush="{DynamicResource PrimaryBrush}"
-                                    ToolTip="结束这段文字的编辑（也可以按 Esc 或点画面空白处）" />
-                            <Button DockPanel.Dock="Right" Content="删除" Click="OnDeleteTextClick"
-                                    Padding="8,2" FontSize="11" />
-                            <TextBlock Text="文字样式" FontWeight="Bold" VerticalAlignment="Center" />
+                        <DockPanel Style="{StaticResource PanelHeader}" Tag="TextPanel"
+                                   MouseLeftButtonDown="OnPanelHeaderDown"
+                                   MouseMove="OnPanelHeaderMove"
+                                   MouseLeftButtonUp="OnPanelHeaderUp">
+                            <Button DockPanel.Dock="Right" Tag="TextPanel" Content="▾"
+                                    Style="{StaticResource PanelChromeButton}" Click="OnPanelCollapseClick"
+                                    ToolTip="折叠面板（只留标题栏）" />
+                            <TextBlock Text="⠿ 文字样式" FontWeight="Bold" VerticalAlignment="Center" />
                         </DockPanel>
 
-                        <TextBlock Text="字体" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <ComboBox x:Name="FontCombo" Margin="0,4,0,8" SelectionChanged="OnFontChanged">
-                            <ComboBoxItem Content="微软雅黑" Tag="Microsoft YaHei" />
-                            <ComboBoxItem Content="黑体" Tag="SimHei" />
-                            <ComboBoxItem Content="宋体" Tag="SimSun" />
-                            <ComboBoxItem Content="楷体" Tag="KaiTi" />
-                            <ComboBoxItem Content="等线" Tag="DengXian" />
-                            <ComboBoxItem Content="Arial" Tag="Arial" />
-                        </ComboBox>
+                        <StackPanel x:Name="TextPanelBody">
+                            <DockPanel Margin="0,0,0,8">
+                                <Button DockPanel.Dock="Right" Content="删除" Click="OnDeleteTextClick"
+                                        Padding="8,2" FontSize="11" />
+                                <!-- 明确的「结束当前编辑」出口：结束后才允许新增下一段文字 -->
+                                <Button DockPanel.Dock="Right" Content="✓ 完成" Click="OnFinishTextClick"
+                                        Padding="10,2" FontSize="11" Margin="0,0,6,0"
+                                        Background="{DynamicResource PrimaryBrush}" Foreground="White"
+                                        BorderBrush="{DynamicResource PrimaryBrush}"
+                                        ToolTip="结束这段文字的编辑（也可以按 Esc 或点画面空白处）" />
+                                <TextBlock Text="正在编辑这段文字" VerticalAlignment="Center" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </DockPanel>
 
-                        <DockPanel Margin="0,0,0,2">
-                            <TextBlock DockPanel.Dock="Right" x:Name="FontSizeText" Text="32"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
-                            <TextBlock Text="字号" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                        </DockPanel>
-                        <Slider x:Name="FontSizeSlider" Minimum="12" Maximum="140" Value="32"
-                                IsSnapToTickEnabled="True" TickFrequency="1" Margin="0,2,0,8"
-                                ValueChanged="OnFontSizeChanged" />
+                            <TextBlock Text="字体" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ComboBox x:Name="FontCombo" Margin="0,4,0,8" SelectionChanged="OnFontChanged">
+                                <ComboBoxItem Content="微软雅黑" Tag="Microsoft YaHei" />
+                                <ComboBoxItem Content="黑体" Tag="SimHei" />
+                                <ComboBoxItem Content="宋体" Tag="SimSun" />
+                                <ComboBoxItem Content="楷体" Tag="KaiTi" />
+                                <ComboBoxItem Content="等线" Tag="DengXian" />
+                                <ComboBoxItem Content="Arial" Tag="Arial" />
+                            </ComboBox>
 
-                        <TextBlock Text="颜色" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
-                                   Margin="0,0,0,4" />
-                        <WrapPanel x:Name="TextColorPanel" Margin="0,0,0,8" />
+                            <DockPanel Margin="0,0,0,2">
+                                <TextBlock DockPanel.Dock="Right" x:Name="FontSizeText" Text="32"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
+                                <TextBlock Text="字号" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </DockPanel>
+                            <Slider x:Name="FontSizeSlider" Minimum="12" Maximum="140" Value="32"
+                                    IsSnapToTickEnabled="True" TickFrequency="1" Margin="0,2,0,8"
+                                    ValueChanged="OnFontSizeChanged" />
 
-                        <StackPanel Orientation="Horizontal">
-                            <ToggleButton x:Name="BoldToggle" Content="B" Width="34" Height="26"
-                                          FontWeight="Bold" Click="OnTextStyleChanged"
-                                          Style="{StaticResource CompactToggle}" />
-                            <ToggleButton x:Name="ItalicToggle" Content="I" Width="34" Height="26"
-                                          FontStyle="Italic" Click="OnTextStyleChanged" Margin="4,0,0,0"
-                                          Style="{StaticResource CompactToggle}" />
-                            <TextBlock Text="加粗 / 斜体" VerticalAlignment="Center" Margin="10,0,0,0"
-                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="颜色" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,0,0,4" />
+                            <WrapPanel x:Name="TextColorPanel" Margin="0,0,0,8" />
+
+                            <StackPanel Orientation="Horizontal">
+                                <ToggleButton x:Name="BoldToggle" Content="B" Width="34" Height="26"
+                                              FontWeight="Bold" Click="OnTextStyleChanged"
+                                              Style="{StaticResource CompactToggle}" />
+                                <ToggleButton x:Name="ItalicToggle" Content="I" Width="34" Height="26"
+                                              FontStyle="Italic" Click="OnTextStyleChanged" Margin="4,0,0,0"
+                                              Style="{StaticResource CompactToggle}" />
+                                <TextBlock Text="加粗 / 斜体" VerticalAlignment="Center" Margin="10,0,0,0"
+                                           FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+
+                            <TextBlock Text="编辑完成后点「✓ 完成」，再点「文字」即可添加新的一段。"
+                                       FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
-
-                        <TextBlock Text="编辑完成后点「✓ 完成」，再点「文字」即可添加新的一段。"
-                                   FontSize="11" TextWrapping="Wrap" Margin="0,10,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
                 </Border>
 
@@ -430,19 +524,33 @@
                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0"
                         Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="14,10">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="InkPanelOffset" />
+                    </Border.RenderTransform>
                     <StackPanel>
-                        <TextBlock Text="画笔" FontWeight="Bold" Margin="0,0,0,6" />
-                        <WrapPanel x:Name="InkColorPanel" Margin="0,0,0,8" />
-                        <DockPanel Margin="0,0,0,6">
-                            <TextBlock DockPanel.Dock="Right" x:Name="InkWidthText" Text="4"
-                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                            <TextBlock Text="粗细" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <DockPanel Style="{StaticResource PanelHeader}" Tag="InkPanel"
+                                   MouseLeftButtonDown="OnPanelHeaderDown"
+                                   MouseMove="OnPanelHeaderMove"
+                                   MouseLeftButtonUp="OnPanelHeaderUp">
+                            <Button DockPanel.Dock="Right" Tag="InkPanel" Content="▾"
+                                    Style="{StaticResource PanelChromeButton}" Click="OnPanelCollapseClick"
+                                    ToolTip="折叠面板（只留标题栏）" />
+                            <TextBlock Text="⠿ 画笔" FontWeight="Bold" VerticalAlignment="Center" />
                         </DockPanel>
-                        <Slider x:Name="InkWidthSlider" Minimum="1" Maximum="24" Value="4"
-                                IsSnapToTickEnabled="True" TickFrequency="1" Width="170"
-                                ValueChanged="OnInkWidthChanged" />
-                        <Button Content="↶ 撤销上一笔" Click="OnUndoStrokeClick" Margin="0,8,0,0"
-                                Padding="8,4" HorizontalAlignment="Left" />
+
+                        <StackPanel x:Name="InkPanelBody">
+                            <WrapPanel x:Name="InkColorPanel" Margin="0,0,0,8" />
+                            <DockPanel Margin="0,0,0,6">
+                                <TextBlock DockPanel.Dock="Right" x:Name="InkWidthText" Text="4"
+                                           FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="粗细" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </DockPanel>
+                            <Slider x:Name="InkWidthSlider" Minimum="1" Maximum="24" Value="4"
+                                    IsSnapToTickEnabled="True" TickFrequency="1" Width="170"
+                                    ValueChanged="OnInkWidthChanged" />
+                            <Button Content="↶ 撤销上一笔" Click="OnUndoStrokeClick" Margin="0,8,0,0"
+                                    Padding="8,4" HorizontalAlignment="Left" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -451,11 +559,25 @@
                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0"
                         Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="14,10">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="FilterPanelOffset" />
+                    </Border.RenderTransform>
                     <StackPanel>
-                        <TextBlock Text="滤镜" FontWeight="Bold" Margin="0,0,0,8" />
-                        <StackPanel x:Name="FilterButtons" Orientation="Horizontal" />
-                        <TextBlock Text="随时可以切回「原图」，也可以用撤销回退。" FontSize="11"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" />
+                        <DockPanel Style="{StaticResource PanelHeader}" Tag="FilterPanel"
+                                   MouseLeftButtonDown="OnPanelHeaderDown"
+                                   MouseMove="OnPanelHeaderMove"
+                                   MouseLeftButtonUp="OnPanelHeaderUp">
+                            <Button DockPanel.Dock="Right" Tag="FilterPanel" Content="▾"
+                                    Style="{StaticResource PanelChromeButton}" Click="OnPanelCollapseClick"
+                                    ToolTip="折叠面板（只留标题栏）" />
+                            <TextBlock Text="⠿ 滤镜" FontWeight="Bold" VerticalAlignment="Center" />
+                        </DockPanel>
+
+                        <StackPanel x:Name="FilterPanelBody">
+                            <StackPanel x:Name="FilterButtons" Orientation="Horizontal" />
+                            <TextBlock Text="随时可以切回「原图」，也可以用撤销回退。" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -464,17 +586,32 @@
                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0"
                         Background="{DynamicResource PanelBrush}" BorderBrush="{DynamicResource BorderBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="14,10" Width="240">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="ResizePanelOffset" />
+                    </Border.RenderTransform>
                     <StackPanel>
-                        <TextBlock Text="保存尺寸" FontWeight="Bold" Margin="0,0,0,8" />
-                        <ComboBox x:Name="ResizeCombo" SelectionChanged="OnResizeOptionChanged">
-                            <ComboBoxItem Content="保持原尺寸" Tag="0" />
-                            <ComboBoxItem Content="长边 2560 px" Tag="2560" />
-                            <ComboBoxItem Content="长边 1920 px" Tag="1920" />
-                            <ComboBoxItem Content="长边 1280 px" Tag="1280" />
-                        </ComboBox>
-                        <TextBlock Text="选择后点「保存副本」生效，原图不变。" FontSize="11"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0"
-                                   TextWrapping="Wrap" />
+                        <DockPanel Style="{StaticResource PanelHeader}" Tag="ResizePanel"
+                                   MouseLeftButtonDown="OnPanelHeaderDown"
+                                   MouseMove="OnPanelHeaderMove"
+                                   MouseLeftButtonUp="OnPanelHeaderUp">
+                            <Button DockPanel.Dock="Right" Tag="ResizePanel" Content="▾"
+                                    Style="{StaticResource PanelChromeButton}" Click="OnPanelCollapseClick"
+                                    ToolTip="折叠面板（只留标题栏）" />
+                            <TextBlock Text="⠿ 保存尺寸" FontWeight="Bold" VerticalAlignment="Center" />
+                        </DockPanel>
+
+                        <StackPanel x:Name="ResizePanelBody">
+                            <ComboBox x:Name="ResizeCombo" SelectionChanged="OnResizeOptionChanged">
+                                <ComboBoxItem Content="保持原尺寸" Tag="0" />
+                                <ComboBoxItem Content="长边 2560 px" Tag="2560" />
+                                <ComboBoxItem Content="长边 1920 px" Tag="1920" />
+                                <ComboBoxItem Content="长边 1280 px" Tag="1280" />
+                            </ComboBox>
+                            <TextBlock Text="编辑原图会生成 _edited 副本；编辑副本则直接更新该副本。"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -496,7 +633,9 @@
                         </StackPanel>
 
                         <StackPanel VerticalAlignment="Center">
-                            <TextBlock Text="已保存为新文件（原图未修改）" FontWeight="Bold" FontSize="13"
+                            <!-- 标题随保存类型变化（新建副本 / 原地更新副本），由 ShowSaveResult 写入 -->
+                            <TextBlock x:Name="SaveResultTitle" Text="已保存为新文件（原图未修改）"
+                                       FontWeight="Bold" FontSize="13"
                                        Foreground="{DynamicResource TextBrush}" />
                             <TextBlock x:Name="SaveResultName" Text="" FontWeight="Bold" FontSize="13"
                                        Foreground="#16A34A" TextTrimming="CharacterEllipsis"
