@@ -27,7 +27,7 @@ C 盘、D 盘、移动硬盘里的图片视频，可以一起加进同一个库�
 
 ## 🤖 开发者自白 (About the Developer)
 
-本项目是由本人虔诚地向圣诞老人（AI）许愿得到。本人只参与了产品创意、UI 交互设计和测试，一周做完，79 项测试全过，产品仍在快速迭代，欢迎提 Issue 指出问题。
+本项目是由本人虔诚地向圣诞老人（AI）许愿得到。本人只参与了产品创意、UI 交互设计和测试，产品仍在快速迭代，欢迎提 Issue 指出问题。
 
 *This project is co-developed with AI. Ideas, UI/UX design, and rigorous testing are done by a human; coding is done by AI.*
 
