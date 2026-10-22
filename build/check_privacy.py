@@ -15,8 +15,8 @@ import sys
 
 # 本机特征串（UTF-8 与 UTF-16LE 都会搜，.NET 程序集里的字符串是 UTF-16）
 # ⚠ 两条经验：
-#   1. 只用「带路径的完整串」，别用裸用户名 —— libvlccore.dll 里的
-#      "intf-popupmenu" 就含用户名的后 5 个字母，第一次扫直接误报；
+#   1. 只用「带路径的完整串」，别用裸用户名 —— 第三方 dll 里的通用单词就可能把
+#      用户名后几位当子串命中，第一次扫直接误报；
 #   2. 用户名从环境变量取，别写死在仓库里（否则这个脚本本身就成了隐私泄漏点）。
 _USER = os.environ.get("USERNAME") or os.environ.get("USER") or ""
 NEEDLES = [

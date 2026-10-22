@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 """生成 MediaManager 程序图标 (multi-size .ico)"""
+import os
+
 from PIL import Image, ImageDraw
 
 SIZE = 1024  # 以 1024 为基准，缩放出各尺寸
@@ -75,7 +77,9 @@ for i in range(5):
 # 缩放到多尺寸生成 ico
 sizes = [256, 128, 64, 48, 32, 16]
 imgs = [rounded.resize((s, s), Image.LANCZOS) for s in sizes]
-out = "C:/Users/upmen/WorkBuddy/图片视频管理工具/src/MediaManager.App/MediaManager.ico"
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+out = os.path.join(ROOT, "src", "MediaManager.App", "MediaManager.ico")
 imgs[0].save(out, format="ICO", sizes=[(s, s) for s in sizes],
              append_images=imgs[1:])
 print("图标已生成:", out)

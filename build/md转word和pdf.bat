@@ -7,7 +7,9 @@ rem  Markdown 一键转 Word + PDF
 rem  用法：把 .md 文件拖到这个 bat 上
 rem ============================================
 
-set "PY=C:\Users\upmen\.workbuddy\binaries\python\envs\default\Scripts\python.exe"
+set "PY=python"
+rem 上面这行默认用 PATH 里的 python；如果你的 python 不在 PATH，
+rem 把它改成完整路径，例如 set "PY=D:\Python313\python.exe"
 set "SCRIPT_DIR=%~dp0"
 
 if "%~1"=="" (
