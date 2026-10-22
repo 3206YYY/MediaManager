@@ -42,6 +42,9 @@ public partial class MainViewModel : ObservableObject
     private long? _discoveryPoolId;
     private bool _discoveryOnboardingShown;
 
+    /// <summary>本批推荐是否因为「池子空着」而回退到了全部媒体（用于状态栏提示）。</summary>
+    private bool _discoveryFallbackToAll;
+
     public MainViewModel(
         ILogger<MainViewModel> logger,
         IMediaRepository repo,
@@ -618,7 +621,9 @@ public partial class MainViewModel : ObservableObject
             DiscoveryShowHint = false;
         }
 
-        StatusText = $"发现 · {MediaItems.Count} 项随机推荐";
+        StatusText = _discoveryFallbackToAll
+            ? $"发现 · {MediaItems.Count} 项随机推荐（收藏还是空的，这次先看全库）"
+            : $"发现 · {MediaItems.Count} 项随机推荐";
     }
 
     /// <summary>生成一批新的随机推荐。</summary>
@@ -630,6 +635,22 @@ public partial class MainViewModel : ObservableObject
 
         // 池子总数，用于决定是否排除最近 7 天已推
         var poolTotal = await DbAsync(() => _repo.CountDiscoveryPoolAsync(poolType, poolId));
+
+        // 池子空着就回退到「全部」。
+        // 默认推荐池是「收藏」，新用户一张都没收藏，发现页就一片空白 ——
+        // 明明是整库几千张照片，点进来却像坏了，这个功能等于白做。
+        if (poolTotal == 0 && poolType != DiscoveryPoolType.All)
+        {
+            _logger.LogInformation("发现页推荐池为空（{Pool}），本次回退到全部媒体", poolType);
+            poolType = DiscoveryPoolType.All;
+            poolId = null;
+            _discoveryFallbackToAll = true;
+            poolTotal = await DbAsync(() => _repo.CountDiscoveryPoolAsync(poolType, poolId));
+        }
+        else
+        {
+            _discoveryFallbackToAll = false;
+        }
 
         List<long>? exclude = null;
         if (poolTotal >= count * 3)
@@ -942,6 +963,19 @@ public partial class MainViewModel : ObservableObject
 
     [RelayCommand]
     private void CancelScan() => _scanCts?.Cancel();
+
+    /// <summary>
+    /// 停掉所有会读写数据库 / 磁盘的界面侧后台任务。
+    /// 只在「恢复历史快照」这种要直接覆盖 library.db 的场景调用 ——
+    /// 通道里只要还有一条查询在跑，覆盖就可能撞上正在打开的连接。
+    /// </summary>
+    public void CancelBackgroundWork()
+    {
+        try { CancelScan(); } catch { /* 已结束 */ }
+        try { _filterCts?.Cancel(); } catch { /* 已结束 */ }
+        try { _searchCts?.Cancel(); } catch { /* 已结束 */ }
+        try { _detailCts?.Cancel(); } catch { /* 已结束 */ }
+    }
 
     [RelayCommand]
     private async Task SelectViewAsync(string key)
@@ -2018,7 +2052,9 @@ public partial class MainViewModel : ObservableObject
             MediaItems.Add(vm);
             EnsureThumbnail(m);
         }
-        StatusText = $"已换一批 · {MediaItems.Count} 项";
+        StatusText = _discoveryFallbackToAll
+            ? $"已换一批 · {MediaItems.Count} 项（收藏还是空的，这次看全库）"
+            : $"已换一批 · {MediaItems.Count} 项";
     }
 
     /// <summary>池子类型切换。</summary>

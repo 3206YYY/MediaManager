@@ -32,6 +32,12 @@ public partial class MainWindow : Window
     // 框选状态
     private bool _isMarqueeSelecting;
     private Point _marqueeStart;
+    private Rect _marqueeRect;
+    private DispatcherTimer? _marqueeScrollTimer;
+    private int _marqueeScrollDir;   // -1 向上 / 0 停 / 1 向下
+
+    /// <summary>框选拖到边缘多少像素内开始自动滚动。</summary>
+    private const double MarqueeEdge = 26;
 
     // 拖动排序状态
     private bool _reorderDragging;
@@ -50,13 +56,16 @@ public partial class MainWindow : Window
         // 窗口句柄就绪后，按当前主题设置标题栏深浅（Win10/11 沉浸式深色标题栏）
         SourceInitialized += (_, _) => WindowThemeHelper.ApplyTitleBarDarkMode(this, App.IsDarkTheme);
 
+        // 输入法隔离：只有搜索框 / 备注框里才允许 IME 抢按键，
+        // 否则 R 换一批、F 收藏、1-5 打星在中文输入法下会被吃掉（见 InputMethodGuard 注释）
+        InputMethodGuard.Attach(this);
+
         // 拖动滚动条 / End 键跳到列表深处时，状态栏要立刻告诉用户「正在定位并加载…」，
         // 否则一片空白灰块看起来就像卡死了。ScrollChanged 是冒泡事件，挂在 ListBox 上即可收到。
         ThumbList.AddHandler(ScrollViewer.ScrollChangedEvent,
             new ScrollChangedEventHandler(OnThumbListScrollChanged));
 
         AttachPlugins();
-
         UpdateThemeGlyph();
         // 设置页里也可能改主题：回到主窗口时对齐图标，不要出现「明明是浅色却显示月亮」
         Activated += (_, _) => UpdateThemeGlyph();
@@ -355,6 +364,100 @@ public partial class MainWindow : Window
 
         var pos = e.GetPosition(ThumbList);
         var rect = new Rect(_marqueeStart, pos);
+        _marqueeRect = rect;
+        UpdateMarqueeRect(rect);
+        UpdateMarqueeSelection(rect);
+        UpdateMarqueeAutoScroll(pos);
+    }
+
+    // ---------- 鼠标滚轮（含框选中的自动滚动） ----------
+
+    /// <summary>
+    /// 缩略图网格的滚轮。
+    ///
+    /// 正常状态不做任何事 —— 交给 ScrollViewer 的默认逻辑（它本来就是好的）。
+    /// 只有框选时例外：<c>ThumbList</c> 这时挂着鼠标捕获，滚轮事件会从捕获元素往上冒泡到 Window，
+    /// 而 ScrollViewer 是 ListBox 模板里的**子元素**，根本收不到 ——
+    /// 表现就是「拖框选的时候滚不动，选不了视图外的图片」。
+    /// 这里把滚轮事件重新抛给 ScrollViewer 自己处理，比手算偏移靠谱
+    /// （VirtualizingWrapPanel 的偏移单位不是像素，LineDown() 实测是空操作）。
+    /// </summary>
+    private void OnThumbListPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (!_isMarqueeSelecting) return;
+
+        ScrollGridByWheel(e.Delta);
+
+        // 框选中：内容被挪动了，选框内命中的项要重算（否则选中的还是滚动前那几张）
+        if (_marqueeRect.Width + _marqueeRect.Height > 0)
+            UpdateMarqueeSelection(_marqueeRect);
+
+        e.Handled = true;
+    }
+
+    /// <summary>把滚轮「借道」ScrollViewer 处理：手动再抛一次 MouseWheel 给它。</summary>
+    private void ScrollGridByWheel(int delta)
+    {
+        var sv = FindVisualChild<ScrollViewer>(ThumbList);
+        if (sv == null) return;
+
+        var before = sv.VerticalOffset;
+        var args = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, delta)
+        {
+            RoutedEvent = UIElement.MouseWheelEvent,
+            Source = sv,
+        };
+        sv.RaiseEvent(args);
+
+        // 已经到头（或面板本身不接受这个方向）时不用记，方便以后排查"框选里滚不动"
+        if (Math.Abs(sv.VerticalOffset - before) < 0.01)
+            Serilog.Log.Debug("网格滚轮未产生位移：offset={Offset}（多半已到边界）", before);
+    }
+
+    /// <summary>框选拖到网格上/下边缘时开始自动滚动，方便一拖到底选中视图外的图。</summary>
+    private void UpdateMarqueeAutoScroll(Point pos)
+    {
+        _marqueeScrollDir = pos.Y < MarqueeEdge ? -1
+            : pos.Y > ThumbList.ActualHeight - MarqueeEdge ? 1
+            : 0;
+
+        if (_marqueeScrollDir == 0)
+        {
+            _marqueeScrollTimer?.Stop();
+            return;
+        }
+
+        if (_marqueeScrollTimer == null)
+        {
+            // 必须建在 UI 线程；60ms 一格滚轮 ≈ 每秒 2 行，从顶部一路拖到底不会太暴力
+            _marqueeScrollTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(60),
+            };
+            _marqueeScrollTimer.Tick += (_, _) => MarqueeAutoScrollTick();
+        }
+
+        if (!_marqueeScrollTimer.IsEnabled)
+            _marqueeScrollTimer.Start();
+    }
+
+    private void MarqueeAutoScrollTick()
+    {
+        if (!_isMarqueeSelecting || Mouse.LeftButton != MouseButtonState.Pressed)
+        {
+            _marqueeScrollTimer?.Stop();
+            return;
+        }
+
+        var sv = FindVisualChild<ScrollViewer>(ThumbList);
+        if (sv == null || _marqueeScrollDir == 0) return;
+
+        ScrollGridByWheel(_marqueeScrollDir * 120);
+
+        // 指针可能已经离开网格，仍然按最后一次有效位置重算选框
+        var pos = Mouse.GetPosition(ThumbList);
+        var rect = new Rect(_marqueeStart, pos);
+        _marqueeRect = rect;
         UpdateMarqueeRect(rect);
         UpdateMarqueeSelection(rect);
     }
@@ -371,6 +474,8 @@ public partial class MainWindow : Window
     private void EndMarquee()
     {
         _isMarqueeSelecting = false;
+        _marqueeScrollTimer?.Stop();
+        _marqueeScrollDir = 0;
         SelectionRect.Visibility = Visibility.Collapsed;
         ThumbList.ReleaseMouseCapture();
     }
@@ -641,9 +746,18 @@ public partial class MainWindow : Window
 
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
+        // 焦点在输入框里时，单键快捷键一律不生效。
+        // 否则在搜索框里打字（尤其打中文时的拼音串）会顺手触发收藏 / 打星 / 换一批。
+        if (Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase) return;
+
+        // ⚠ 中文输入法激活时，字母和数字不会以 Key.R 进来，而是 Key.ImeProcessed，
+        // 真实按键在 ImeProcessedKey 里。不做这一步转换，R 换一批 / F 收藏 / 1-5 打星
+        // 对绝大多数中文用户都是失效的（输入法会先弹候选框把按键吃掉）。
+        var key = e.Key == Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
+
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
         {
-            switch (e.Key)
+            switch (key)
             {
                 case Key.A:
                     ThumbList.SelectAll();
@@ -660,14 +774,14 @@ public partial class MainWindow : Window
         }
 
         // R 换一批（仅发现页有效，且不在输入框内）
-        if (e.Key == Key.R && !Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && !Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)
+        if (key == Key.R && !Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && !Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)
             && Keyboard.FocusedElement is not TextBox)
         {
             _viewModel.RefreshDiscoveryCommand.Execute(null);
             e.Handled = true;
             return;
         }
-        switch (e.Key)
+        switch (key)
         {
             case Key.F5:
                 _viewModel.RefreshCommand.Execute(null);
@@ -708,12 +822,52 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnSettings(object sender, RoutedEventArgs e)
+    private void OnSettings(object sender, RoutedEventArgs e) => OpenSettingsDialog();
+
+    /// <summary>打开设置（主界面按钮和全局快捷键共用一份实现）。</summary>
+    public void OpenSettingsDialog()
     {
-        var settings = new SettingsWindow(_viewModel);
-        settings.Owner = this;
+        // 快捷键可能在设置窗口已经开着的时候被按下：再 ShowDialog 一次会套出第二个模态窗，
+        // 关一个还有一个，很容易让人以为程序卡住。已经开着就把它提到前面。
+        if (_settingsWindow is { IsLoaded: true })
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
+        var settings = new SettingsWindow(_viewModel) { Owner = this };
+        _settingsWindow = settings;
+        settings.Closed += (_, _) => _settingsWindow = null;
         settings.ShowDialog();
     }
+
+    private SettingsWindow? _settingsWindow;
+
+    /// <summary>
+    /// 随机打开一张（全局快捷键调用）。
+    /// 只在「当前已加载的列表」里随机 —— 不额外查库，也就不会因为条件不同
+    /// 打开一张界面上根本看不到的素材，让人一头雾水。
+    /// </summary>
+    public void OpenRandomMedia()
+    {
+        var items = _viewModel.MediaItems;
+        if (items.Count == 0)
+        {
+            _viewModel.StatusText = "当前列表是空的，先选个文件夹或换个筛选条件。";
+            return;
+        }
+
+        var index = items.Count == 1 ? 0 : Random.Shared.Next(items.Count);
+        if (items.Count > 1 && index == _lastRandomIndex) index = (index + 1) % items.Count;
+        _lastRandomIndex = index;
+
+        var item = items[index];
+        _viewModel.StatusText = $"随机打开：{item.FileName}";
+        OpenViewer(item);
+    }
+
+    /// <summary>上一次随机到的下标，避免连按两次还是同一张。</summary>
+    private int _lastRandomIndex = -1;
 
     private void OnFindDuplicates(object sender, RoutedEventArgs e)
     {

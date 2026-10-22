@@ -1,0 +1,16 @@
+<Project>
+
+  <!--
+    发布版（Release）剥离本机绝对路径。
+    原因：项目开了 <DebugType>embedded</DebugType>，PDB 会嵌进 dll，
+    里面记录的是源文件的**绝对路径** —— 也就是 C:\Users\<用户名>\... ，
+    打包发出去等于把开发机的用户名和目录结构一起送给每个用户。
+    PathMap 会把这些路径改写成 /_/ 开头的虚拟路径（行号、堆栈照旧可用），
+    发版前请用 build/check_privacy.py 复扫一遍。
+  -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PathMap>$(MSBuildThisFileDirectory)=/_/</PathMap>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+</Project>

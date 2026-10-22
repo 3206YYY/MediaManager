@@ -4,6 +4,7 @@
         Title="设置" Width="1000" Height="720"
         MinWidth="880" MinHeight="580"
         WindowStartupLocation="CenterOwner"
+        PreviewKeyDown="OnWindowPreviewKeyDown"
         Background="{DynamicResource BgBrush}">
 
     <Window.Resources>
@@ -75,6 +76,25 @@
             <Setter Property="MaxWidth" Value="420" />
         </Style>
 
+        <!--
+        快捷键胶囊的宿主：只保留点击 / 悬停语义，外观完全由代码画（Grid + 两个 Rectangle）。
+        ⚠ 不要退回「ControlTemplate + DataTrigger 绑 Tag」那套：实测在深色主题下触发器不匹配，
+        虚线框和灰字都不生效，看起来跟已设置状态一模一样。状态直接改属性最省心。
+        -->
+        <Style x:Key="HotkeyCapsule" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="PageTitle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="20" />
             <Setter Property="FontWeight" Value="Bold" />
@@ -120,6 +140,7 @@
                         <ListBoxItem Content="🎨  常规与外观" Tag="general" IsSelected="True" />
                         <ListBoxItem Content="⚡  媒体与性能" Tag="media" />
                         <ListBoxItem Content="🧷  系统集成" Tag="integration" />
+                        <ListBoxItem Content="⌨  快捷键" Tag="hotkeys" />
                         <ListBoxItem Content="💾  备份与迁移" Tag="storage" />
                         <ListBoxItem Content="🧩  插件扩展" Tag="plugins" />
                         <ListBoxItem Content="ℹ️  关于与更新" Tag="about" />
@@ -129,7 +150,9 @@
 
             <!-- ============ 右侧内容 ============ -->
             <ScrollViewer x:Name="ContentScroll" Grid.Column="1"
-                          VerticalScrollBarVisibility="Auto" Padding="26,22,26,18">
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Padding="26,22,26,18">
                 <Grid>
 
                     <!-- ================ 常规与外观（最常用，放第一页） ================ -->
@@ -302,6 +325,40 @@
                         </Border>
                     </StackPanel>
 
+                    <!-- ================ 快捷键 ================ -->
+                    <StackPanel x:Name="PageHotkeys" Visibility="Collapsed">
+                        <TextBlock Text="快捷键" Style="{StaticResource PageTitle}" />
+                        <TextBlock Text="全局快捷键：程序缩在托盘里、窗口在后台时也能用。点右边的按键框，再按下你想要的组合键即可。"
+                                   Style="{StaticResource PageSubtitle}" />
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="全局快捷键" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="可以单独用 F1~F24；其它键必须搭配 Ctrl / Alt / Shift / Win。录键时按 Esc 取消，按 Delete 清除。"
+                                           Style="{StaticResource Hint}" Margin="0,0,0,14" />
+                                <!-- 具体行由 HotkeyActions 生成：文案与存库键只有一份，不会写着写着对不上 -->
+                                <StackPanel x:Name="HotkeyRows" />
+                                <TextBlock x:Name="HotkeyStatusText" Style="{StaticResource Hint}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="几点说明" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10">
+                                    <Run Text="1." /> 保存后立即生效，不用重启；<LineBreak />
+                                    <Run Text="2." /> 提示「已被其它程序占用」就换一个组合，截图 / 录屏 / 输入法工具最容易撞；<LineBreak />
+                                    <Run Text="3." /> Win 键的组合有一部分被 Windows 自己占用，注册会失败；<LineBreak />
+                                    <Run Text="4." /> 便携版换电脑时快捷键跟着数据库一起走。
+                                </TextBlock>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="恢复默认" Click="OnHotkeyRestoreDefaults" />
+                                    <Button Content="全部清除" Click="OnHotkeyClearAll" Margin="8,0,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
                     <!-- ================ 备份与迁移 ================ -->
                     <StackPanel x:Name="PageStorage" Visibility="Collapsed">
                         <TextBlock Text="备份与迁移" Style="{StaticResource PageTitle}" />
@@ -335,6 +392,34 @@
                                 </ComboBox>
                                 <TextBlock x:Name="LastBackupText" Style="{StaticResource Hint}" Margin="0,2,0,4" />
                                 <TextBlock x:Name="BackupDirText" Style="{StaticResource Hint}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 🕒 历史快照（时光机）：自动备份节点 + 一键回退 -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="🕒 历史快照（时光机）" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,6"
+                                           Text="程序每次启动、以及按上面的间隔会自动存一份快照，最多保留 7 份，按时间从新到旧排列。选一个时间点就能把整个整理库退回那一刻。" />
+                                <TextBlock x:Name="SnapshotSummaryText" Style="{StaticResource Hint}"
+                                           Margin="0,0,0,8" />
+
+                                <Border x:Name="SnapshotEmptyBox" Visibility="Collapsed"
+                                        Background="{DynamicResource SidebarBrush}" CornerRadius="6"
+                                        Padding="12,10" Margin="0,0,0,6">
+                                    <TextBlock Style="{StaticResource Hint}"
+                                               Text="还没有自动备份节点。点下面「立即备份一次」就能生成第一个时间点。" />
+                                </Border>
+
+                                <StackPanel x:Name="SnapshotListPanel" />
+
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="📦 立即备份一次" Click="OnBackupNow" />
+                                    <Button Content="📂 打开备份目录" Click="OnOpenBackupDir" Margin="8,0,0,0" />
+                                    <TextBlock x:Name="SnapshotDirText" Style="{StaticResource Hint}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0"
+                                               TextTrimming="CharacterEllipsis" MaxWidth="420" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
 
@@ -456,5 +541,23 @@
                            Text="主题立即生效；其余设置保存后生效。" />
             </DockPanel>
         </Border>
+
+        <!-- ============ 恢复数据遮罩（覆盖整窗，挡住一切点击） ============ -->
+        <Grid x:Name="RestoreOverlay" Grid.RowSpan="2" Panel.ZIndex="2000"
+              Visibility="Collapsed" Background="#CC000000">
+            <Border Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="10" Padding="30,24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <StackPanel Width="320">
+                    <TextBlock Text="正在恢复数据，请勿关闭软件…"
+                               FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"
+                               HorizontalAlignment="Center" TextAlignment="Center" />
+                    <ProgressBar IsIndeterminate="True" Height="6" Margin="0,16,0,12" />
+                    <TextBlock x:Name="RestoreStepText" Text="准备中…"
+                               Style="{StaticResource Hint}" HorizontalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

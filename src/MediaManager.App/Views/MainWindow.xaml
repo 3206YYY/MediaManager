@@ -1,4 +1,4 @@
-<Window x:Class="MediaManager.App.Views.MainWindow"
+﻿<Window x:Class="MediaManager.App.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -14,6 +14,7 @@
         Background="{DynamicResource BgBrush}"
         Closing="OnClosing"
         KeyDown="OnKeyDown"
+        InputMethod.IsInputMethodEnabled="False"
         AllowDrop="True"
         DragOver="OnDragOver"
         Drop="OnDrop">
@@ -31,6 +32,7 @@
                 Padding="10,8">
             <DockPanel>
                 <TextBox DockPanel.Dock="Left" Width="240" Margin="0,0,10,0"
+                         InputMethod.IsInputMethodEnabled="True"
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="搜索（Ctrl+F）" />
                 <Button DockPanel.Dock="Left" Content="🔍" Margin="0,0,10,0"
@@ -317,6 +319,7 @@
                          PreviewMouseLeftButtonDown="OnThumbListMouseDown"
                          PreviewMouseMove="OnThumbListMouseMove"
                          PreviewMouseLeftButtonUp="OnThumbListMouseUp"
+                         PreviewMouseWheel="OnThumbListPreviewMouseWheel"
                          SelectedItem="{Binding SelectedItem, Mode=TwoWay}">
                     <ListBox.ContextMenu>
                         <ContextMenu Opened="OnContextMenuOpened">
@@ -513,6 +516,7 @@
 
                         <TextBlock Text="备注" FontWeight="Bold" Margin="0,0,0,6" />
                         <TextBox x:Name="NoteBox"
+                                 InputMethod.IsInputMethodEnabled="True"
                                  Text="{Binding NoteEditor, UpdateSourceTrigger=PropertyChanged}"
                                  MinHeight="40" MaxHeight="160" TextWrapping="Wrap" AcceptsReturn="True"
                                  VerticalScrollBarVisibility="Auto"

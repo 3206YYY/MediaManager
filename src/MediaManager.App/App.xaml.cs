@@ -22,6 +22,7 @@ public partial class App : Application
 {
     private IServiceProvider? _provider;
     private TrayIconService? _tray;
+    private Services.HotkeyService? _hotkeys;
     private MainWindow? _mainWindow;
 
     /// <summary>后台任务的取消令牌：退出时统一取消，避免关窗后还在读盘。</summary>
@@ -57,6 +58,7 @@ public partial class App : Application
         services.AddLogging(b => b.AddSerilog(Log.Logger, dispose: false));
         services.AddInfrastructure();
         services.AddSingleton<Services.DeletedItemsService>();
+        services.AddSingleton<Services.HotkeyService>();
         services.AddSingleton<Plugins.PluginService>();
         services.AddSingleton<MainViewModel>();
         services.AddTransient<ViewerViewModel>();
@@ -159,6 +161,29 @@ public partial class App : Application
             // 5.5) 插件：后台加载，慢插件不会挡住开窗；加载失败只影响它自己
             _ = provider.GetRequiredService<Plugins.PluginService>().ReloadAsync();
 
+            // 5.6) 全局快捷键：必须在 UI 线程注册（要建消息窗口），失败也不影响其它功能
+            try
+            {
+                _hotkeys = provider.GetRequiredService<Services.HotkeyService>();
+                _hotkeys.Pressed += action => mainWindow.Dispatcher.BeginInvoke(() => HandleHotkey(action));
+
+                var results = await _hotkeys.LoadAsync(provider.GetRequiredService<IMediaRepository>());
+                var failed = results.Where(r => !r.Success).ToList();
+                if (failed.Count > 0)
+                {
+                    // 注册失败不弹窗（开机就弹窗最烦人），但必须在状态栏说清楚，
+                    // 否则用户只会觉得「我设了快捷键怎么按都没反应」。
+                    var names = string.Join("、", failed.Select(f =>
+                        MediaManager.App.Services.HotkeyActions.All.FirstOrDefault(a => a.Id == f.ActionId)?.Title ?? f.ActionId));
+                    provider.GetRequiredService<MainViewModel>().StatusText =
+                        $"全局快捷键未生效：{names}（可能被其它程序占用），可在 设置 → 快捷键 换一个";
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "注册全局快捷键失败");
+            }
+
             // 6) 补齐历史数据缺失的图片宽高（老库全是空值，界面一直显示「未知」）
             _ = Task.Run(async () =>
             {
@@ -214,26 +239,107 @@ public partial class App : Application
         {
             try
             {
+                if (_bgCts.IsCancellationRequested) break;
+
                 var s = await repo.GetSettingAsync("AutoBackupIntervalMinutes");
                 int intervalMinutes = int.TryParse(s, out var v) ? v : 0;
 
                 if (intervalMinutes <= 0)
                 {
                     // 未开启自动备份：每分钟轮询一次设置
-                    await Task.Delay(TimeSpan.FromMinutes(1));
+                    await Task.Delay(TimeSpan.FromMinutes(1), _bgCts.Token);
                     continue;
                 }
 
-                await Task.Delay(TimeSpan.FromMinutes(intervalMinutes));
+                await Task.Delay(TimeSpan.FromMinutes(intervalMinutes), _bgCts.Token);
                 await Task.Run(backup.BackupAsync);
                 Log.Information("自动备份完成（间隔 {Interval} 分钟）", intervalMinutes);
+            }
+            catch (OperationCanceledException)
+            {
+                // 恢复数据 / 退出时会取消：直接收工，绝不能在覆盖库的窗口期里再去备份
+                break;
             }
             catch (Exception ex)
             {
                 Log.Warning(ex, "自动备份循环异常");
-                await Task.Delay(TimeSpan.FromMinutes(1));
+                try { await Task.Delay(TimeSpan.FromMinutes(1), _bgCts.Token); }
+                catch (OperationCanceledException) { break; }
             }
         }
+    }
+
+    // ===================================================================
+    //  历史快照恢复（时光机）
+    // ===================================================================
+
+    /// <summary>恢复数据期间置位：退出时不能再备份一次，否则会把刚恢复的快照轮换掉。</summary>
+    private bool _suppressExitBackup;
+
+    /// <summary>
+    /// 恢复数据前把所有会碰数据库/磁盘的后台工作停下来：
+    /// 扫描、缩略图队列、定时备份、尺寸补齐。调用方随后才允许覆盖 library.db。
+    /// </summary>
+    public static async Task PrepareForDatabaseRestoreAsync(Action<string>? report = null)
+    {
+        if (Current is not App app || app._provider == null) return;
+
+        report?.Invoke("停止后台扫描与缩略图任务…");
+        try
+        {
+            app._provider.GetRequiredService<MainViewModel>().CancelBackgroundWork();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "取消界面后台任务失败（继续）");
+        }
+
+        // 停掉定时备份循环 + 尺寸补齐
+        try { app._bgCts.Cancel(); } catch { /* 已取消 */ }
+
+        // 缩略图队列：恢复完就重启程序，这里直接连 worker 一起停掉最稳
+        try
+        {
+            if (app._provider.GetService(typeof(IThumbnailService)) is IDisposable thumb)
+                thumb.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "停止缩略图服务失败（继续）");
+        }
+
+        report?.Invoke("等待后台任务收尾…");
+        await Task.Delay(400);
+    }
+
+    /// <summary>
+    /// 恢复完成后重启自己：不重建 DataContext（那太容易出 bug），直接新起一个进程再退掉当前进程。
+    /// </summary>
+    public static void RestartApplication()
+    {
+        if (Current is App app) app._suppressExitBackup = true;
+
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (!string.IsNullOrWhiteSpace(exe))
+            {
+                var args = string.Join(" ", Environment.GetCommandLineArgs().Skip(1)
+                    .Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+                Process.Start(new ProcessStartInfo(exe, args)
+                {
+                    UseShellExecute = true,
+                    WorkingDirectory = AppContext.BaseDirectory,
+                });
+                Log.Information("数据恢复完成，正在重启程序");
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "自动重启失败，请手动重新打开程序");
+        }
+
+        Current?.Shutdown();
     }
 
     /// <summary>把内存占用写进日志，便于用户反馈「卡/占内存」时定位。</summary>
@@ -445,6 +551,9 @@ public partial class App : Application
         foreach (Window w in Application.Current.Windows)
             WindowThemeHelper.ApplyTitleBarDarkMode(w, isDark);
 
+        // 托盘右键菜单是 WinForms 的，不吃资源字典 → 每次切主题都要重新上色
+        if (Current is App trayOwner) trayOwner._tray?.ApplyTheme();
+
         // 同步内存配置：否则设置窗口会用启动时的旧主题初始化下拉框，
         // 用户再保存任何其他设置时又把旧主题写回数据库（表现为「主题自己变回去」）。
         try
@@ -550,6 +659,62 @@ public partial class App : Application
         MainWindow.Activate();
     }
 
+    /// <summary>
+    /// 全局快捷键的分发。窗口隐藏时也能按下，所以每一条都先保证窗口可见。
+    /// </summary>
+    private void HandleHotkey(string action)
+    {
+        try
+        {
+            // 记一行：用户反馈「按了没反应」时，先看日志就知道是没触发还是触发了没执行
+            Log.Information("全局快捷键触发：{Action}", action);
+
+            switch (action)
+            {
+                case MediaManager.App.Services.HotkeyActions.ShowWindow:
+                    ToggleMainWindow();
+                    break;
+
+                case MediaManager.App.Services.HotkeyActions.Discover:
+                    ShowMainWindow();
+                    _ = _provider!.GetRequiredService<MainViewModel>().SelectViewCommand.ExecuteAsync("discovery");
+                    break;
+
+                case MediaManager.App.Services.HotkeyActions.RandomMedia:
+                    ShowMainWindow();
+                    _mainWindow?.OpenRandomMedia();
+                    break;
+
+                case MediaManager.App.Services.HotkeyActions.Settings:
+                    ShowMainWindow();
+                    _mainWindow?.OpenSettingsDialog();
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "执行全局快捷键 {Action} 失败", action);
+        }
+    }
+
+    /// <summary>
+    /// 显示 / 隐藏主窗口。
+    /// 只有「窗口在前台」时才隐藏；窗口在后面被别的程序挡着时，第一下应该是把它调到前面，
+    /// 而不是直接藏起来 —— 那会让人以为快捷键坏了。
+    /// </summary>
+    private void ToggleMainWindow()
+    {
+        if (MainWindow == null) return;
+
+        if (MainWindow.IsVisible && MainWindow.WindowState != WindowState.Minimized && MainWindow.IsActive)
+        {
+            MainWindow.Hide();
+            return;
+        }
+
+        ShowMainWindow();
+    }
+
     /// <summary>真正退出应用（托盘「退出」菜单）。</summary>
     private void ShutdownApp()
     {
@@ -564,20 +729,29 @@ public partial class App : Application
             _tray?.Dispose();
             _tray = null;
 
+            // 注销全局热键再退出，避免系统里残留占用（换版本重开后注册不上）
+            try { _hotkeys?.Dispose(); } catch (Exception ex) { Log.Warning(ex, "注销全局快捷键失败"); }
+            _hotkeys = null;
+
             if (_provider != null)
             {
                 // 给插件一个收尾机会（异常已在内部吞掉，不会拖慢退出）
                 try { _provider.GetRequiredService<Plugins.PluginService>().ShutdownAll(); }
                 catch (Exception ex) { Log.Warning(ex, "插件退出清理失败"); }
 
-                // 关闭前备份一次（涵盖本次会话的所有修改）
-                try
+                // 关闭前备份一次（涵盖本次会话的所有修改）。
+                // 恢复快照后重启时会置位 _suppressExitBackup：那时库刚被换掉，
+                // 再备份一次会立刻轮换 bak.1..7，用户刚看到的「时间节点」全被挪位。
+                if (!_suppressExitBackup)
                 {
-                    await _provider.GetRequiredService<IDatabaseBackupService>().BackupAsync();
-                }
-                catch (Exception ex)
-                {
-                    Log.Warning(ex, "退出备份失败");
+                    try
+                    {
+                        await _provider.GetRequiredService<IDatabaseBackupService>().BackupAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warning(ex, "退出备份失败");
+                    }
                 }
 
                 if (_provider is IDisposable d) d.Dispose();

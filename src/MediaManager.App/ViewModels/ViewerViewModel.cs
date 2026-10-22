@@ -27,6 +27,14 @@ public partial class ViewerViewModel : ObservableObject
         _items = new List<ThumbnailItemViewModel>();
     }
 
+    /// <summary>供查看器做随机跳转等扩展查询使用。</summary>
+    public IMediaRepository Repository => _repo;
+
+    /// <summary>当前查看的列表（含图片与视频，视频项无法在查看器内显示）。</summary>
+    public IReadOnlyList<ThumbnailItemViewModel> Items => _items;
+
+    public int CurrentIndex => _index;
+
     public void Initialize(List<ThumbnailItemViewModel> items, int index)
     {
         _items = items;
@@ -101,7 +109,7 @@ public partial class ViewerViewModel : ObservableObject
     /// </summary>
     private async Task LoadImageFromFile(string path, int token)
     {
-        BitmapImage? result = null;
+        BitmapSource? result = null;
         string? error = null;
         try
         {
@@ -145,13 +153,13 @@ public partial class ViewerViewModel : ObservableObject
         });
     }
 
-    /// <summary>从内存字节解码，限制像素尺寸，Freeze 跨线程安全。</summary>
-    private static BitmapImage Decode(byte[] bytes)
+    /// <summary>从内存字节解码，限制像素尺寸、按 EXIF 方向摆正，Freeze 跨线程安全。</summary>
+    private static BitmapSource Decode(byte[] bytes)
     {
         using var ms = new System.IO.MemoryStream(bytes, writable: false);
 
-        // 只读帧元数据拿尺寸（DelayCreation 不解码像素，极快），避免双重解码拖慢打开速度
-        int targetW = 0, targetH = 0;
+        // 只读帧元数据拿尺寸和方向（DelayCreation 不解码像素，极快），避免双重解码拖慢打开速度
+        int targetW = 0, targetH = 0, orientation = 1;
         try
         {
             using var probeMs = new System.IO.MemoryStream(bytes, writable: false);
@@ -163,6 +171,8 @@ public partial class ViewerViewModel : ObservableObject
                 targetW = (int)(w * scale);
                 targetH = (int)(h * scale);
             }
+
+            orientation = ReadOrientation(frame.Metadata as BitmapMetadata);
         }
         catch
         {
@@ -181,7 +191,92 @@ public partial class ViewerViewModel : ObservableObject
         bmp.StreamSource = ms;
         bmp.EndInit();
         bmp.Freeze();
-        return bmp;
+
+        // WPF 解码不会自动按 EXIF 转正，而导出（ImageSharp AutoOrient）会：
+        // 不在这里摆正的话，手机竖拍照片在编辑器里是横的，保存后文字/马赛克整体错位。
+        return orientation is >= 2 and <= 8 ? ApplyOrientation(bmp, orientation) : bmp;
+    }
+
+    /// <summary>读取 EXIF Orientation（274）；读不到按 1（正常）处理。</summary>
+    private static int ReadOrientation(BitmapMetadata? metadata)
+    {
+        if (metadata == null) return 1;
+        try
+        {
+            return metadata.GetQuery("/app1/ifd/{ushort=274}") switch
+            {
+                ushort u => u,
+                short s => s,
+                int i => i,
+                uint ui => (int)ui,
+                _ => 1,
+            };
+        }
+        catch
+        {
+            return 1;
+        }
+    }
+
+    /// <summary>
+    /// 按 EXIF 方向重排像素（WPF 的 BitmapImage.Rotation 不支持镜像，这里统一处理 8 种方向）。
+    /// </summary>
+    private static BitmapSource ApplyOrientation(BitmapSource source, int orientation)
+    {
+        var w = source.PixelWidth;
+        var h = source.PixelHeight;
+        var format = source.Format;
+        var bytesPerPixel = (format.BitsPerPixel + 7) / 8;
+        var srcStride = w * bytesPerPixel;
+
+        var src = new byte[srcStride * h];
+        source.CopyPixels(src, srcStride, 0);
+
+        var swap = orientation >= 5;   // 5/6/7/8 会交换宽高
+        var dw = swap ? h : w;
+        var dh = swap ? w : h;
+        var dstStride = dw * bytesPerPixel;
+        var dst = new byte[dstStride * dh];
+
+        for (var dy = 0; dy < dh; dy++)
+        {
+            for (var dx = 0; dx < dw; dx++)
+            {
+                int sx, sy;
+                switch (orientation)
+                {
+                    case 2: sx = w - 1 - dx; sy = dy; break;
+                    case 3: sx = w - 1 - dx; sy = h - 1 - dy; break;
+                    case 4: sx = dx; sy = h - 1 - dy; break;
+                    case 5: sx = dy; sy = dx; break;
+                    case 6: sx = dy; sy = h - 1 - dx; break;
+                    case 7: sx = w - 1 - dy; sy = h - 1 - dx; break;
+                    case 8: sx = w - 1 - dy; sy = dx; break;
+                    default: sx = dx; sy = dy; break;
+                }
+
+                Buffer.BlockCopy(
+                    src, sy * srcStride + sx * bytesPerPixel,
+                    dst, dy * dstStride + dx * bytesPerPixel,
+                    bytesPerPixel);
+            }
+        }
+
+        var result = BitmapSource.Create(
+            dw, dh,
+            source.DpiX > 0 ? source.DpiX : 96,
+            source.DpiY > 0 ? source.DpiY : 96,
+            format, source.Palette, dst, dstStride);
+        result.Freeze();
+        return result;
+    }
+
+    /// <summary>原地跳到列表中的指定项（随机跳转用，不重建窗口）。</summary>
+    public void JumpTo(int index)
+    {
+        if (index < 0 || index >= _items.Count || index == _index) return;
+        _index = index;
+        LoadCurrent();
     }
 
     [RelayCommand]

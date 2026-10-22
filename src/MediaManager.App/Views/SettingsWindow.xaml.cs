@@ -1,11 +1,14 @@
 ﻿using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using MediaManager.App.Plugins;
 using MediaManager.App.Services;
 using MediaManager.App.ViewModels;
 using MediaManager.App.Views.Dialogs;
 using MediaManager.Core.Diagnostics;
+using MediaManager.Core.Input;
 using MediaManager.Core.Plugins;
 using MediaManager.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +34,9 @@ public partial class SettingsWindow : Window
         // 窗口句柄就绪后，按当前主题设置标题栏深浅
         SourceInitialized += (_, _) => WindowThemeHelper.ApplyTitleBarDarkMode(this, App.IsDarkTheme);
 
+        // Alt+Tab 切走 / 弹窗抢焦点时结束录键，避免「看起来还在录、其实按键都跑到别处」
+        Deactivated += (_, _) => EndCapture();
+
         InitializePages();
 
         // 不要在构造里同步等数据库：设置窗口打开时卡一下是最容易被感知的
@@ -44,11 +50,13 @@ public partial class SettingsWindow : Window
 
     private IReadOnlyList<FrameworkElement> Pages => new[]
     {
-        PageGeneral, PageMedia, PageIntegration, PageStorage, PagePlugins, PageAbout,
+        PageGeneral, PageMedia, PageIntegration, PageHotkeys, PageStorage, PagePlugins, PageAbout,
     };
 
     private void InitializePages()
     {
+        BuildHotkeyRows();
+
         // XAML 里给第一项设了 IsSelected，事件可能在字段赋值前就触发，
         // 所以这里统一显式指定一次初始页，别依赖事件时序
         ShowPage("general");
@@ -71,6 +79,7 @@ public partial class SettingsWindow : Window
         {
             "media" => PageMedia,
             "integration" => PageIntegration,
+            "hotkeys" => PageHotkeys,
             "storage" => PageStorage,
             "plugins" => PagePlugins,
             "about" => PageAbout,
@@ -181,6 +190,601 @@ public partial class SettingsWindow : Window
         };
 
         RefreshShellIntegrationState();
+        RefreshSnapshots();
+        await LoadHotkeysAsync();
+    }
+
+    // ===================================================================
+    //  历史快照（时光机）
+    // ===================================================================
+
+    /// <summary>恢复过程中置位：遮罩期间禁止重复触发。</summary>
+    private bool _restoring;
+
+    /// <summary>刷新快照列表（时间从新到旧，每行带「恢复至此节点」）。</summary>
+    private void RefreshSnapshots()
+    {
+        try
+        {
+            var snapshots = App.Services.GetRequiredService<IDatabaseSnapshotService>();
+            var list = snapshots.ListSnapshots();
+
+            SnapshotListPanel.Children.Clear();
+            SnapshotEmptyBox.Visibility = list.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            SnapshotSummaryText.Text = list.Count == 0
+                ? "当前没有可用节点。"
+                : $"共 {list.Count} 个节点，最近一次 {list[0].RelativeText}，最旧一份 {list[^1].TimeText}。";
+            SnapshotDirText.Text = snapshots.BackupDirectory;
+
+            for (var i = 0; i < list.Count; i++)
+                SnapshotListPanel.Children.Add(BuildSnapshotRow(list[i], isNewest: i == 0));
+        }
+        catch (Exception ex)
+        {
+            SnapshotSummaryText.Text = "读取历史快照失败：" + ex.Message;
+        }
+    }
+
+    /// <summary>一行 = 时间 + 相对时间 + 文件名 + 大小 + 恢复按钮。</summary>
+    private UIElement BuildSnapshotRow(DatabaseSnapshot snap, bool isNewest)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 0) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var info = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+
+        var titleRow = new StackPanel { Orientation = Orientation.Horizontal };
+        titleRow.Children.Add(new TextBlock
+        {
+            Text = snap.TimeText,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (Brush)FindResource("TextBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        titleRow.Children.Add(new TextBlock
+        {
+            Text = snap.RelativeText,
+            FontSize = 11,
+            Margin = new Thickness(8, 0, 0, 0),
+            Foreground = (Brush)FindResource("TextSecondaryBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        if (isNewest)
+        {
+            titleRow.Children.Add(new Border
+            {
+                Background = (Brush)FindResource("PrimaryBrush"),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 1, 6, 1),
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = new TextBlock
+                {
+                    Text = "最近一次",
+                    FontSize = 10.5,
+                    Foreground = Brushes.White,
+                },
+            });
+        }
+
+        info.Children.Add(titleRow);
+        info.Children.Add(new TextBlock
+        {
+            Text = $"{snap.FileName} · {snap.SizeText}",
+            FontSize = 11.5,
+            Margin = new Thickness(0, 2, 0, 0),
+            Foreground = (Brush)FindResource("TextSecondaryBrush"),
+        });
+
+        Grid.SetColumn(info, 0);
+        grid.Children.Add(info);
+
+        var restore = new Button
+        {
+            Content = "🔄 恢复至此节点",
+            Tag = snap,
+            MinWidth = 128,
+            Padding = new Thickness(12, 5, 12, 5),
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        restore.Click += OnRestoreSnapshot;
+        Grid.SetColumn(restore, 1);
+        grid.Children.Add(restore);
+
+        return new Border
+        {
+            Background = (Brush)FindResource("SidebarBrush"),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 8, 12, 8),
+            Margin = new Thickness(0, 0, 0, 6),
+            Child = grid,
+        };
+    }
+
+    /// <summary>立即备份一次：用户刚整理完想立刻钉一个时间点，不用等间隔。</summary>
+    private async void OnBackupNow(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var backup = App.Services.GetRequiredService<IDatabaseBackupService>();
+            await backup.BackupAsync();
+            RefreshSnapshots();
+            CustomMessageBox.Success("已经保存了一个新的快照节点，可以在上面列表里看到。", "备份完成");
+        }
+        catch (Exception ex)
+        {
+            CustomMessageBox.Error(StorageErrors.WithAction(ex, "备份"), "备份失败");
+        }
+    }
+
+    private void ShowRestoreOverlay(bool show, string? step = null)
+    {
+        if (step != null) RestoreStepText.Text = step;
+        RestoreOverlay.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        // 遮罩可见时鼠标事件被它吃掉，但按钮仍可能通过快捷键触发，这里再兜一层
+        SaveButton.IsEnabled = !show;
+    }
+
+    /// <summary>
+    /// 恢复到某个快照节点。
+    /// 顺序不能变：确认 → 校验节点 → 停后台任务 → 备份当前库 → 覆盖 → 校验 → 重启。
+    /// 任何一步失败都不能让用户面对一个半损坏的库，所以失败一律走安全副本回滚。
+    /// </summary>
+    private async void OnRestoreSnapshot(object sender, RoutedEventArgs e)
+    {
+        if (_restoring) return;
+        if ((sender as Button)?.Tag is not DatabaseSnapshot snap) return;
+
+        var confirmed = CustomMessageBox.Confirm(
+            $"您当前的数据将被覆盖，并恢复到 {snap.TimeText} 的状态。是否继续？\n\n"
+            + "（为了安全，系统会在恢复前自动保存当前状态）\n\n"
+            + $"节点文件：{snap.FileName}（{snap.SizeText} · {snap.RelativeText}）",
+            "恢复到历史节点", confirmText: "恢复", cancelText: "取消", danger: true);
+        if (!confirmed) return;
+
+        _restoring = true;
+        ShowRestoreOverlay(true, "检查备份节点…");
+
+        try
+        {
+            var snapshots = App.Services.GetRequiredService<IDatabaseSnapshotService>();
+
+            // 0) 坏节点绝不覆盖好库：先做完整校验（quick_check，毫秒级）
+            if (!snapshots.VerifySnapshot(snap.Path, out var verifyError))
+            {
+                ShowRestoreOverlay(false);
+                _restoring = false;
+                CustomMessageBox.Error($"这个节点无法使用：{verifyError}\n\n当前数据没有被修改。请换一个时间点。", "无法恢复");
+                return;
+            }
+
+            // 1) 停掉所有会碰数据库的后台任务（扫描 / 缩略图 / 定时备份）
+            await App.PrepareForDatabaseRestoreAsync(step =>
+                Dispatcher.Invoke(() => RestoreStepText.Text = step));
+
+            // 2) 备份当前库 → 覆盖 → 校验（服务内部保证顺序）
+            var progress = new Progress<string>(step => RestoreStepText.Text = step);
+            var result = await snapshots.RestoreAsync(snap.Path, progress);
+
+            if (result.Success)
+            {
+                RestoreStepText.Text = "恢复成功，正在重启程序…";
+                await Task.Delay(700);
+                App.RestartApplication();
+                return;
+            }
+
+            ShowRestoreOverlay(false);
+            _restoring = false;
+
+            if (result.RolledBack)
+            {
+                CustomMessageBox.Error(
+                    $"恢复失败：{result.Error}\n\n已自动用恢复前的副本还原了当前数据，没有损坏。请重试或换一个节点。",
+                    "恢复失败");
+            }
+            else
+            {
+                CustomMessageBox.Error(
+                    $"恢复失败：{result.Error}\n\n恢复前的数据已保存在：\n{snapshots.SafetyCopyPath}\n\n"
+                    + "如果程序打不开数据，请把这个文件复制一份改名为 library.db 覆盖后再试。",
+                    "恢复失败");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowRestoreOverlay(false);
+            _restoring = false;
+            CustomMessageBox.Error(StorageErrors.WithAction(ex, "恢复数据"), "恢复失败");
+        }
+        finally
+        {
+            if (!_restoring) ShowRestoreOverlay(false);
+        }
+    }
+
+    // ===================================================================
+    //  全局快捷键
+    // ===================================================================
+
+    /// <summary>当前编辑中的快捷键（改完点「保存」才落库并注册）。</summary>
+    private readonly Dictionary<string, HotkeyGesture> _hotkeys = new();
+
+    /// <summary>动作 id → 胶囊（自绘，见 <see cref="HotkeyCapsule"/>）。</summary>
+    private readonly Dictionary<string, HotkeyCapsule> _hotkeyBoxes = new();
+
+    /// <summary>正在录键的动作 id；null 表示没在录。</summary>
+    private string? _capturingAction;
+
+    private HotkeyService? _hotkeyService;
+    private HotkeyService? HotkeySvc => _hotkeyService ??= TryGetHotkeyService();
+
+    private static HotkeyService? TryGetHotkeyService()
+    {
+        try { return App.Services.GetService<HotkeyService>(); }
+        catch { return null; }
+    }
+
+    /// <summary>一个快捷键胶囊：外层是按钮（管点击），里面三个元素自己画。</summary>
+    private sealed class HotkeyCapsule
+    {
+        public required Button Host { get; init; }
+        public required System.Windows.Shapes.Rectangle Solid { get; init; }
+        public required System.Windows.Shapes.Rectangle Dash { get; init; }
+        public required TextBlock Label { get; init; }
+        public bool Hovering { get; set; }
+    }
+
+    /// <summary>按 HotkeyActions 生成行：文案、存库键、默认值都只有那一份。</summary>
+    private void BuildHotkeyRows()
+    {
+        if (HotkeyRows == null) return;
+
+        var capsuleStyle = (Style)FindResource("HotkeyCapsule");
+
+        foreach (var def in HotkeyActions.All)
+        {
+            var caption = new TextBlock
+            {
+                Text = def.Title,
+                FontSize = 12.5,
+                Foreground = (Brush)FindResource("TextBrush"),
+            };
+
+            var hint = new TextBlock
+            {
+                Text = def.Hint,
+                FontSize = 11.5,
+                Margin = new Thickness(0, 2, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource("TextSecondaryBrush"),
+            };
+
+            var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0) };
+            text.Children.Add(caption);
+            text.Children.Add(hint);
+
+            var capsule = BuildCapsule(def.Id, capsuleStyle);
+
+            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 12), LastChildFill = true };
+            DockPanel.SetDock(capsule.Host, Dock.Right);
+            row.Children.Add(capsule.Host);
+            row.Children.Add(text);
+
+            HotkeyRows.Children.Add(row);
+            _hotkeyBoxes[def.Id] = capsule;
+        }
+
+        RefreshHotkeyBoxes();
+    }
+
+    /// <summary>
+    /// 画一个胶囊。用 Rectangle 而不是 Border，因为只有 Rectangle 能画虚线（StrokeDashArray）。
+    /// 三种外观全靠这里改属性，不用 ControlTemplate 触发器 —— 那套在深色主题下实测不生效。
+    /// </summary>
+    private HotkeyCapsule BuildCapsule(string actionId, Style hostStyle)
+    {
+        var solid = new System.Windows.Shapes.Rectangle
+        {
+            RadiusX = 6,
+            RadiusY = 6,
+            StrokeThickness = 1,
+            Fill = (Brush)FindResource("SidebarBrush"),
+            Stroke = (Brush)FindResource("BorderBrush"),
+        };
+
+        var dash = new System.Windows.Shapes.Rectangle
+        {
+            RadiusX = 6,
+            RadiusY = 6,
+            StrokeThickness = 1,
+            StrokeDashArray = new DoubleCollection(new[] { 3.0, 2.5 }),
+            Fill = (Brush)FindResource("SidebarBrush"),
+            Stroke = (Brush)FindResource("BorderBrush"),
+            Visibility = Visibility.Collapsed,
+        };
+
+        var label = new TextBlock
+        {
+            Text = "未设置",
+            FontSize = 12.5,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(14, 6, 14, 6),
+            Foreground = (Brush)FindResource("TextSecondaryBrush"),
+        };
+
+        var grid = new Grid { MinWidth = 148, Background = Brushes.Transparent };
+        grid.Children.Add(solid);
+        grid.Children.Add(dash);
+        grid.Children.Add(label);
+
+        var host = new Button
+        {
+            Style = hostStyle,
+            Content = grid,
+            VerticalAlignment = VerticalAlignment.Center,
+            ToolTip = "点一下，再按下想要的组合键（Esc 取消 / Delete 清除）",
+        };
+        host.Click += (_, _) => BeginCapture(actionId);
+
+        var capsule = new HotkeyCapsule { Host = host, Solid = solid, Dash = dash, Label = label };
+
+        // 悬停只提亮边框，不改变状态本身
+        host.MouseEnter += (_, _) => { capsule.Hovering = true; PaintCapsule(capsule, actionId); };
+        host.MouseLeave += (_, _) => { capsule.Hovering = false; PaintCapsule(capsule, actionId); };
+
+        return capsule;
+    }
+
+    /// <summary>把 _hotkeys 里的状态画到胶囊上（不涉及注册）。</summary>
+    private void RefreshHotkeyBoxes()
+    {
+        foreach (var actionId in _hotkeyBoxes.Keys.ToList()) PaintCapsule(_hotkeyBoxes[actionId], actionId);
+    }
+
+    private void PaintCapsule(HotkeyCapsule capsule, string actionId)
+    {
+        var gesture = _hotkeys.TryGetValue(actionId, out var g) ? g : HotkeyGesture.None;
+        var capturing = _capturingAction == actionId;
+
+        if (capturing)
+        {
+            capsule.Label.Text = "按下按键…";
+        }
+        else
+        {
+            capsule.Label.Text = gesture.ToDisplayString();
+        }
+
+        var isUnset = !capturing && gesture.IsEmpty;
+
+        capsule.Dash.Visibility = isUnset ? Visibility.Visible : Visibility.Collapsed;
+        capsule.Solid.Visibility = isUnset ? Visibility.Collapsed : Visibility.Visible;
+
+        var accent = capsule.Hovering || capturing;
+        capsule.Solid.StrokeThickness = capturing ? 2 : 1;
+        capsule.Solid.Stroke = (Brush)FindResource(accent ? "PrimaryBrush" : "BorderBrush");
+        capsule.Solid.Fill = (Brush)FindResource(capturing ? "PanelBrush" : "SidebarBrush");
+        capsule.Dash.Stroke = (Brush)FindResource(accent ? "PrimaryBrush" : "BorderBrush");
+
+        capsule.Label.FontWeight = capturing ? FontWeights.SemiBold : FontWeights.Normal;
+        capsule.Label.Foreground = (Brush)FindResource(
+            accent ? "PrimaryBrush" : isUnset ? "TextSecondaryBrush" : "TextBrush");
+    }
+
+    private async Task LoadHotkeysAsync()
+    {
+        var values = await Task.Run(async () =>
+        {
+            var dict = new Dictionary<string, string?>();
+            foreach (var def in HotkeyActions.All)
+            {
+                dict[def.Id] = await _repo.GetSettingAsync(HotkeyActions.SettingKey(def.Id));
+            }
+            return dict;
+        });
+
+        foreach (var def in HotkeyActions.All)
+        {
+            var raw = values.TryGetValue(def.Id, out var v) ? v : null;
+
+            // null = 从没配置过 → 用默认值；空串 = 用户主动清空 → 保持未设置
+            if (raw == null)
+            {
+                _hotkeys[def.Id] = HotkeyGesture.TryParse(def.Default, out var fallback)
+                    ? fallback
+                    : HotkeyGesture.None;
+                continue;
+            }
+
+            _hotkeys[def.Id] = HotkeyGesture.TryParse(raw, out var gesture) ? gesture : HotkeyGesture.None;
+        }
+
+        RefreshHotkeyBoxes();
+    }
+
+    // ---------- 录键 ----------
+
+    private void BeginCapture(string actionId)
+    {
+        // 再点一次同一个框 = 取消
+        if (_capturingAction == actionId)
+        {
+            EndCapture();
+            return;
+        }
+
+        if (_capturingAction != null) EndCapture();
+
+        // 必须先注销：否则用户要录的组合很可能正是当前已注册的，
+        // 一按就被自己的全局热键抢走（窗口当场被隐藏，看起来像崩了）
+        HotkeySvc?.Suspend();
+
+        _capturingAction = actionId;
+        RefreshHotkeyBoxes();
+
+        var host = _hotkeyBoxes[actionId].Host;
+        host.Focus();
+        Keyboard.Focus(host);
+
+        SetStatus("按 Esc 取消，按 Delete 清除这个快捷键。");
+    }
+
+    private void EndCapture(bool clearStatus = true)
+    {
+        if (_capturingAction == null) return;
+
+        _capturingAction = null;
+        HotkeySvc?.Resume();
+        RefreshHotkeyBoxes();
+
+        if (clearStatus) SetStatus(string.Empty);
+    }
+
+    /// <summary>录键状态下由窗口级 PreviewKeyDown 统一接管（不依赖按钮焦点）。</summary>
+    private void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_capturingAction == null) return;
+
+        var actionId = _capturingAction;
+
+        var key = e.Key switch
+        {
+            Key.System => e.SystemKey,          // Alt 组合会以 System 键出现
+            Key.ImeProcessed => e.ImeProcessedKey,
+            _ => e.Key,
+        };
+
+        // 只按修饰键不算完成，继续等主键
+        if (IsModifierKey(key))
+        {
+            e.Handled = true;
+            return;
+        }
+
+        if (key == Key.Escape)
+        {
+            EndCapture();
+            e.Handled = true;
+            return;
+        }
+
+        if (key is Key.Delete or Key.Back)
+        {
+            AssignGesture(actionId, HotkeyGesture.None);
+            EndCapture(clearStatus: false);
+            SetStatus("已清除这个快捷键。");
+            e.Handled = true;
+            return;
+        }
+
+        var mods = ToHotkeyModifiers(Keyboard.Modifiers);
+        var candidate = new HotkeyGesture(mods, key.ToString());
+
+        if (!HotkeyGesture.TryParse(candidate.ToStorageValue(), out var gesture))
+        {
+            SetStatus("这个组合不能用：字母 / 数字键必须搭配 Ctrl、Alt、Shift 或 Win（F1~F24 可以单独用）。", isError: true);
+            e.Handled = true;
+            return;
+        }
+
+        AssignGesture(actionId, gesture);
+        EndCapture(clearStatus: false);
+        SetStatus($"已设为 {gesture.ToDisplayString()}，点「保存」后生效。");
+        e.Handled = true;
+    }
+
+    /// <summary>赋值；同一组合已被别的动作占用时，自动从那边移走（一个键只能有一个主人）。</summary>
+    private void AssignGesture(string actionId, HotkeyGesture gesture)
+    {
+        string? movedFrom = null;
+
+        if (!gesture.IsEmpty)
+        {
+            var wanted = gesture.ToStorageValue();
+            foreach (var (otherId, other) in _hotkeys.ToList())
+            {
+                if (otherId == actionId || other.IsEmpty) continue;
+                if (!string.Equals(other.ToStorageValue(), wanted, StringComparison.OrdinalIgnoreCase)) continue;
+
+                _hotkeys[otherId] = HotkeyGesture.None;
+                movedFrom = HotkeyActions.All.FirstOrDefault(a => a.Id == otherId)?.Title;
+            }
+        }
+
+        _hotkeys[actionId] = gesture;
+        RefreshHotkeyBoxes();
+
+        if (movedFrom != null)
+            SetStatus($"同一个组合只能给一个动作用，已从「{movedFrom}」移除。");
+    }
+
+    private void OnHotkeyRestoreDefaults(object sender, RoutedEventArgs e)
+    {
+        foreach (var def in HotkeyActions.All)
+        {
+            _hotkeys[def.Id] = HotkeyGesture.TryParse(def.Default, out var g) ? g : HotkeyGesture.None;
+        }
+
+        RefreshHotkeyBoxes();
+        SetStatus("已恢复默认（只有「显示 / 隐藏主窗口」带默认快捷键），点「保存」后生效。");
+    }
+
+    private void OnHotkeyClearAll(object sender, RoutedEventArgs e)
+    {
+        foreach (var def in HotkeyActions.All) _hotkeys[def.Id] = HotkeyGesture.None;
+
+        RefreshHotkeyBoxes();
+        SetStatus("已清空全部快捷键，点「保存」后生效。");
+    }
+
+    private static bool IsModifierKey(Key key) => key
+        is Key.LeftCtrl or Key.RightCtrl
+        or Key.LeftAlt or Key.RightAlt
+        or Key.LeftShift or Key.RightShift
+        or Key.LWin or Key.RWin
+        or Key.None;
+
+    private static HotkeyModifiers ToHotkeyModifiers(ModifierKeys keys)
+    {
+        var mods = HotkeyModifiers.None;
+        if (keys.HasFlag(ModifierKeys.Control)) mods |= HotkeyModifiers.Control;
+        if (keys.HasFlag(ModifierKeys.Alt)) mods |= HotkeyModifiers.Alt;
+        if (keys.HasFlag(ModifierKeys.Shift)) mods |= HotkeyModifiers.Shift;
+        if (keys.HasFlag(ModifierKeys.Windows)) mods |= HotkeyModifiers.Win;
+        return mods;
+    }
+
+    private void SetStatus(string text, bool isError = false)
+    {
+        if (HotkeyStatusText == null) return;
+        HotkeyStatusText.Text = text;
+        HotkeyStatusText.Foreground = isError
+            ? new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B))
+            : (Brush)FindResource("TextSecondaryBrush");
+    }
+
+    /// <summary>把当前快捷键落库，并立即注册（不用重启）。返回注册失败的项。</summary>
+    private async Task<List<HotkeyRegistration>> SaveHotkeysAsync()
+    {
+        foreach (var def in HotkeyActions.All)
+        {
+            var gesture = _hotkeys.TryGetValue(def.Id, out var g) ? g : HotkeyGesture.None;
+            // 存空串而不是 null：null 表示「从没配置过」，下次启动会重新灌默认值
+            await _repo.SetSettingAsync(HotkeyActions.SettingKey(def.Id), gesture.ToStorageValue());
+        }
+
+        var svc = HotkeySvc;
+        if (svc == null) return new List<HotkeyRegistration>();
+
+        var results = svc.Apply(_hotkeys);
+        return results.Where(r => !r.Success).ToList();
     }
 
     // ---------- 资源管理器右键集成 ----------
@@ -396,6 +1000,9 @@ public partial class SettingsWindow : Window
     {
         try
         {
+            // 万一还在录键状态，先收尾（会把全局热键重新注册回来）
+            EndCapture();
+
             var themeTag = (ThemeBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString();
             var deleteTag = (DeleteBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString();
             var discoveryTag = (DiscoveryCountBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString();
@@ -435,7 +1042,29 @@ public partial class SettingsWindow : Window
             // 它会同时落库、写缓存并同步内存配置，避免只改界面不改库。
             await App.SetThemePreferenceAsync(themeTag ?? App.ThemeModeSystem);
 
-            CustomMessageBox.Success("设置已保存。主题已立即生效，其余设置重启后生效。", "保存成功");
+            // 快捷键：存库 + 立即重新注册。被别人占用的项不阻断保存，
+            // 但要一条条说清楚是哪个、为什么，否则用户只会觉得「按了没反应」。
+            var failedHotkeys = await SaveHotkeysAsync();
+
+            if (failedHotkeys.Count > 0)
+            {
+                var lines = failedHotkeys.Select(f =>
+                {
+                    var title = HotkeyActions.All.FirstOrDefault(a => a.Id == f.ActionId)?.Title ?? f.ActionId;
+                    return $"· {title} → {f.Gesture.ToDisplayString()}：{f.Error}";
+                });
+
+                SetStatus("部分快捷键没能注册，换一个组合再试。", isError: true);
+
+                CustomMessageBox.Warn(
+                    "其余设置已保存，但下面这些快捷键没能注册成功：\n\n"
+                    + string.Join("\n", lines)
+                    + "\n\n通常是同一个组合被别的程序（截图、录屏、输入法）占了，换一个再保存即可。",
+                    "快捷键未生效");
+                return;
+            }
+
+            CustomMessageBox.Success("设置已保存。主题与快捷键已立即生效，其余设置重启后生效。", "保存成功");
             DialogResult = true;
         }
         catch (Exception ex)
@@ -447,6 +1076,15 @@ public partial class SettingsWindow : Window
     private void OnCancel(object sender, RoutedEventArgs e)
     {
         DialogResult = false;
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        // 录键期间全局热键是被注销的，关窗时一定要恢复，
+        // 否则用户点过一下快捷键框又关窗，整套快捷键就静默失效了。
+        _capturingAction = null;
+        HotkeySvc?.Resume();
+        base.OnClosed(e);
     }
 
     /// <summary>卸载软件：运行安装目录里的 unins000.exe（卸载时会询问是否保留数据）。</summary>

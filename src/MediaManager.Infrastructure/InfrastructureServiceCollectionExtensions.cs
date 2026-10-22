@@ -21,6 +21,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<DatabaseInitializer>();
         services.AddSingleton<IMediaRepository, MediaRepository>();
         services.AddSingleton<IDatabaseBackupService, DatabaseBackupService>();
+        services.AddSingleton<IDatabaseSnapshotService, DatabaseSnapshotService>();
 
         // 配置
         services.AddSingleton<IAppConfigService, AppConfigService>();
