@@ -1,8 +1,9 @@
 ![媒体管理器 · MediaManager —— 一个窗口，管完你所有的图片和视频](docs/social-preview.png)
 
-# 📸 MediaManager — 一个窗口，管完你所有的图片和视频
+# 📸 MediaManager
 
-> 免费、开源、纯本地无广告的 Windows 媒体管理器。把电脑和移动硬盘里散落各处的照片、视频收进同一个库，数据始终在自己手里。
+> 免费、开源、纯本地无广告的 Windows 媒体管理器 —— **一个窗口，管完你所有的图片和视频**。
+> 把电脑和移动硬盘里散落各处的照片、视频收进同一个库，数据始终在自己手里。
 
 **[📥 下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
 
