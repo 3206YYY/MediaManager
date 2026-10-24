@@ -5,7 +5,7 @@
 > 免费、开源、纯本地无广告的 Windows 媒体管理器 —— **一个窗口，管完你的图片、视频、音频、文档和压缩包**。
 > 把电脑和移动硬盘里散落各处的文件收进同一个库，数据始终在自己手里。
 
-**[📥 下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[🇨🇳 国内镜像（Gitee）](https://gitee.com/yyy3206/MediaManager/releases)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
+**[📥 下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[🇨🇳 Gitee 源码镜像](https://gitee.com/yyy3206/MediaManager)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
 
 > 当前版本 **v1.3.1** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
 >
@@ -82,14 +82,15 @@ C 盘、D 盘、移动硬盘里的图片、视频、音频、文档、压缩包�
 2. 双击安装后启动，点击主界面的「添加文件夹」选择你的媒体目录。
 3. 程序会在后台自动扫描并生成缩略图，立马就能使用！
 
-> 🇨🇳 **GitHub 下载慢或打不开？** 用国内镜像：**[gitee.com/yyy3206/MediaManager](https://gitee.com/yyy3206/MediaManager)** —— 源码与 Release 安装包都在，下载速度正常。
-> GitHub 是主仓库（issue / PR 请提到 GitHub），Gitee 负责让国内也能顺利下载。
+> 🇨🇳 **GitHub 打不开？** 源码在国内镜像 **[gitee.com/yyy3206/MediaManager](https://gitee.com/yyy3206/MediaManager)** 也有一份（同步更新）。
+> **安装包目前只有 GitHub 这一个源** —— Gitee 单个附件上限 100 MB，而这个安装包是 101 MB，传不上去。
+> 下载慢就隔几分钟重试，或者提个 issue 说明情况。GitHub 是主仓库，issue / PR 请提到这边。
 
 > ✅ **安装包已内置全部依赖**：.NET 运行时、**FFmpeg**（视频缩略图）、LibVLC（视频播放）。
 > 双击即用，**不需要额外安装任何东西，也不需要联网**。装完就能看视频封面、播视频、编辑图片。
 
 > 🔄 **更新**：设置 → 关于与更新 → 「检查更新」，会告诉你有没有新版本，并可一键跳去下载。
-> 该检查走的是 GitHub API，**GitHub 不可达时会提示失败**，此时直接到上面两个 Releases 页面手动下载即可。
+> 该检查走的是 GitHub API，**GitHub 不可达时会提示失败**，此时到 Releases 页面手动下载即可（需要能打开 GitHub）。
 
 ---
 

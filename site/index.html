@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>媒体管理器 MediaManager —— 一个窗口，管完所有盘</title>
+<meta name="description" content="免费开源的 Windows 媒体管理器：图片 / 视频 / 音频 / 文档 / 压缩包收进同一个库。纯本地、无账号、无云端，断网也能用。">
+<meta property="og:title" content="媒体管理器 MediaManager —— 一个窗口，管完所有盘">
+<meta property="og:description" content="图片 / 视频 / 音频 / 文档 / 压缩包，散在几个盘里的东西收进同一个库。纯本地、开源免费。">
+<meta property="og:image" content="assets/og.png">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%233B82F6'/><circle cx='16' cy='16' r='6' fill='%23fff'/></svg>">
+<style>
+:root{
+  --bg:#0A0B0D; --panel:#121316; --panel-2:#17191D;
+  --line:rgba(255,255,255,.08); --line-2:rgba(255,255,255,.14);
+  --tx:#EDEEF0; --mut:#98A0AC; --dim:#6E7683;
+  --ac:#3B82F6; --ac-2:#6EA8FF;
+  --max:1240px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg); color:var(--tx);
+  font:16px/1.8 "Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  background-image:
+    radial-gradient(1100px 620px at 78% -12%, rgba(59,130,246,.18), transparent 60%),
+    radial-gradient(900px 520px at 4% 8%, rgba(59,130,246,.07), transparent 60%);
+  background-repeat:no-repeat;
+}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 32px}
+
+/* ---------- nav ---------- */
+.nav{
+  position:sticky;top:0;z-index:50;
+  backdrop-filter:blur(14px);background:rgba(10,11,13,.72);
+  border-bottom:1px solid transparent;transition:border-color .25s;
+}
+.nav.on{border-bottom-color:var(--line)}
+.nav .wrap{height:66px;display:flex;align-items:center;gap:28px}
+.brand{display:flex;align-items:center;gap:11px;font-weight:700;letter-spacing:.01em}
+.brand i{width:24px;height:24px;border-radius:7px;background:linear-gradient(140deg,#6EA8FF,#2563EB);
+  display:block;box-shadow:0 3px 12px rgba(59,130,246,.45);position:relative}
+.brand i::after{content:"";position:absolute;inset:7px;border-radius:50%;background:#fff;opacity:.92}
+.nav nav{display:flex;gap:26px;margin-left:auto;font-size:15px;color:var(--mut)}
+.nav nav a:hover{color:var(--tx)}
+.nav .gh{font-size:15px;color:var(--mut);padding:7px 14px;border:1px solid var(--line);
+  border-radius:9px;transition:.2s}
+.nav .gh:hover{color:var(--tx);border-color:var(--line-2);background:rgba(255,255,255,.04)}
+@media(max-width:820px){.nav nav{display:none}}
+
+/* ---------- hero ---------- */
+.hero{padding:88px 0 0;overflow:hidden}
+.hero .wrap{display:grid;grid-template-columns:1.02fr .98fr;gap:56px;align-items:center}
+.hero .wrap > *{min-width:0}
+.eyebrow{display:inline-flex;align-items:center;gap:9px;font-size:13.5px;letter-spacing:.16em;
+  color:var(--ac-2);font-weight:600;padding:7px 15px;border:1px solid rgba(59,130,246,.4);
+  border-radius:999px;background:rgba(59,130,246,.09)}
+.eyebrow i{width:6px;height:6px;border-radius:50%;background:var(--ac);display:block}
+h1{margin:26px 0 0;font-size:clamp(40px,5.4vw,76px);line-height:1.06;letter-spacing:-.025em;font-weight:700}
+h1 em{font-style:normal;color:var(--ac-2)}
+.hero p{margin-top:24px;color:var(--mut);font-size:18px;max-width:33em;line-height:1.85}
+.hero p b{color:var(--tx);font-weight:600}
+.acts{margin-top:34px;display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:9px;padding:13px 22px;border-radius:11px;font-size:15.5px;
+  font-weight:600;border:1px solid transparent;transition:.18s}
+.btn-p{background:linear-gradient(180deg,#4A8CF7,#2F6FE0);color:#fff;
+  box-shadow:0 8px 24px rgba(47,111,224,.32)}
+.btn-p:hover{transform:translateY(-1px);box-shadow:0 12px 30px rgba(47,111,224,.42)}
+.btn-s{border-color:var(--line-2);color:var(--tx);background:rgba(255,255,255,.03)}
+.btn-s:hover{background:rgba(255,255,255,.07)}
+.meta{margin-top:18px;font-size:13.5px;color:var(--dim);display:flex;gap:14px;flex-wrap:wrap}
+.meta span{display:flex;align-items:center;gap:6px}
+.meta span::before{content:"";width:4px;height:4px;border-radius:50%;background:#3F4650}
+
+.hero-vis{position:relative;margin-right:-120px;
+  -webkit-mask-image:linear-gradient(90deg,#000 91%,rgba(0,0,0,0));
+  mask-image:linear-gradient(90deg,#000 91%,rgba(0,0,0,0))}
+.win{border:1px solid var(--line-2);border-radius:14px;overflow:hidden;
+  background:#0D0F12;box-shadow:0 40px 80px rgba(0,0,0,.62),0 0 0 1px rgba(0,0,0,.4)}
+.win .bar{height:34px;display:flex;align-items:center;gap:7px;padding:0 14px;
+  background:#16181C;border-bottom:1px solid var(--line)}
+.win .bar span{width:9px;height:9px;border-radius:50%;background:#2C3036}
+.win img{display:block;width:100%;height:auto}
+@media(max-width:1080px){
+  .hero .wrap{grid-template-columns:1fr;gap:40px}
+  .hero-vis{margin:0;-webkit-mask-image:none;mask-image:none}
+}
+
+/* ---------- strip ---------- */
+.strip{margin-top:76px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+  background:rgba(255,255,255,.015)}
+.strip .wrap{display:flex;justify-content:space-between;gap:16px;padding:20px 32px;
+  font-size:13.5px;letter-spacing:.05em;color:var(--dim);flex-wrap:wrap}
+.strip b{color:var(--mut);font-weight:600}
+
+/* ---------- section ---------- */
+section{padding:96px 0}
+.sh{max-width:640px}
+.sh h2{font-size:clamp(28px,3vw,40px);line-height:1.24;letter-spacing:-.02em;font-weight:700}
+.sh h2 em{font-style:normal;color:var(--ac-2)}
+.sh p{margin-top:14px;color:var(--mut);font-size:16.5px}
+.grid{margin-top:46px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{padding:26px 24px 28px;border:1px solid var(--line);border-radius:15px;background:var(--panel);
+  transition:.22s}
+.card:hover{border-color:rgba(59,130,246,.34);background:var(--panel-2);transform:translateY(-2px)}
+.ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;margin-bottom:16px;
+  background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.26)}
+.ico svg{width:19px;height:19px;stroke:var(--ac-2);fill:none;stroke-width:1.6;
+  stroke-linecap:round;stroke-linejoin:round}
+.card h3{font-size:17.5px;font-weight:650;letter-spacing:.01em}
+.card p{margin-top:9px;font-size:14.5px;line-height:1.75;color:var(--mut)}
+.card p b{color:#C9D0DA;font-weight:600}
+@media(max-width:1000px){.grid{grid-template-columns:1fr 1fr}}
+@media(max-width:680px){.grid{grid-template-columns:1fr}}
+
+/* ---------- formats ---------- */
+.formats{padding-top:0}
+.chips{margin-top:34px;display:flex;flex-wrap:wrap;gap:9px}
+.chip{font-size:13.5px;color:#C2C9D4;padding:7px 13px;border-radius:8px;
+  background:rgba(255,255,255,.045);border:1px solid var(--line);font-family:ui-monospace,Consolas,monospace}
+.chip.more{color:var(--ac-2);border-color:rgba(59,130,246,.32);background:rgba(59,130,246,.1)}
+
+/* ---------- manifesto ---------- */
+.rules{margin-top:46px;display:grid;gap:0;border-top:1px solid var(--line)}
+.rule{display:grid;grid-template-columns:86px 1fr;gap:26px;padding:30px 0;border-bottom:1px solid var(--line)}
+.rule .n{font:600 15px/1 ui-monospace,Consolas,monospace;color:var(--ac-2);letter-spacing:.08em;padding-top:7px}
+.rule h3{font-size:19px;font-weight:650;letter-spacing:.01em}
+.rule p{margin-top:8px;color:var(--mut);font-size:15px;max-width:730px}
+.rule p code, .note code{font-family:ui-monospace,Consolas,monospace;font-size:.92em;
+  background:rgba(255,255,255,.06);padding:1px 6px;border-radius:5px;color:#D8DEE7}
+@media(max-width:680px){.rule{grid-template-columns:1fr;gap:8px}.rule .n{padding:0}}
+
+/* ---------- download ---------- */
+.dl{position:relative;border:1px solid rgba(59,130,246,.3);border-radius:20px;overflow:hidden;
+  background:
+    radial-gradient(700px 320px at 12% 0%, rgba(59,130,246,.20), transparent 62%),
+    linear-gradient(180deg,#14171C,#0F1114);
+  padding:52px 48px}
+.dl h2{font-size:clamp(26px,3vw,38px);letter-spacing:-.02em;line-height:1.26}
+.dl p{margin-top:12px;color:var(--mut);max-width:52ch}
+.dl .acts{margin-top:28px}
+.dl .note{margin-top:26px;padding-top:22px;border-top:1px solid var(--line);
+  font-size:13.5px;color:var(--dim);line-height:1.9}
+.dl .note b{color:var(--mut);font-weight:600}
+@media(max-width:680px){.dl{padding:34px 24px}}
+
+/* ---------- footer ---------- */
+footer{border-top:1px solid var(--line);padding:44px 0 56px;color:var(--dim);font-size:13.5px}
+footer .wrap{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}
+footer a{color:var(--mut)}
+footer a:hover{color:var(--tx)}
+.fl{display:flex;gap:20px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><i></i>媒体管理器</a>
+    <nav>
+      <a href="#features">能做什么</a>
+      <a href="#formats">支持格式</a>
+      <a href="#rules">三条规矩</a>
+      <a href="#download">下载</a>
+    </nav>
+    <a class="gh" href="https://github.com/3206YYY/MediaManager" target="_blank" rel="noopener">GitHub ↗</a>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow"><i></i>Windows 10 / 11 · 开源免费 · 纯本地</div>
+      <h1>一个窗口，<br>管完<em>所有盘</em></h1>
+      <p>图片、视频、音频、文档、压缩包 —— 散在 C 盘、移动硬盘、手机备份里的东西，收进同一个库。
+        不用再开七个资源管理器来回切，<b>发现页会自己翻出你几年前忘掉的照片</b>。</p>
+      <div class="acts">
+        <a class="btn btn-p" href="https://github.com/3206YYY/MediaManager/releases/latest">下载 v1.3.1</a>
+        <a class="btn btn-s" href="https://github.com/3206YYY/MediaManager">查看源码</a>
+      </div>
+      <div class="meta">
+        <span>101 MB 安装包</span>
+        <span>免装 .NET 运行库</span>
+        <span>用户级安装，不要管理员权限</span>
+      </div>
+    </div>
+    <div class="hero-vis">
+      <div class="win">
+        <div class="bar"><span></span><span></span><span></span></div>
+        <img src="assets/app-dark.jpg" alt="媒体管理器主界面（深色模式）">
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="strip">
+  <div class="wrap">
+    <span><b>没有服务器</b> · 没有账号 · 没有云端</span>
+    <span>断网也能用，装完就是这个样子</span>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sh">
+      <h2>它只做一件事：<br>把<em>散落</em>的东西收回来</h2>
+      <p>不是又一个资源管理器，也不是又一个看图王。它解决的是「我知道那张照片在我某个盘里，但找不到」。</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg></div>
+        <h3>一个库，管完所有盘</h3>
+        <p>加上文件夹就自动扫描建缩略图，C 盘、D 盘、移动硬盘混在一个墙里。按日期、类型、收藏筛，不用记路径。</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M4 17V7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 13l2.5-2.5L13 13l2-2 1.5 1.5"/><circle cx="9" cy="9.5" r="1"/></svg></div>
+        <h3>图片编辑，就地改</h3>
+        <p>裁剪拉直、调色滤镜、文字标注、马赛克打码、平铺水印。右栏按用途分七类，一次只展开一个面板。</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5-11-6.5z"/></svg></div>
+        <h3>视频不只是能看</h3>
+        <p>内置 FFmpeg 抽封面、LibVLC 做播放，缩略图墙里直接点开就播，拖进度条、倍速、播完自动停。</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"/><path d="M18.5 15.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"/></svg></div>
+        <h3>发现页：让照片来找你</h3>
+        <p>每次打开随机推一批，按 R 换一批。躺了好几年的片子，会以你没想过的方式重新出现。</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M6 4h12v17l-6-3.5L6 21V4z"/></svg></div>
+        <h3>收藏、分类、标签、备注</h3>
+        <p>单键 F 收藏、1~5 打星，中文输入法下也照常生效。分类和标签都可以自己加，备注随手写。</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 1.8"/><path d="M3.5 4.5l2.6 2.6M20.5 4.5l-2.6 2.6"/></svg></div>
+        <h3>时光机：后悔药</h3>
+        <p>自动留最近 7 个备份节点。整理砸了、误删了，一键退回那一刻；备份文件坏了会直接拒绝，绝不覆盖好库。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="formats" id="formats">
+  <div class="wrap">
+    <div class="sh">
+      <h2>认 <em>80 种</em>扩展名</h2>
+      <p>v1.3.1 起不再只管图片视频，音频、文档、压缩包也能进来。类型可以多选筛选。</p>
+    </div>
+    <div class="chips">
+      <span class="chip">JPG</span><span class="chip">PNG</span><span class="chip">GIF</span>
+      <span class="chip">WEBP</span><span class="chip">BMP</span><span class="chip">TIFF</span>
+      <span class="chip">HEIC</span><span class="chip">MP4</span><span class="chip">MOV</span>
+      <span class="chip">MKV</span><span class="chip">AVI</span><span class="chip">WEBM</span>
+      <span class="chip">MP3</span><span class="chip">FLAC</span><span class="chip">WAV</span>
+      <span class="chip">M4A</span><span class="chip">PDF</span><span class="chip">DOCX</span>
+      <span class="chip">XLSX</span><span class="chip">PPTX</span><span class="chip">TXT</span>
+      <span class="chip">MD</span><span class="chip">ZIP</span><span class="chip">RAR</span>
+      <span class="chip">7Z</span><span class="chip more">+ 55 种</span>
+    </div>
+  </div>
+</section>
+
+<section id="rules">
+  <div class="wrap">
+    <div class="sh">
+      <h2>三条<em>规矩</em></h2>
+      <p>功能可以慢慢加，这三条不许破。破了就不是这个软件了。</p>
+    </div>
+    <div class="rules">
+      <div class="rule">
+        <div class="n">01</div>
+        <div>
+          <h3>数据是你自己的</h3>
+          <p>不登录、不上传、不统计、不带任何遥测。所有东西躺在 <code>%LocalAppData%\MediaManager</code>，断网照常用。
+            想连数据一起带走，就在 exe 旁边放个 <code>portable.marker</code>，它会变成便携版，数据跟着 U 盘走。</p>
+        </div>
+      </div>
+      <div class="rule">
+        <div class="n">02</div>
+        <div>
+          <h3>原图永远不改</h3>
+          <p>编辑原图 → 生成 <code>原名_edited</code> 副本；编辑副本 → 原地更新它自己。删除默认进回收站，不是直接抹掉。
+            Save 不覆盖原件，是这行代码里最不能妥协的一条。</p>
+        </div>
+      </div>
+      <div class="rule">
+        <div class="n">03</div>
+        <div>
+          <h3>不确定就说不确定</h3>
+          <p>做不到的不写进卖点，测过的才敢写在首页。全量编译 0 警告，179 项单元测试，这个数字会跟着版本更新。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="download" style="padding-top:0">
+  <div class="wrap">
+    <div class="dl">
+      <h2>下载 v1.3.1</h2>
+      <p>Windows 10 / 11 · 64 位 · 用户级安装，不要管理员权限。装完双击就能用，不需要额外装任何东西。</p>
+      <div class="acts">
+        <a class="btn btn-p" href="https://github.com/3206YYY/MediaManager/releases/latest">GitHub 下载（101 MB）</a>
+        <a class="btn btn-s" href="https://gitee.com/yyy3206/MediaManager" target="_blank" rel="noopener">Gitee 镜像（源码）</a>
+      </div>
+      <div class="note">
+        <b>国内下载慢？</b>源码在 Gitee 有镜像仓库；安装包目前只有 GitHub 这一个源，遇上打不开可以试几分钟后再点，
+        或者到仓库里提个 issue。<br>
+        <b>覆盖安装不会动你的数据。</b>收藏、分类、标签、备注都在 <code>%LocalAppData%\MediaManager</code>，升级只替换程序本身。
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>© 2026 MediaManager · MIT 许可 · 用 WPF 和 C# 写的</div>
+    <div class="fl">
+      <a href="https://github.com/3206YYY/MediaManager/issues" target="_blank" rel="noopener">反馈 / 提 Bug</a>
+      <a href="https://github.com/3206YYY/MediaManager/blob/main/docs/changelog/v1.3.1.md" target="_blank" rel="noopener">更新日志</a>
+      <a href="https://afdian.com/a/3206YYY" target="_blank" rel="noopener">赞助</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('on', window.scrollY > 8);
+  addEventListener('scroll', onScroll, {passive:true}); onScroll();
+</script>
+</body>
+</html>
