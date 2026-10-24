@@ -7,6 +7,10 @@ public class MediaFilter
 {
     public string? SearchText { get; set; }
     public MediaType? MediaType { get; set; }
+
+    /// <summary>多类型筛选（优先于单值 MediaType；为空表示不筛选类型）。</summary>
+    public List<MediaType>? MediaTypes { get; set; }
+
     public bool? Favorite { get; set; }
 
     /// <summary>仅显示未分类（未进入任何分类）的媒体。</summary>
@@ -65,6 +69,9 @@ public class DiscoveryBatch
     public List<long> MediaIds { get; set; } = new();
     public string PoolType { get; set; } = string.Empty;
     public long? PoolId { get; set; }
+
+    /// <summary>生成这批时使用的类型筛选键（null/空 视为“全部”）。</summary>
+    public string? TypeFilter { get; set; }
 }
 
 /// <summary>扫描进度。</summary>

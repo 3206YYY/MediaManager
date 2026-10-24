@@ -262,6 +262,7 @@ public partial class VideoPlayerWindow : Window
         _endHandled = false;
         HideCenterMessage();
         ResetProgressUi();
+        VideoBackdrop.Visibility = Visibility.Visible;   // 换文件期间先盖黑，避免闪出桌面
 
         if (!File.Exists(path))
         {
@@ -644,6 +645,23 @@ public partial class VideoPlayerWindow : Window
         if (PlayPauseGlyph.Text != glyph) PlayPauseGlyph.Text = glyph;
 
         PlayPauseButton.ToolTip = playing ? "暂停（空格）" : "播放（空格）";
+        UpdateVideoBackdrop();
+    }
+
+    /// <summary>
+    /// 只有真正有画面（Playing / Paused）时才让 VideoView 的透明前景窗口露出来；
+    /// 其余状态用不透明底色兜住，避免看到桌面。
+    /// </summary>
+    private void UpdateVideoBackdrop()
+    {
+        var state = VLCState.NothingSpecial;
+        try { if (_player != null) state = _player.State; } catch { }
+
+        // 只有 Playing / Paused 才保证画面已经出来；Opening / Buffering 也先盖黑
+        var show = state is not (VLCState.Playing or VLCState.Paused);
+
+        var target = show ? Visibility.Visible : Visibility.Collapsed;
+        if (VideoBackdrop.Visibility != target) VideoBackdrop.Visibility = target;
     }
 
     /// <summary>定时器里的轻量校正：图标与实际状态不一致时才写。</summary>
@@ -653,6 +671,7 @@ public partial class VideoPlayerWindow : Window
         try { playing = _player?.IsPlaying == true; } catch { }
         var expected = playing ? "\uE769" : "\uE768";
         if (PlayPauseGlyph.Text != expected) PlayPauseGlyph.Text = expected;
+        UpdateVideoBackdrop();
     }
 
     // ---------- 倍速 ----------

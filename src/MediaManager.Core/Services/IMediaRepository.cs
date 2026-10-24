@@ -1,4 +1,4 @@
-﻿using MediaManager.Core.Models;
+using MediaManager.Core.Models;
 
 namespace MediaManager.Core.Services;
 
@@ -75,9 +75,9 @@ public interface IMediaRepository
     Task<long> GetTotalCountAsync();
 
     // Discovery（发现页随机推荐）
-    Task<List<MediaItem>> QueryDiscoveryAsync(Enums.DiscoveryPoolType poolType, long? poolId, int limit, List<long>? excludeIds);
-    Task<long> CountDiscoveryPoolAsync(Enums.DiscoveryPoolType poolType, long? poolId);
-    Task SaveDiscoveryBatchAsync(string date, List<long> mediaIds, Enums.DiscoveryPoolType poolType, long? poolId);
+    Task<List<MediaItem>> QueryDiscoveryAsync(Enums.DiscoveryPoolType poolType, long? poolId, int limit, List<long>? excludeIds, IReadOnlyList<Enums.MediaType>? types = null);
+    Task<long> CountDiscoveryPoolAsync(Enums.DiscoveryPoolType poolType, long? poolId, IReadOnlyList<Enums.MediaType>? types = null);
+    Task SaveDiscoveryBatchAsync(string date, List<long> mediaIds, Enums.DiscoveryPoolType poolType, long? poolId, string? typeFilter = null);
     Task<DiscoveryBatch?> GetDiscoveryBatchAsync(string date);
     Task RecordDiscoveryHistoryAsync(List<long> mediaIds);
     Task<List<long>> GetDiscoveryHistoryIdsAsync(int days);

@@ -1,9 +1,9 @@
-﻿; MediaManager 安装包脚本（Inno Setup 6）
+; MediaManager 安装包脚本（Inno Setup 6）
 ; 编译前先执行: dotnet publish src/MediaManager.App -c Release -r win-x64 --self-contained true -o dist/MediaManager-win-x64
 
 #define MyAppName "媒体管理器"
 #define MyAppNameEn "MediaManager"
-#define MyAppVersion "1.3.0"
+#define MyAppVersion "1.3.1"
 #define MyAppPublisher "MediaManager"
 #define MyAppExeName "MediaManager.App.exe"
 
@@ -64,6 +64,37 @@ Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFile
 Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.tiff\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelTiff"
 Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.heic\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelHeic"
 Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.avif\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelAvif"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.mp4\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelMp4"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.mkv\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelMkv"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.avi\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelAvi"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.mov\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelMov"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.wmv\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelWmv"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.webm\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelWebm"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.flv\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelFlv"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.m4v\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelM4v"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.ts\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelTs"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.mp3\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelMp3"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.wav\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelWav"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.flac\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelFlac"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.m4a\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelM4a"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.aac\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelAac"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.ogg\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelOgg"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.opus\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelOpus"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.wma\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelWma"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.txt\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelTxt"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.md\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelMd"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.log\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelLog"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.json\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelJson"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.csv\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelCsv"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.xml\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelXml"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.ini\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelIni"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.yaml\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelYaml"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.yml\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelYml"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.zip\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelZip"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.rar\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelRar"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.7z\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "Del7z"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.tar\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelTar"
+Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\Classes\SystemFileAssociations\.gz\shell\MediaManagerOpen"" /f"; Flags: runhidden; RunOnceId: "DelGz"
 Filename: "{cmd}"; Parameters: "/C reg delete ""HKCU\Software\MediaManager"" /f"; Flags: runhidden; RunOnceId: "DelMarker"
 
 [UninstallDelete]
@@ -90,6 +121,21 @@ begin
   KeepDataPage.Values[0] := True;
 end;
 
+procedure DeleteShellIntegrationKeys();
+var
+  Names: TArrayOfString;
+  I: Integer;
+begin
+  if RegGetValueNames(HKCU, 'Software\MediaManager\ShellExtensions', Names) then
+  begin
+    for I := 0 to GetArrayLength(Names) - 1 do
+      RegDeleteKeyIncludingSubkeys(HKCU,
+        'Software\Classes\SystemFileAssociations\' + Names[I] + '\shell\MediaManagerOpen');
+  end;
+  RegDeleteKeyIfEmpty(HKCU, 'Software\MediaManager\ShellExtensions');
+  RegDeleteKeyIfEmpty(HKCU, 'Software\MediaManager');
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: string;
@@ -98,6 +144,9 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
+    // 按应用记录的扩展名清单清理右键菜单（以后新增格式不用再改这里）
+    DeleteShellIntegrationKeys();
+
     DataDir := ExpandConstant('{localappdata}\MediaManager');
 
     MsgRes := MsgBox(

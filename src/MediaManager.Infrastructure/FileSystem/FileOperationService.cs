@@ -1,4 +1,5 @@
 using MediaManager.Core.Services;
+using MediaManager.Infrastructure.Thumbnails;
 using Microsoft.Extensions.Logging;
 
 namespace MediaManager.Infrastructure.FileSystem;
@@ -8,6 +9,9 @@ public class FileOperationService : IFileOperationService
 {
     private readonly ILogger<FileOperationService> _logger;
 
+    /// <summary>删除前最多等多久，让正在抽帧的 ffmpeg 自己退出。</summary>
+    private static readonly TimeSpan FfmpegReleaseTimeout = TimeSpan.FromSeconds(3);
+
     public FileOperationService(ILogger<FileOperationService> logger)
     {
         _logger = logger;
@@ -15,6 +19,9 @@ public class FileOperationService : IFileOperationService
 
     public async Task DeleteToRecycleBinAsync(string path)
     {
+        // 删除前先等缩略图抽帧结束：ffmpeg 还开着文件时，Windows 会报「文件已在 ffmpeg 中打开」
+        await ReleaseThumbnailReadersAsync(path).ConfigureAwait(false);
+
         await Task.Run(async () =>
         {
             if (!System.IO.File.Exists(path))
@@ -53,10 +60,24 @@ public class FileOperationService : IFileOperationService
         });
     }
 
+    /// <summary>
+    /// 删除 / 移动前释放缩略图读取者：先等 ffmpeg 自己退出，超时仍未退出就强杀。
+    /// 这是「文件已在 ffmpeg 中打开」的唯一可靠解法。
+    /// </summary>
+    private static async Task ReleaseThumbnailReadersAsync(string path)
+    {
+        if (!System.IO.File.Exists(path)) return;
+
+        await FfmpegProcessTracker.WaitForReleaseAsync(path, FfmpegReleaseTimeout).ConfigureAwait(false);
+        if (FfmpegProcessTracker.IsActive(path))
+            FfmpegProcessTracker.KillForPath(path);
+    }
+
     public Task DeletePermanentAsync(string path)
     {
-        return Task.Run(() =>
+        return Task.Run(async () =>
         {
+            await ReleaseThumbnailReadersAsync(path).ConfigureAwait(false);
             if (!System.IO.File.Exists(path)) return;
             System.IO.File.Delete(path);
             _logger.LogInformation("已永久删除：{Path}", path);

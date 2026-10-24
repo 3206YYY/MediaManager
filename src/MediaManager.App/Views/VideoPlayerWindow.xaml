@@ -202,6 +202,10 @@
                  这是唯一能「真正叠在视频画面上」的 WPF 图层（HwndHost 的 airspace 限制）。 -->
             <vlc:VideoView x:Name="VideoView" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                 <Grid x:Name="OverlayRoot" Background="#01000000">
+                    <!-- 还没出画面 / 停止 / 出错时：用不透明底色盖住透明前景窗口，
+                         否则 LibVLCSharp 的叠加窗口会直接穿透，露出桌面背景 -->
+                    <Border x:Name="VideoBackdrop" Background="#FF08090A" IsHitTestVisible="False" />
+
                     <Grid x:Name="ChromeRoot" Opacity="1">
 
                         <!-- 顶部：文件名 + 第几个 -->

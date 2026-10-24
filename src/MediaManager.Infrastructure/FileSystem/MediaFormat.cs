@@ -1,33 +1,87 @@
 using MediaManager.Core.Enums;
-using MediaManager.Core.Models;
-using MediaManager.Core.Services;
-using Microsoft.Extensions.Logging;
 
 namespace MediaManager.Infrastructure.FileSystem;
 
-/// <summary>媒体文件扩展名识别。</summary>
+/// <summary>媒体文件扩展名识别 + 类型注册表。</summary>
 public static class MediaFormat
 {
     private static readonly HashSet<string> Images = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".avif",
+        ".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".ico",
+        ".heic", ".avif",
     };
 
     private static readonly HashSet<string> Videos = new(StringComparer.OrdinalIgnoreCase)
     {
         ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".flv", ".m4v", ".ts",
+        ".mpg", ".mpeg", ".3gp", ".mts", ".m2ts", ".ogv", ".rmvb", ".vob",
     };
+
+    private static readonly HashSet<string> Audios = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma",
+        ".aif", ".aiff", ".amr", ".mka", ".ape", ".mid", ".midi",
+    };
+
+    private static readonly HashSet<string> Texts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".txt", ".md", ".log", ".json", ".csv", ".xml", ".ini", ".yaml", ".yml",
+        ".htm", ".html", ".srt", ".ass", ".ssa", ".toml",
+        ".py", ".js", ".css", ".cs", ".java", ".go", ".rs", ".sql", ".bat", ".ps1",
+    };
+
+    private static readonly HashSet<string> Archives = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".tgz", ".tbz2", ".txz",
+    };
+
+    /// <summary>是否启用扩展格式（音频/文档/压缩包）。可在设置 → 插件扩展里关闭。</summary>
+    public static bool ExtendedFormatsEnabled { get; private set; } = true;
+
+    /// <summary>打开/关闭扩展格式扫描。关闭后已有条目仍保留，只是不再扫描新文件。</summary>
+    public static void SetExtendedFormatsEnabled(bool enabled) => ExtendedFormatsEnabled = enabled;
 
     public static bool IsImage(string path) => Images.Contains(Path.GetExtension(path));
 
     public static bool IsVideo(string path) => Videos.Contains(Path.GetExtension(path));
 
-    public static bool IsSupported(string path) => IsImage(path) || IsVideo(path);
+    public static bool IsAudio(string path) => Audios.Contains(Path.GetExtension(path));
+
+    public static bool IsText(string path) => Texts.Contains(Path.GetExtension(path));
+
+    public static bool IsArchive(string path) => Archives.Contains(Path.GetExtension(path));
+
+    public static bool IsSupported(string path) => GetMediaType(path) != null;
 
     public static MediaType? GetMediaType(string path)
     {
-        if (IsImage(path)) return MediaType.Image;
-        if (IsVideo(path)) return MediaType.Video;
+        var ext = Path.GetExtension(path);
+        if (Images.Contains(ext)) return MediaType.Image;
+        if (Videos.Contains(ext)) return MediaType.Video;
+
+        if (!ExtendedFormatsEnabled) return null;
+        if (Audios.Contains(ext)) return MediaType.Audio;
+        if (Texts.Contains(ext)) return MediaType.Text;
+        if (Archives.Contains(ext)) return MediaType.Archive;
+        return null;
+    }
+
+    /// <summary>该类型是否由“扩展格式”提供。</summary>
+    public static bool IsExtendedType(MediaType type)
+        => type is MediaType.Audio or MediaType.Text or MediaType.Archive;
+
+    /// <summary>
+    /// 手动打开单个文件时使用：识别全部支持的类型，
+    /// <b>不受</b>“扩展格式扫描开关”影响（关掉扫描只是不自动收录，手动打开仍应可用）。
+    /// </summary>
+    public static MediaType? GetMediaTypeForOpen(string path)
+    {
+        var ext = Path.GetExtension(path);
+        if (Images.Contains(ext)) return MediaType.Image;
+        if (Videos.Contains(ext)) return MediaType.Video;
+        if (Audios.Contains(ext)) return MediaType.Audio;
+        if (Texts.Contains(ext)) return MediaType.Text;
+        if (Archives.Contains(ext)) return MediaType.Archive;
         return null;
     }
 }

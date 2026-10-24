@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -109,6 +109,9 @@ public partial class SettingsWindow : Window
             await _repo.GetSettingAsync("BackupDirectory"),
             await _repo.GetSettingAsync(VideoPlayerWindow.RememberModeSettingKey),
             await _repo.GetSettingAsync("Theme")));
+
+        var extStr = await Task.Run(() => _repo.GetSettingAsync("EnableExtendedFormats"));
+        ExtendedFormatsCheck.IsChecked = extStr != "0";
 
         DataDirBox.Text = _config.DataDirectory;
         CacheDirBox.Text = _config.ThumbnailDirectory;
@@ -1065,7 +1068,7 @@ public partial class SettingsWindow : Window
             }
 
             CustomMessageBox.Success("设置已保存。主题与快捷键已立即生效，其余设置重启后生效。", "保存成功");
-            DialogResult = true;
+            Close();
         }
         catch (Exception ex)
         {
@@ -1075,7 +1078,7 @@ public partial class SettingsWindow : Window
 
     private void OnCancel(object sender, RoutedEventArgs e)
     {
-        DialogResult = false;
+        Close();
     }
 
     protected override void OnClosed(EventArgs e)
@@ -1098,7 +1101,7 @@ public partial class SettingsWindow : Window
                 "卸载", confirmText: "卸载", danger: true);
             if (!confirm) return;
 
-            DialogResult = false;
+            Close();
             System.Diagnostics.Process.Start(uninstaller);
             Application.Current.Shutdown();
         }
@@ -1307,6 +1310,26 @@ public partial class SettingsWindow : Window
 
     private void OnOpenPluginTemplate(object sender, RoutedEventArgs e)
         => OpenUrl($"{UpdateChecker.RepositoryUrl}/tree/main/docs/plugin-template");
+
+    /// <summary>扩展格式（音频/文档/压缩包）开关：关闭后不再扫描新文件，不影响已有条目。</summary>
+    private async void OnToggleExtendedFormats(object sender, RoutedEventArgs e)
+    {
+        var enabled = ExtendedFormatsCheck.IsChecked == true;
+        MediaManager.Infrastructure.FileSystem.MediaFormat.SetExtendedFormatsEnabled(enabled);
+        try
+        {
+            await _repo.SetSettingAsync("EnableExtendedFormats", enabled ? "1" : "0");
+        }
+        catch (Exception ex)
+        {
+            CustomMessageBox.Error("保存设置失败：" + ex.Message, "扩展格式");
+            return;
+        }
+
+        FooterHint.Text = enabled
+            ? "已启用扩展格式；对已有文件夹点「扫描」即可把新类型收进库。"
+            : "已关闭扩展格式；之后不会再扫描音频/文档/压缩包。";
+    }
 
     // ===================================================================
     //  版本 / 更新

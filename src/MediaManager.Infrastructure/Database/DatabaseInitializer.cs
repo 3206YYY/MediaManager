@@ -148,6 +148,9 @@ public class DatabaseInitializer
             );
             """);
 
+        // 旧库迁移：给 DailyDiscovery 补 TypeFilter 列（记录生成批次时的类型筛选键）
+        MigrateColumn(cmd, "DailyDiscovery", "TypeFilter", "TEXT");
+
         // 发现页：推送历史（用于最近 7 天排除）
         Execute(cmd, """
             CREATE TABLE IF NOT EXISTS DiscoveryHistory (

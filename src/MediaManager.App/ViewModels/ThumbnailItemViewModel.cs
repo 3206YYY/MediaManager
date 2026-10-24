@@ -48,6 +48,32 @@ public partial class ThumbnailItemViewModel : ObservableObject
     public string FileName => Media.FileName;
     public string Path => Media.Path;
     public bool IsVideo => Media.MediaType == Core.Enums.MediaType.Video;
+    public bool IsAudio => Media.MediaType == Core.Enums.MediaType.Audio;
+    public bool IsText => Media.MediaType == Core.Enums.MediaType.Text;
+    public bool IsArchive => Media.MediaType == Core.Enums.MediaType.Archive;
+
+    /// <summary>是否图片/视频（会显示真实缩略图）。</summary>
+    public bool IsVisual => Media.MediaType is Core.Enums.MediaType.Image or Core.Enums.MediaType.Video;
+
+    /// <summary>非视觉类型（音频/文档/压缩包）显示固定图标。</summary>
+    public bool IsNonVisual => !IsVisual;
+
+    /// <summary>非视觉类型的固定图标（音频统一同一个图标）。</summary>
+    public string TypeGlyph => Media.MediaType switch
+    {
+        Core.Enums.MediaType.Audio => "🎵",
+        Core.Enums.MediaType.Text => "📄",
+        Core.Enums.MediaType.Archive => "🗜️",
+        _ => string.Empty,
+    };
+
+    public string TypeLabel => Media.MediaType switch
+    {
+        Core.Enums.MediaType.Audio => "音频",
+        Core.Enums.MediaType.Text => "文档",
+        Core.Enums.MediaType.Archive => "压缩包",
+        _ => string.Empty,
+    };
 
     public string SizeDisplay => FormatSize(Media.SizeBytes);
 
@@ -77,4 +103,15 @@ public partial class NavigationItemViewModel : ObservableObject
 
     /// <summary>关联的根文件夹/标签/分类 id（可空）。</summary>
     public long? RelatedId { get; set; }
+}
+
+/// <summary>顶部「类型」多选筛选项。</summary>
+public partial class TypeFilterOption : ObservableObject
+{
+    public string Name { get; init; } = string.Empty;
+
+    public Core.Enums.MediaType MediaType { get; init; }
+
+    [ObservableProperty]
+    private bool _isSelected = true;
 }

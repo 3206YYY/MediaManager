@@ -122,11 +122,23 @@ public class DatabaseBackupService : IDatabaseBackupService
                 System.IO.File.Move(from, to, overwrite: true);
         }
 
-        // 使用 SQLite 在线备份 API，保证一致性（即使有连接正在写）
+        // 使用 SQLite 在线备份 API，保证一致性（即使有连接正在写）。
+        // 两个连接都必须 Pooling=false：连接池会一直占着源库 / bak 文件句柄，
+        // 导致下一轮备份滚动 bak.1 → bak.2 时 File.Move 失败（最终只剩 1 份快照）。
         var target = System.IO.Path.Combine(dir, "library.db.bak.1");
-        using (var sourceConn = new Microsoft.Data.Sqlite.SqliteConnection(
-                   $"Data Source={source};Mode=ReadWrite;Cache=Shared"))
-        using (var targetConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={target}"))
+        var sourceBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+        {
+            DataSource = source,
+            Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWrite,
+            Pooling = false,
+        };
+        var targetBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+        {
+            DataSource = target,
+            Pooling = false,
+        };
+        using (var sourceConn = new Microsoft.Data.Sqlite.SqliteConnection(sourceBuilder.ToString()))
+        using (var targetConn = new Microsoft.Data.Sqlite.SqliteConnection(targetBuilder.ToString()))
         {
             sourceConn.Open();
             targetConn.Open();
@@ -147,7 +159,15 @@ public class DatabaseBackupService : IDatabaseBackupService
     {
         try
         {
-            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath};Mode=ReadWrite");
+            // 必须关闭连接池：池里的连接会一直占着 bak 文件句柄，
+            // 下一次备份滚动 bak.1 → bak.2 时 File.Move 就会失败，结果只剩 1 份快照。
+            var builder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+            {
+                DataSource = dbPath,
+                Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWrite,
+                Pooling = false,
+            };
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection(builder.ToString());
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE;";

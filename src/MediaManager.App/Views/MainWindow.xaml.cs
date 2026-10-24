@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -96,6 +96,14 @@ public partial class MainWindow : Window
         }
         UpdateThemeGlyph();
     }
+
+    // ===================================================================
+    //  顶部类型筛选（多选）
+    // ===================================================================
+
+    private void OnSelectAllTypes(object sender, RoutedEventArgs e) => _viewModel.SelectAllTypes();
+
+    private void OnClearAllTypes(object sender, RoutedEventArgs e) => _viewModel.ClearAllTypes();
 
     // ===================================================================
     //  插件
@@ -207,7 +215,22 @@ public partial class MainWindow : Window
             return;
         }
 
+        ClearSidebarSelectionExcept(NavList);
         _viewModel.SelectViewCommand.Execute(key);
+    }
+
+    /// <summary>
+    /// 左侧导航只保留「最后一次点击」的高亮：点中某个列表项后，
+    /// 清掉另外几个导航列表（库 / 文件夹 / 标签 / 分类 / 收藏夹）的选中项，
+    /// 避免同一个侧栏里同时出现两个蓝框。
+    /// </summary>
+    private void ClearSidebarSelectionExcept(ListBox keep)
+    {
+        foreach (var list in new[] { NavList, FolderListBox, TagListBox, CategoryListBox, CollectionListBox })
+        {
+            if (list == keep || list.SelectedIndex < 0) continue;
+            list.SelectedIndex = -1;
+        }
     }
 
     /// <summary>打开「最近删除」窗口；关闭后刷新主列表（可能还原了文件）。</summary>
@@ -224,7 +247,10 @@ public partial class MainWindow : Window
         if (_suppressNavSync) return;
 
         if (sender is ListBox lb && lb.SelectedItem is NavigationItemViewModel nav && nav.RelatedId.HasValue)
+        {
+            ClearSidebarSelectionExcept(lb);
             _viewModel.SelectViewCommand.Execute($"folder:{nav.RelatedId.Value}");
+        }
     }
 
     /// <summary>保存副本后视图被自动切换时，把左侧导航的高亮同步过去（否则高亮还停在旧项上）。</summary>
@@ -260,19 +286,28 @@ public partial class MainWindow : Window
     private void OnTagSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (sender is ListBox lb && lb.SelectedItem is NavigationItemViewModel nav && nav.RelatedId.HasValue)
+        {
+            ClearSidebarSelectionExcept(lb);
             _viewModel.SelectViewCommand.Execute($"tag:{nav.RelatedId.Value}");
+        }
     }
 
     private void OnCategorySelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (sender is ListBox lb && lb.SelectedItem is Core.Models.Category cat)
+        {
+            ClearSidebarSelectionExcept(lb);
             _viewModel.SelectViewCommand.Execute($"category:{cat.Id}");
+        }
     }
 
     private void OnCollectionSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (sender is ListBox lb && lb.SelectedItem is Core.Models.Collection col)
+        {
+            ClearSidebarSelectionExcept(lb);
             _viewModel.SelectViewCommand.Execute($"collection:{col.Id}");
+        }
     }
 
     // ---------- 发现页 ----------
@@ -537,6 +572,19 @@ public partial class MainWindow : Window
         // 记录最近查看
         _ = _viewModel.RecordViewAsync(item.Id);
 
+        switch (item.Media.MediaType)
+        {
+            case Core.Enums.MediaType.Audio:
+                OpenAudio(item.Path);
+                return;
+            case Core.Enums.MediaType.Text:
+                OpenText(item.Path);
+                return;
+            case Core.Enums.MediaType.Archive:
+                OpenArchive(item.Path);
+                return;
+        }
+
         if (item.IsVideo)
         {
             // 视频：打开 LibVLC 播放器，并把当前列表里的所有视频交给它（支持播完自动连播）
@@ -550,7 +598,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        var items = _viewModel.MediaItems.ToList();
+        // 图片查看器只放图片：否则上一张/下一张会切到视频/音频/文档，加载必失败
+        var items = _viewModel.MediaItems
+            .Where(i => i.Media.MediaType == Core.Enums.MediaType.Image)
+            .ToList();
         var index = items.IndexOf(item);
 
         var viewerVm = new ViewerViewModel(App.Services.GetRequiredService<Core.Services.IMediaRepository>());
@@ -562,6 +613,32 @@ public partial class MainWindow : Window
         window.SetItems(items, index);
         window.Show();
         WindowThemeHelper.ApplyTitleBarDarkMode(window, App.IsDarkTheme);
+    }
+
+    // ---------- 扩展类型独立窗口 ----------
+
+    private void OpenAudio(string path)
+    {
+        var w = new AudioPlayerWindow { Owner = this };
+        w.Play(path);
+        w.Show();
+        WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
+    }
+
+    private void OpenText(string path)
+    {
+        var w = new TextPreviewWindow { Owner = this };
+        w.Load(path);
+        w.Show();
+        WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
+    }
+
+    private void OpenArchive(string path)
+    {
+        var w = new ArchiveInfoWindow { Owner = this };
+        w.Load(path);
+        w.Show();
+        WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
     }
 
     /// <summary>
@@ -607,8 +684,8 @@ public partial class MainWindow : Window
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "打开图片或视频",
-            Filter = "媒体文件|*.jpg;*.jpeg;*.png;*.gif;*.webp;*.bmp;*.tif;*.tiff;*.heic;*.avif;*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.webm;*.flv;*.m4v;*.ts|图片|*.jpg;*.jpeg;*.png;*.gif;*.webp;*.bmp;*.tif;*.tiff;*.heic;*.avif|视频|*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.webm;*.flv;*.m4v;*.ts|所有文件|*.*",
+            Title = "打开图片 / 视频 / 音频 / 文档 / 压缩包",
+            Filter = "媒体文件|*.jpg;*.jpeg;*.png;*.gif;*.webp;*.bmp;*.tif;*.tiff;*.heic;*.avif;*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.webm;*.flv;*.m4v;*.ts;*.mp3;*.wav;*.flac;*.m4a;*.aac;*.ogg;*.opus;*.wma;*.txt;*.md;*.log;*.json;*.csv;*.xml;*.ini;*.yaml;*.yml;*.zip;*.rar;*.7z;*.tar;*.gz|图片|*.jpg;*.jpeg;*.png;*.gif;*.webp;*.bmp;*.tif;*.tiff;*.heic;*.avif|视频|*.mp4;*.mkv;*.avi;*.mov;*.wmv;*.webm;*.flv;*.m4v;*.ts|音频|*.mp3;*.wav;*.flac;*.m4a;*.aac;*.ogg;*.opus;*.wma|文档|*.txt;*.md;*.log;*.json;*.csv;*.xml;*.ini;*.yaml;*.yml|压缩包|*.zip;*.rar;*.7z;*.tar;*.gz|所有文件|*.*",
         };
         if (dlg.ShowDialog() == true)
             OpenStandaloneFile(dlg.FileName);
@@ -621,7 +698,7 @@ public partial class MainWindow : Window
         if (e.Data.GetDataPresent(DataFormats.FileDrop)
             && e.Data.GetData(DataFormats.FileDrop) is string[] files
             && files.Length > 0
-            && MediaFormat.GetMediaType(files[0]) != null)
+            && MediaFormat.GetMediaTypeForOpen(files[0]) != null)
         {
             e.Effects = DragDropEffects.Copy;
         }
@@ -646,6 +723,9 @@ public partial class MainWindow : Window
         if (paths is not { Count: > 0 }) return;
 
         var videos = new List<string>();
+        var audios = new List<string>();
+        var texts = new List<string>();
+        var archives = new List<string>();
         string? firstImage = null;
 
         foreach (var path in paths)
@@ -660,7 +740,8 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            var type = MediaFormat.GetMediaType(path);
+            // 手动打开不受“扩展格式扫描开关”影响：txt/音频/压缩包也能直接查看
+            var type = MediaFormat.GetMediaTypeForOpen(path);
             if (type == null)
             {
                 CustomMessageBox.Info($"不支持的文件类型：\n{path}", "打开文件");
@@ -668,6 +749,9 @@ public partial class MainWindow : Window
             }
 
             if (type == Core.Enums.MediaType.Video) videos.Add(path);
+            else if (type == Core.Enums.MediaType.Audio) audios.Add(path);
+            else if (type == Core.Enums.MediaType.Text) texts.Add(path);
+            else if (type == Core.Enums.MediaType.Archive) archives.Add(path);
             else firstImage ??= path;
         }
 
@@ -680,6 +764,10 @@ public partial class MainWindow : Window
             WindowThemeHelper.ApplyTitleBarDarkMode(player, App.IsDarkTheme);
             return;
         }
+
+        if (audios.Count > 0) { OpenAudio(audios[0]); return; }
+        if (texts.Count > 0) { OpenText(texts[0]); return; }
+        if (archives.Count > 0) { OpenArchive(archives[0]); return; }
 
         if (firstImage != null) OpenImageStandalone(firstImage);
     }
@@ -700,7 +788,7 @@ public partial class MainWindow : Window
     /// <summary>由磁盘文件路径构造一个不依赖数据库的缩略图项（Id=0）。</summary>
     private static ThumbnailItemViewModel CreateStandaloneItem(string path)
     {
-        var type = MediaFormat.GetMediaType(path) ?? Core.Enums.MediaType.Image;
+        var type = MediaFormat.GetMediaTypeForOpen(path) ?? Core.Enums.MediaType.Image;
         var info = new System.IO.FileInfo(path);
 
         var media = new Core.Models.MediaItem
@@ -827,18 +915,21 @@ public partial class MainWindow : Window
     /// <summary>打开设置（主界面按钮和全局快捷键共用一份实现）。</summary>
     public void OpenSettingsDialog()
     {
-        // 快捷键可能在设置窗口已经开着的时候被按下：再 ShowDialog 一次会套出第二个模态窗，
-        // 关一个还有一个，很容易让人以为程序卡住。已经开着就把它提到前面。
+        // 快捷键可能在设置窗口已经开着的时候被按下：已经开着就还原/提到前面，不重复开窗。
         if (_settingsWindow is { IsLoaded: true })
         {
+            if (_settingsWindow.WindowState == WindowState.Minimized)
+                _settingsWindow.WindowState = WindowState.Normal;
+            _settingsWindow.Show();
             _settingsWindow.Activate();
             return;
         }
 
-        var settings = new SettingsWindow(_viewModel) { Owner = this };
+        var settings = new SettingsWindow(_viewModel);
         _settingsWindow = settings;
         settings.Closed += (_, _) => _settingsWindow = null;
-        settings.ShowDialog();
+        // 非模态且不挂 Owner：设置窗可像普通窗口一样随便最小化/切后台，不联动主窗口
+        settings.Show();
     }
 
     private SettingsWindow? _settingsWindow;

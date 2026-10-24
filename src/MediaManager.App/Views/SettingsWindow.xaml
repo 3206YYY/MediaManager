@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="设置" Width="1000" Height="720"
         MinWidth="880" MinHeight="580"
-        WindowStartupLocation="CenterOwner"
+        WindowStartupLocation="CenterScreen"
         PreviewKeyDown="OnWindowPreviewKeyDown"
         Background="{DynamicResource BgBrush}">
 
@@ -454,6 +454,17 @@
                                              Background="{DynamicResource SidebarBrush}" />
                                 </DockPanel>
                                 <TextBlock x:Name="PluginSummaryText" Style="{StaticResource Hint}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="扩展格式支持" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
+                                           Text="启用后，音频（mp3 等）、文档（txt/md 等）、压缩包（zip/rar/7z 等）也会被扫描进库，支持只读预览；关闭后不再扫描新文件，已入库的条目仍保留。" />
+                                <CheckBox x:Name="ExtendedFormatsCheck"
+                                          Content="启用扩展格式（音频 / 文档 / 压缩包）"
+                                          Click="OnToggleExtendedFormats" />
                             </StackPanel>
                         </Border>
 

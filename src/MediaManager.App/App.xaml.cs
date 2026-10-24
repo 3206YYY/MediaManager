@@ -1,6 +1,8 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
 using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Windows;
 using MediaManager.App.Services;
 using MediaManager.App.ViewModels;
@@ -25,6 +27,20 @@ public partial class App : Application
     private Services.HotkeyService? _hotkeys;
     private MainWindow? _mainWindow;
 
+    /// <summary>单实例互斥量：防止两个进程同时写同一个 SQLite 库。</summary>
+    private Mutex? _instanceMutex;
+    private const string InstanceMutexName = @"Local\MediaManager.SingleInstance";
+
+    /// <summary>单实例文件转发管道：第二个进程把「右键打开的文件」交给已运行实例。</summary>
+    private static readonly string OpenFilePipeName =
+        "MediaManager.OpenFile." + SanitizePipePart(Environment.UserName);
+
+    private static string SanitizePipePart(string value)
+    {
+        var chars = value.Where(char.IsLetterOrDigit).ToArray();
+        return chars.Length > 0 ? new string(chars) : "default";
+    }
+
     /// <summary>后台任务的取消令牌：退出时统一取消，避免关窗后还在读盘。</summary>
     private readonly CancellationTokenSource _bgCts = new();
 
@@ -35,6 +51,28 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // ---- 单实例：第二个进程不再启动，只把已有主窗口叫到前台 ----
+        // 多开会让两个进程同时写同一个 SQLite 库（数据不同步，严重时锁死）。
+        try
+        {
+            _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var createdNew);
+            if (!createdNew)
+            {
+                ForwardArgsToRunningInstance(e.Args);
+                ActivateRunningInstance();
+                _instanceMutex.Dispose();
+                _instanceMutex = null;
+                Shutdown();
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            // 互斥量创建失败（权限 / 系统异常）不该阻止软件启动，退化为允许多开
+            Log.Warning(ex, "单实例检测失败，按普通启动继续");
+            _instanceMutex = null;
+        }
+
         base.OnStartup(e);
 
         InstallExceptionHandlers();
@@ -81,6 +119,9 @@ public partial class App : Application
         Log.Debug("主窗口构建完成：进程启动后 {Ms:F0} ms", ElapsedMs());
         MainWindow = _mainWindow;
         _mainWindow.Show();
+
+        // 监听第二个实例转发的文件路径（右键「用媒体管理器打开」时只激活窗口、不开文件）
+        StartPipeServer(_mainWindow);
 
         var startupMs = (DateTime.Now - Process.GetCurrentProcess().StartTime).TotalMilliseconds;
         Log.Information("主窗口已显示：进程启动后 {Ms:F0} ms", startupMs);
@@ -721,6 +762,101 @@ public partial class App : Application
         Shutdown();
     }
 
+    /// <summary>把已经运行的实例激活并置顶（第二个进程启动时调用）。</summary>
+    private static void ActivateRunningInstance()
+    {
+        try
+        {
+            var current = Process.GetCurrentProcess();
+            // 对方可能还在启动（MainWindowHandle 暂时为 0），最多等 3 秒
+            for (var attempt = 0; attempt < 20; attempt++)
+            {
+                var other = Process.GetProcessesByName(current.ProcessName)
+                    .FirstOrDefault(p => p.Id != current.Id && p.MainWindowHandle != IntPtr.Zero);
+
+                if (other != null)
+                {
+                    ShowWindow(other.MainWindowHandle, SW_RESTORE);
+                    SetForegroundWindow(other.MainWindowHandle);
+                    return;
+                }
+
+                Thread.Sleep(150);
+            }
+        }
+        catch
+        {
+            // 激活失败也不影响「不启动第二个实例」这一核心目标
+        }
+    }
+
+    /// <summary>把命令行里的文件路径转发给已运行的实例（右键「用媒体管理器打开」）。</summary>
+    private static void ForwardArgsToRunningInstance(string[] args)
+    {
+        var files = args.Where(a => !string.IsNullOrWhiteSpace(a)).ToArray();
+        if (files.Length == 0) return;
+
+        try
+        {
+            using var client = new NamedPipeClientStream(".", OpenFilePipeName, PipeDirection.Out);
+            client.Connect(1500); // 已运行实例可能刚启动，管道稍后才就绪
+            using var writer = new StreamWriter(client);
+            writer.Write(string.Join('\n', files));
+            writer.Flush();
+        }
+        catch
+        {
+            // 管道没起 / 权限受限：退化为只激活窗口，用户仍可手动打开
+        }
+    }
+
+    /// <summary>已运行实例监听管道：收到第二个实例转发的文件路径后直接打开。</summary>
+    private static void StartPipeServer(MainWindow mainWindow)
+    {
+        _ = Task.Run(async () =>
+        {
+            while (true)
+            {
+                try
+                {
+                    using var server = new NamedPipeServerStream(
+                        OpenFilePipeName, PipeDirection.In, 1,
+                        PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                    await server.WaitForConnectionAsync();
+
+                    using var reader = new StreamReader(server);
+                    var payload = await reader.ReadToEndAsync();
+                    var paths = payload
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Where(System.IO.File.Exists)
+                        .ToArray();
+                    if (paths.Length == 0) continue;
+
+                    _ = mainWindow.Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        mainWindow.Show();
+                        mainWindow.WindowState = WindowState.Normal;
+                        mainWindow.Activate();
+                        mainWindow.OpenStandaloneFiles(paths);
+                    }));
+                }
+                catch
+                {
+                    // 管道被上一轮占用 / 关闭时异常：稍等再试，避免空转
+                    await Task.Delay(500);
+                }
+            }
+        });
+    }
+
+    private const int SW_RESTORE = 9;
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
     protected override async void OnExit(ExitEventArgs e)
     {
         try
@@ -763,6 +899,9 @@ public partial class App : Application
         }
         finally
         {
+            try { _instanceMutex?.ReleaseMutex(); } catch { }
+            try { _instanceMutex?.Dispose(); } catch { }
+            _instanceMutex = null;
             try { _bgCts.Cancel(); } catch { }
             Log.CloseAndFlush();
             base.OnExit(e);

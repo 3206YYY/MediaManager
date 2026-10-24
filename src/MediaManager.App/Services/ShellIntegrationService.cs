@@ -13,10 +13,23 @@ public static class ShellIntegrationService
     private const string MarkerKey = @"Software\MediaManager";
     private const string MenuText = "用媒体管理器打开";
 
-    /// <summary>支持的扩展名（与 MediaFormat 的图片集合保持一致）。</summary>
+    /// <summary>支持的扩展名（与 MediaFormat 的类型集合保持一致；代码文件不注册右键，避免打扰）。</summary>
     private static readonly string[] Extensions =
     {
-        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".avif",
+        // 图片
+        ".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".ico",
+        ".heic", ".avif",
+        // 视频
+        ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".webm", ".flv", ".m4v", ".ts",
+        ".mpg", ".mpeg", ".3gp", ".mts", ".m2ts", ".ogv", ".rmvb", ".vob",
+        // 音频
+        ".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma",
+        ".aif", ".aiff", ".amr", ".mka", ".ape", ".mid", ".midi",
+        // 文档
+        ".txt", ".md", ".log", ".json", ".csv", ".xml", ".ini", ".yaml", ".yml",
+        ".htm", ".html", ".srt", ".ass", ".ssa", ".toml",
+        // 压缩包
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".tgz", ".tbz2", ".txz",
     };
 
     /// <summary>当前可执行文件路径（发布后即安装目录里的 exe）。</summary>
@@ -69,6 +82,11 @@ public static class ShellIntegrationService
 
         using var marker = Registry.CurrentUser.CreateSubKey(MarkerKey);
         marker.SetValue("ShellIntegration", 1, RegistryValueKind.DWord);
+
+        // 记录本版本实际注册过哪些扩展名，安装包卸载时据此逐个清理（新增格式不用再改 iss）
+        using var extKeys = Registry.CurrentUser.CreateSubKey(MarkerKey + @"\ShellExtensions");
+        foreach (var ext in Extensions)
+            extKeys.SetValue(ext, 1, RegistryValueKind.DWord);
     }
 
     /// <summary>移除右键菜单。</summary>
@@ -92,6 +110,15 @@ public static class ShellIntegrationService
         {
             using var marker = Registry.CurrentUser.OpenSubKey(MarkerKey, writable: true);
             marker?.SetValue("ShellIntegration", 0, RegistryValueKind.DWord);
+        }
+        catch
+        {
+            // 忽略
+        }
+
+        try
+        {
+            Registry.CurrentUser.DeleteSubKeyTree(MarkerKey + @"\ShellExtensions", throwOnMissingSubKey: false);
         }
         catch
         {

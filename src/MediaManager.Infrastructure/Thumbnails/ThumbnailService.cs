@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 using MediaManager.Core.Models;
 using MediaManager.Core.Services;
@@ -17,7 +18,9 @@ public class ThumbnailService : IThumbnailService, IDisposable
     private readonly Channel<MediaItem> _channel;
     private readonly CancellationTokenSource _cts = new();
     private readonly List<Task> _workers = new();
+    private readonly ConcurrentDictionary<long, int> _lockRetries = new();
     private const int MaxLongEdge = 320;
+    private const int MaxLockRetries = 2;
 
     public ThumbnailService(IMediaRepository repo, IAppConfigService config, ILogger<ThumbnailService> logger)
     {
@@ -63,11 +66,32 @@ public class ThumbnailService : IThumbnailService, IDisposable
                 try
                 {
                     await GenerateAsync(item, ct);
+                    _lockRetries.TryRemove(item.Id, out _);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    // 程序退出 / 服务释放：不再重试
                 }
                 catch (Exception ex)
                 {
+                    // 文件正在被写入 / 被别的程序短暂占用：等一会儿重新排队，别直接放弃
+                    if (IsFileBusy(ex) && !MediaManager.Core.Diagnostics.StorageErrors.IsDeviceUnavailable(ex))
+                    {
+                        var attempt = _lockRetries.AddOrUpdate(item.Id, 1, (_, v) => v + 1);
+                        if (attempt <= MaxLockRetries)
+                        {
+                            _logger.LogDebug("缩略图稍后重试（文件被占用，第 {Attempt} 次）：{Path}", attempt, item.Path);
+                            await Task.Delay(400, ct).ConfigureAwait(false);
+                            Enqueue(item);
+                        }
+                        else
+                        {
+                            _lockRetries.TryRemove(item.Id, out _);
+                            _logger.LogDebug("缩略图跳过（文件持续被占用）：{Path}", item.Path);
+                        }
+                    }
                     // 设备被拔出属于正常场景：只记调试日志，避免刷屏；等重新扫描时会重建
-                    if (MediaManager.Core.Diagnostics.StorageErrors.IsDeviceUnavailable(ex))
+                    else if (MediaManager.Core.Diagnostics.StorageErrors.IsDeviceUnavailable(ex))
                         _logger.LogDebug("缩略图跳过（设备已断开）：{Path}", item.Path);
                     else
                         _logger.LogWarning(ex, "缩略图生成失败：{Path}", item.Path);
@@ -83,6 +107,10 @@ public class ThumbnailService : IThumbnailService, IDisposable
 
     private async Task GenerateAsync(MediaItem item, CancellationToken ct)
     {
+        // 音频/文档/压缩包用固定图标，不生成缩略图（避免 FFmpeg/解码空转）
+        if (item.MediaType is Core.Enums.MediaType.Audio or Core.Enums.MediaType.Text or Core.Enums.MediaType.Archive)
+            return;
+
         var output = Path.Combine(_config.ThumbnailDirectory, $"{item.Id}_{item.QuickHash ?? "0"}.jpg");
 
         // 缓存文件早就在盘上、只是内存/数据库里的路径丢了（清过缓存标记、
@@ -156,7 +184,7 @@ public class ThumbnailService : IThumbnailService, IDisposable
 
         // 图片用 scale 限制长边，视频截取第 1 秒帧
         var args = $"-y -i \"{input}\" -vf \"scale='min({MaxLongEdge},iw)':-2\" -frames:v 1 -q:v 3 \"{output}\"";
-        return await RunFfmpegAsync(ffmpeg, args, ct).ConfigureAwait(false);
+        return await RunFfmpegAsync(input, ffmpeg, args, ct).ConfigureAwait(false);
     }
 
     private async Task<bool> GenerateVideoAsync(string input, string output, CancellationToken ct)
@@ -174,12 +202,23 @@ public class ThumbnailService : IThumbnailService, IDisposable
         }
 
         var args = $"-y -ss 00:00:01 -i \"{input}\" -vf \"thumbnail,scale={MaxLongEdge}:-1\" -frames:v 1 -q:v 3 \"{output}\"";
-        return await RunFfmpegAsync(ffmpeg, args, ct).ConfigureAwait(false);
+        return await RunFfmpegAsync(input, ffmpeg, args, ct).ConfigureAwait(false);
     }
 
     private bool? _ffmpegMissingLogged;
 
-    private static async Task<bool> RunFfmpegAsync(string ffmpeg, string args, CancellationToken ct)
+    /// <summary>文件被其他进程短暂占用（共享冲突 / 拒绝访问）。</summary>
+    private static bool IsFileBusy(Exception ex)
+    {
+        for (var e = ex; e != null; e = e.InnerException)
+        {
+            if (e is UnauthorizedAccessException) return true;
+            if (e is IOException && (e.HResult & 0xFFFF) == 32) return true; // ERROR_SHARING_VIOLATION
+        }
+        return false;
+    }
+
+    private static async Task<bool> RunFfmpegAsync(string inputPath, string ffmpeg, string args, CancellationToken ct)
     {
         var psi = new System.Diagnostics.ProcessStartInfo
         {
@@ -191,16 +230,60 @@ public class ThumbnailService : IThumbnailService, IDisposable
             RedirectStandardOutput = true,
         };
 
+        System.Diagnostics.Process? proc = null;
         try
         {
-            using var proc = System.Diagnostics.Process.Start(psi);
+            proc = System.Diagnostics.Process.Start(psi);
             if (proc == null) return false;
-            await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+
+            // 记录「这个文件正被 ffmpeg 读取」：删除前要等它退出，否则会报文件被占用
+            FfmpegProcessTracker.Register(inputPath, proc);
+
+            // 必须把 stdout / stderr 读空：只重定向不读取，管道写满后 ffmpeg 会永久卡住，
+            // 文件句柄一直不释放（这正是「删除视频提示已在 ffmpeg 中打开」的根因）。
+            var stdout = proc.StandardOutput.ReadToEndAsync();
+            var stderr = proc.StandardError.ReadToEndAsync();
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+            try
+            {
+                await proc.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                TryKill(proc);
+                return false;
+            }
+
+            await Task.WhenAll(stdout, stderr).ConfigureAwait(false);
             return proc.ExitCode == 0;
         }
-        catch (Exception)
+        catch
         {
+            TryKill(proc);
             return false;
+        }
+        finally
+        {
+            if (proc != null)
+            {
+                FfmpegProcessTracker.Unregister(inputPath, proc);
+                try { proc.Dispose(); } catch { }
+            }
+        }
+    }
+
+    private static void TryKill(System.Diagnostics.Process? proc)
+    {
+        try
+        {
+            if (proc != null && !proc.HasExited) proc.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            // 进程已退出 / 无权结束：忽略
         }
     }
 
@@ -228,6 +311,8 @@ public class ThumbnailService : IThumbnailService, IDisposable
         _cts.Cancel();
         _channel.Writer.TryComplete();
         try { Task.WaitAll(_workers.ToArray(), TimeSpan.FromSeconds(3)); } catch { /* ignore */ }
+        // 兜底：退出时若还有 ffmpeg 挂着，强杀，别让它继续锁住用户的视频文件
+        FfmpegProcessTracker.KillAll();
         _cts.Dispose();
     }
 }

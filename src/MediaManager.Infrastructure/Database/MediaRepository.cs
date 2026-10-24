@@ -1,4 +1,4 @@
-﻿using Dapper;
+using Dapper;
 using MediaManager.Core.Enums;
 using MediaManager.Core.Models;
 using MediaManager.Core.Services;
@@ -546,7 +546,7 @@ public class MediaRepository : IMediaRepository
 
     // ---------- Discovery（发现页随机推荐） ----------
 
-    public async Task<List<MediaItem>> QueryDiscoveryAsync(DiscoveryPoolType poolType, long? poolId, int limit, List<long>? excludeIds)
+    public async Task<List<MediaItem>> QueryDiscoveryAsync(DiscoveryPoolType poolType, long? poolId, int limit, List<long>? excludeIds, IReadOnlyList<MediaType>? types = null)
     {
         using var conn = _factory.CreateConnection();
         var clauses = new List<string> { "m.IsMissing = 0" };
@@ -578,6 +578,8 @@ public class MediaRepository : IMediaRepository
             param.Add("Exclude", excludeIds);
         }
 
+        AppendTypeClause(clauses, param, "m.MediaType", types);
+
         param.Add("Limit", limit);
         var where = " WHERE " + string.Join(" AND ", clauses);
         var list = await conn.QueryAsync<MediaItem>(
@@ -585,7 +587,7 @@ public class MediaRepository : IMediaRepository
         return list.ToList();
     }
 
-    public async Task<long> CountDiscoveryPoolAsync(DiscoveryPoolType poolType, long? poolId)
+    public async Task<long> CountDiscoveryPoolAsync(DiscoveryPoolType poolType, long? poolId, IReadOnlyList<MediaType>? types = null)
     {
         using var conn = _factory.CreateConnection();
         var clauses = new List<string> { "IsMissing = 0" };
@@ -602,26 +604,42 @@ public class MediaRepository : IMediaRepository
                     clauses.Add("EXISTS (SELECT 1 FROM MediaCollection mcl WHERE mcl.MediaId = MediaItem.Id AND mcl.CollectionId = @PoolId)");
                 break;
         }
+
+        var param = new DynamicParameters();
+        if (poolType == DiscoveryPoolType.Category && poolId.HasValue)
+            param.Add("PoolId", poolId.Value);
+        AppendTypeClause(clauses, param, "MediaItem.MediaType", types);
+
         var where = " WHERE " + string.Join(" AND ", clauses);
         return await conn.ExecuteScalarAsync<long>(
-            $"SELECT COUNT(*) FROM MediaItem{where};", poolId.HasValue ? new { PoolId = poolId.Value } : null);
+            $"SELECT COUNT(*) FROM MediaItem{where};", param);
     }
 
-    public async Task SaveDiscoveryBatchAsync(string date, List<long> mediaIds, DiscoveryPoolType poolType, long? poolId)
+    /// <summary>按媒体类型集合追加 IN 条件（兼容历史数字写法）。</summary>
+    private static void AppendTypeClause(List<string> clauses, DynamicParameters param, string column, IReadOnlyList<MediaType>? types)
+    {
+        if (types is not { Count: > 0 }) return;
+        var names = types.Select(t => t.ToString()).ToList();
+        names.AddRange(types.Select(t => ((int)t).ToString()));
+        clauses.Add($"{column} IN @TypeNames");
+        param.Add("TypeNames", names);
+    }
+
+    public async Task SaveDiscoveryBatchAsync(string date, List<long> mediaIds, DiscoveryPoolType poolType, long? poolId, string? typeFilter = null)
     {
         using var conn = _factory.CreateConnection();
         var json = System.Text.Json.JsonSerializer.Serialize(mediaIds);
         await conn.ExecuteAsync(@"
-            INSERT INTO DailyDiscovery(Date, MediaIds, PoolType, PoolId) VALUES(@Date, @MediaIds, @PoolType, @PoolId)
-            ON CONFLICT(Date) DO UPDATE SET MediaIds=@MediaIds, PoolType=@PoolType, PoolId=@PoolId;",
-            new { Date = date, MediaIds = json, PoolType = poolType.ToString(), PoolId = poolId });
+            INSERT INTO DailyDiscovery(Date, MediaIds, PoolType, PoolId, TypeFilter) VALUES(@Date, @MediaIds, @PoolType, @PoolId, @TypeFilter)
+            ON CONFLICT(Date) DO UPDATE SET MediaIds=@MediaIds, PoolType=@PoolType, PoolId=@PoolId, TypeFilter=@TypeFilter;",
+            new { Date = date, MediaIds = json, PoolType = poolType.ToString(), PoolId = poolId, TypeFilter = typeFilter });
     }
 
     public async Task<DiscoveryBatch?> GetDiscoveryBatchAsync(string date)
     {
         using var conn = _factory.CreateConnection();
-        var row = await conn.QueryFirstOrDefaultAsync<(string Date, string MediaIds, string PoolType, long? PoolId)>(
-            "SELECT Date, MediaIds, PoolType, PoolId FROM DailyDiscovery WHERE Date=@Date;", new { Date = date });
+        var row = await conn.QueryFirstOrDefaultAsync<(string Date, string MediaIds, string PoolType, long? PoolId, string? TypeFilter)>(
+            "SELECT Date, MediaIds, PoolType, PoolId, TypeFilter FROM DailyDiscovery WHERE Date=@Date;", new { Date = date });
         if (row.Date == null) return null;
         var ids = string.IsNullOrEmpty(row.MediaIds)
             ? new List<long>()
@@ -632,6 +650,7 @@ public class MediaRepository : IMediaRepository
             MediaIds = ids,
             PoolType = row.PoolType,
             PoolId = row.PoolId,
+            TypeFilter = row.TypeFilter,
         };
     }
 
@@ -780,6 +799,13 @@ public class MediaRepository : IMediaRepository
             clauses.Add("(m.MediaType = @MediaType OR m.MediaType = @MediaTypeNum)");
             param.Add("MediaType", f.MediaType.Value.ToString());
             param.Add("MediaTypeNum", ((int)f.MediaType.Value).ToString());
+        }
+        if (f.MediaTypes is { Count: > 0 })
+        {
+            var names = f.MediaTypes.Select(t => t.ToString()).ToList();
+            names.AddRange(f.MediaTypes.Select(t => ((int)t).ToString()));
+            clauses.Add("m.MediaType IN @MediaTypes");
+            param.Add("MediaTypes", names);
         }
         if (f.Favorite.HasValue)
         {

@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -71,6 +71,11 @@ public partial class MainViewModel : ObservableObject
         _watcher.Changed += OnFileSystemChanged;
         _thumbnailService.ThumbnailReady += OnThumbnailReady;
 
+        // 类型筛选：监听 IsSelected 变化（而不是 CheckBox 的 Checked/Unchecked，
+        // 后者的触发时机可能早于 TwoWay 绑定写回，导致反向点击时筛选不生效）
+        foreach (var option in TypeFilterOptions)
+            option.PropertyChanged += OnTypeFilterOptionChanged;
+
         // 必须在 UI 线程构造：内部 DispatcherTimer 绑定构造线程的 Dispatcher，
         // 在后台线程 new 出来的 Timer 永远不会 Tick。
         ThumbLoading = new MediaManager.App.Services.ThumbnailLoadMonitor();
@@ -100,6 +105,11 @@ public partial class MainViewModel : ObservableObject
             _logger.LogDebug("配置加载完成 {Ms} ms", sw.ElapsedMilliseconds);
 
             await LoadDiscoverySettingsAsync();
+
+            // 扩展格式（音频/文档/压缩包）开关：默认开启，可在 设置 → 插件扩展 关闭
+            var extSetting = await DbAsync(() => _repo.GetSettingAsync("EnableExtendedFormats"));
+            MediaFormat.SetExtendedFormatsEnabled(extSetting != "0");
+
             await LoadNavigationAsync();
             _logger.LogDebug("导航加载完成 {Ms} ms", sw.ElapsedMilliseconds);
 
@@ -168,17 +178,19 @@ public partial class MainViewModel : ObservableObject
 
     // ---------- 顶部属性筛选（叠加过滤，与左侧导航交叉组合） ----------
 
-    /// <summary>仅显示图片。</summary>
-    [ObservableProperty]
-    private bool _onlyImages;
-
-    /// <summary>仅显示视频。</summary>
-    [ObservableProperty]
-    private bool _onlyVideos;
-
     /// <summary>仅显示已编辑副本。</summary>
     [ObservableProperty]
     private bool _editedOnly;
+
+    /// <summary>顶部「类型」多选筛选项（图片/视频/音频/文档/压缩包）。</summary>
+    public ObservableCollection<TypeFilterOption> TypeFilterOptions { get; } = new()
+    {
+        new() { Name = "图片", MediaType = Core.Enums.MediaType.Image },
+        new() { Name = "视频", MediaType = Core.Enums.MediaType.Video },
+        new() { Name = "音频", MediaType = Core.Enums.MediaType.Audio },
+        new() { Name = "文档", MediaType = Core.Enums.MediaType.Text },
+        new() { Name = "压缩包", MediaType = Core.Enums.MediaType.Archive },
+    };
 
     [ObservableProperty]
     private int _thumbnailSize = 160;
@@ -326,8 +338,21 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>列表加载代次：并发刷新时只有最后一次的结果能落到界面，避免旧查询覆盖新结果。</summary>
+    private int _loadGeneration;
+
     private async Task LoadMediaAsync()
     {
+        var generation = ++_loadGeneration;
+
+        if (!HasSelectedType)
+        {
+            if (_currentViewKey == "discovery") IsDiscoveryView = true;
+            MediaItems.Clear();
+            StatusText = "未选择任何类型（顶部「类型」里至少勾选一个）";
+            return;
+        }
+
         if (_currentViewKey == "discovery")
         {
             await LoadDiscoveryAsync();
@@ -349,6 +374,7 @@ public partial class MainViewModel : ObservableObject
             var list = await _repo.QueryAsync(_currentFilter);
             return (count, list);
         });
+        if (generation != _loadGeneration) return; // 期间又触发了新加载，丢弃这次结果
         _logger.LogDebug("  · 查询 {Ms} ms（{Count} 条）", swLoad.ElapsedMilliseconds, items.Count);
 
         var vms = items.Select(ToViewModel).ToList();
@@ -356,6 +382,7 @@ public partial class MainViewModel : ObservableObject
         // 分类标记必须在绑定之前算好：绑定之后再改 IsCategorized 会让每一项都触发
         // Visibility 变化 → 布局重算，50 项就要 400ms+（实测），这也是首屏慢的主因之一。
         await ApplyCategoryMarksAsync(vms);
+        if (generation != _loadGeneration) return;
 
         // 一次性替换：只触发一次布局，比逐条 Add 快很多
         MediaItems.ReplaceAll(vms);
@@ -513,6 +540,10 @@ public partial class MainViewModel : ObservableObject
         {
             if (!string.IsNullOrEmpty(m.ThumbnailPath)) continue;
 
+            // 音频/文档/压缩包不生成缩略图（列表用固定图标），避免 worker 空转
+            if (m.MediaType is Core.Enums.MediaType.Audio or Core.Enums.MediaType.Text or Core.Enums.MediaType.Archive)
+                continue;
+
             rootOnline ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             var root = System.IO.Path.GetPathRoot(m.Path) ?? string.Empty;
             if (!rootOnline.TryGetValue(root, out var online))
@@ -565,6 +596,7 @@ public partial class MainViewModel : ObservableObject
     /// <summary>加载发现页（随机推荐，当日固定）。</summary>
     private async Task LoadDiscoveryAsync()
     {
+        var generation = _loadGeneration;
         IsDiscoveryView = true;
         var swD = System.Diagnostics.Stopwatch.StartNew();
         var total = await DbAsync(() => _repo.GetTotalCountAsync());
@@ -586,9 +618,11 @@ public partial class MainViewModel : ObservableObject
         _logger.LogDebug("  [发现] 批次 {Ms} ms", swD.ElapsedMilliseconds);
 
         List<MediaItem> media;
-        if (batch != null && batch.MediaIds.Count > 0)
+        var typeKey = GetDiscoveryTypeKey();
+        if (batch != null && batch.MediaIds.Count > 0 &&
+            string.Equals(batch.TypeFilter ?? "all", typeKey, StringComparison.Ordinal))
         {
-            // 当天已有批次，直接复用（同一天重开看到同一批）
+            // 当天已有“同一类型范围”的批次，直接复用（同一天重开看到同一批）
             media = await DbAsync(() => _repo.GetByIdsAsync(batch.MediaIds));
 
             // 若批次里有媒体已被删除/还原后换了新 Id，查到的数量会变少，
@@ -600,11 +634,13 @@ public partial class MainViewModel : ObservableObject
         }
         else
         {
+            // 没有批次，或类型筛选变了（旧批次只包含某个子集）→ 重新生成
             media = await GenerateDiscoveryBatchAsync();
         }
 
         var discoveryVms = media.Select(ToViewModel).ToList();
         await ApplyCategoryMarksAsync(discoveryVms);
+        if (generation != _loadGeneration) return;
         MediaItems.ReplaceAll(discoveryVms);
         _logger.LogDebug("  [发现] 绑定 {Ms} ms（{Count} 项）", swD.ElapsedMilliseconds, media.Count);
         EnsureThumbnails(media);
@@ -632,9 +668,10 @@ public partial class MainViewModel : ObservableObject
         var poolType = _discoveryPool;
         var count = _discoveryCount;
         var poolId = poolType == DiscoveryPoolType.Category ? _discoveryPoolId : null;
+        var discoveryTypes = GetDiscoveryTypes();
 
         // 池子总数，用于决定是否排除最近 7 天已推
-        var poolTotal = await DbAsync(() => _repo.CountDiscoveryPoolAsync(poolType, poolId));
+        var poolTotal = await DbAsync(() => _repo.CountDiscoveryPoolAsync(poolType, poolId, discoveryTypes));
 
         // 池子空着就回退到「全部」。
         // 默认推荐池是「收藏」，新用户一张都没收藏，发现页就一片空白 ——
@@ -645,7 +682,7 @@ public partial class MainViewModel : ObservableObject
             poolType = DiscoveryPoolType.All;
             poolId = null;
             _discoveryFallbackToAll = true;
-            poolTotal = await DbAsync(() => _repo.CountDiscoveryPoolAsync(poolType, poolId));
+            poolTotal = await DbAsync(() => _repo.CountDiscoveryPoolAsync(poolType, poolId, discoveryTypes));
         }
         else
         {
@@ -660,22 +697,23 @@ public partial class MainViewModel : ObservableObject
                 exclude = recentIds;
         }
 
-        var media = await DbAsync(() => _repo.QueryDiscoveryAsync(poolType, poolId, count, exclude));
+        var media = await DbAsync(() => _repo.QueryDiscoveryAsync(poolType, poolId, count, exclude, discoveryTypes));
 
         // 若排除后不足 N，补齐（不排除）
         if (media.Count < count)
         {
             var existingIds = media.Select(m => m.Id).ToList();
             var more = await DbAsync(() => _repo.QueryDiscoveryAsync(poolType, poolId, count - media.Count,
-                existingIds.Count > 0 ? existingIds : null));
+                existingIds.Count > 0 ? existingIds : null, discoveryTypes));
             media.AddRange(more);
         }
 
         var ids = media.Select(m => m.Id).Distinct().ToList();
         var today = DateTime.Now.ToString("yyyy-MM-dd");
+        var typeKey = GetDiscoveryTypeKey();
         await DbAsync(async () =>
         {
-            await _repo.SaveDiscoveryBatchAsync(today, ids, poolType, poolId);
+            await _repo.SaveDiscoveryBatchAsync(today, ids, poolType, poolId, typeKey);
             await _repo.RecordDiscoveryHistoryAsync(ids);
         });
 
@@ -685,9 +723,11 @@ public partial class MainViewModel : ObservableObject
     /// <summary>加载最近查看。</summary>
     private async Task LoadRecentViewAsync()
     {
+        var generation = _loadGeneration;
         var items = await DbAsync(() => _repo.GetRecentViewAsync(100));
         var recentVms = items.Select(ToViewModel).ToList();
         await ApplyCategoryMarksAsync(recentVms);
+        if (generation != _loadGeneration) return;
         MediaItems.ReplaceAll(recentVms);
         EnsureThumbnails(items);
         StatusText = $"最近查看 · {MediaItems.Count} 项";
@@ -753,12 +793,10 @@ public partial class MainViewModel : ObservableObject
                 break;
         }
 
-        // 顶部属性筛选：作为叠加过滤条件，与左侧导航交叉组合
-        // （仅图片 / 仅视频互斥，已编辑可与任一叠加）
-        if (OnlyImages)
-            f.MediaType = Core.Enums.MediaType.Image;
-        else if (OnlyVideos)
-            f.MediaType = Core.Enums.MediaType.Video;
+        // 顶部类型多选：全部勾选 = 不筛选；部分勾选 = 只显示选中的类型
+        var selectedTypes = TypeFilterOptions.Where(o => o.IsSelected).Select(o => o.MediaType).ToList();
+        if (selectedTypes.Count > 0 && selectedTypes.Count < TypeFilterOptions.Count)
+            f.MediaTypes = selectedTypes;
 
         if (EditedOnly)
             f.EditedOnly = true;
@@ -766,27 +804,54 @@ public partial class MainViewModel : ObservableObject
         return f;
     }
 
-    // ---------- 顶部属性筛选变化 ----------
-
-    partial void OnOnlyImagesChanged(bool value)
-    {
-        // 仅图片 / 仅视频互斥：勾选一个自动取消另一个（两者同时勾选会得到空结果）
-        if (value && OnlyVideos)
-            OnlyVideos = false;
-        _ = DebounceFilterReloadAsync();
-    }
-
-    partial void OnOnlyVideosChanged(bool value)
-    {
-        if (value && OnlyImages)
-            OnlyImages = false;
-        _ = DebounceFilterReloadAsync();
-    }
+    // ---------- 顶部类型筛选变化 ----------
 
     partial void OnEditedOnlyChanged(bool value) => _ = DebounceFilterReloadAsync();
 
+    /// <summary>是否有勾选任何类型。</summary>
+    private bool HasSelectedType => TypeFilterOptions.Any(o => o.IsSelected);
+
+    private void OnTypeFilterOptionChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TypeFilterOption.IsSelected))
+            _ = DebounceFilterReloadAsync(includeDiscovery: true);
+    }
+
+    /// <summary>全选类型。</summary>
+    public void SelectAllTypes()
+    {
+        foreach (var o in TypeFilterOptions) o.IsSelected = true;
+    }
+
+    /// <summary>全不选类型（列表会显示为空）。</summary>
+    public void ClearAllTypes()
+    {
+        foreach (var o in TypeFilterOptions) o.IsSelected = false;
+    }
+
+    /// <summary>发现页类型筛选键：全部 / 具体子集，用来判断缓存的每日批次是否还适用。</summary>
+    private string GetDiscoveryTypeKey()
+    {
+        var selected = TypeFilterOptions.Where(o => o.IsSelected)
+            .Select(o => o.MediaType)
+            .OrderBy(t => t)
+            .ToList();
+        if (selected.Count == 0) return "none";
+        if (selected.Count == TypeFilterOptions.Count) return "all";
+        return string.Join(",", selected);
+    }
+
+    /// <summary>发现页当前允许的媒体类型：全部勾选返回 null（不限制）；部分勾选返回选中的；一个没选返回空。</summary>
+    private IReadOnlyList<Core.Enums.MediaType>? GetDiscoveryTypes()
+    {
+        var selected = TypeFilterOptions.Where(o => o.IsSelected).Select(o => o.MediaType).ToList();
+        if (selected.Count == 0) return Array.Empty<Core.Enums.MediaType>();
+        if (selected.Count == TypeFilterOptions.Count) return null;
+        return selected;
+    }
+
     private CancellationTokenSource? _filterCts;
-    private async Task DebounceFilterReloadAsync()
+    private async Task DebounceFilterReloadAsync(bool includeDiscovery = false)
     {
         _filterCts?.Cancel();
         _filterCts = new CancellationTokenSource();
@@ -794,8 +859,9 @@ public partial class MainViewModel : ObservableObject
         try
         {
             await Task.Delay(200, token);
-            // 发现页 / 最近查看是独立视图，不参与属性筛选
-            if (!token.IsCancellationRequested && _currentViewKey is not "discovery" and not "recent-view")
+            // 类型筛选对发现页也生效；其余属性筛选仍跳过独立视图
+            if (!token.IsCancellationRequested &&
+                (includeDiscovery || _currentViewKey is not "discovery" and not "recent-view"))
                 await LoadMediaAsync();
         }
         catch (TaskCanceledException) { }
@@ -806,15 +872,16 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task AddFolderAsync()
     {
-        var dialog = new Microsoft.Win32.OpenFolderDialog
+        // Explorer 风格选择器：右侧缩略图网格能直接看到文件夹里有什么
+        var dialog = new FolderPickerWindow
         {
-            Title = "选择媒体文件夹",
+            Owner = System.Windows.Application.Current.MainWindow,
         };
         if (dialog.ShowDialog() != true) return;
 
         // 统一成反斜杠的完整路径：否则 C:/a/b 与 C://a//b 会被当成两个不同路径，
         // 扫描时会往库里插入重复记录（尤其是重命名后再增量扫描）。
-        var path = System.IO.Path.GetFullPath(dialog.FolderName);
+        var path = System.IO.Path.GetFullPath(dialog.SelectedPath!);
         var serial = VolumeHelper.GetVolumeSerial(path);
         var relative = VolumeHelper.GetRelativePath(path);
 
@@ -838,6 +905,18 @@ public partial class MainViewModel : ObservableObject
             _watcher.Start(id, path);
 
             await ScanFolderAsync(id);
+
+            // 扫描后如果这个文件夹里没有任何受支持的文件，弹窗说明原因
+            // （典型场景：关掉“扩展格式”后选了一个只有 zip 的文件夹）
+            var count = await DbAsync(() => _repo.CountAsync(new MediaFilter { RootFolderId = id }));
+            if (count == 0)
+            {
+                StatusText = "该文件夹里没有当前支持的媒体文件。";
+                CustomMessageBox.Info(
+                    "这个文件夹里没有当前支持的媒体文件。\n\n" +
+                    "如果里面有音频 / 文档 / 压缩包，请到 设置 → 插件扩展 启用「扩展格式支持」，再扫描一次。",
+                    "没有可管理的文件");
+            }
         }
         catch (Exception ex)
         {
@@ -1411,7 +1490,9 @@ public partial class MainViewModel : ObservableObject
 
         // 名称/尺寸/日期都是内存里的字段，先立刻显示，面板不会有空白期
         DetailName = item.FileName;
-        DetailMeta = $"{item.Media.Width}×{item.Media.Height}  {item.SizeDisplay}";
+        DetailMeta = item.Media.MediaType == Core.Enums.MediaType.Image
+            ? $"{item.Media.Width}×{item.Media.Height}  {item.SizeDisplay}"
+            : $"{item.TypeLabel}  ·  {item.SizeDisplay}";
         DetailDate = item.Media.ModifiedAtUtc ?? string.Empty;
         DetailIsVideo = item.IsVideo;
         NoteEditor = item.Note ?? string.Empty;
@@ -1447,7 +1528,7 @@ public partial class MainViewModel : ObservableObject
 
             // EXIF（仅图片）：命中缓存时几乎零成本，未命中才真正读文件
             ExifItems.Clear();
-            if (!item.IsVideo)
+            if (item.Media.MediaType == Core.Enums.MediaType.Image)
             {
                 var exif = await _exifService.ReadExifAsync(item.Path);
                 ct.ThrowIfCancellationRequested();
