@@ -13,11 +13,12 @@ import os
 import sys
 
 REPO = "3206YYY/MediaManager"
-DESCRIPTION = "免费开源的 Windows 图片 / 视频管理器：一个窗口管完所有盘，纯本地、无广告，内置轻量编辑器与「时光机」备份回退。"
-HOMEPAGE = "https://github.com/3206YYY/MediaManager/releases"
+DESCRIPTION = "免费开源的 Windows 媒体管理器：一个窗口管完图片 / 视频 / 音频 / 文档 / 压缩包，纯本地、无广告，内置轻量编辑器与「时光机」备份回退。"
+HOMEPAGE = "https://afdian.com/a/3206YYY"
 TOPICS = [
     "windows", "wpf", "dotnet", "csharp", "photo-manager", "image-viewer",
-    "image-editor", "video-player", "media-manager", "local-first", "desktop-app",
+    "image-editor", "video-player", "audio-player", "media-manager", "file-manager",
+    "local-first", "desktop-app",
 ]
 
 
