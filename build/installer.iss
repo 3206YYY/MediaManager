@@ -36,7 +36,8 @@ Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务:"
+; checkedonce：首次安装默认勾选，之后升级沿用上次的选择（用户主动取消过就不再强塞）
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务:"; Flags: checkedonce
 
 [Files]
 ; self-contained 发布输出（含 .NET runtime + FFmpeg + LibVLC）
@@ -58,7 +59,9 @@ Source: "..\dist\MediaManager-win-x64\*"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+; {userdesktop} 而不是 {autodesktop}：用户级安装（PrivilegesRequired=lowest）下两者等价，
+; 但写死用户桌面可以避免「选了为所有用户安装」时写公共桌面的权限问题。
+Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; WorkingDir: "{app}"
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "运行 {#MyAppName}"; Flags: nowait postinstall skipifsilent
