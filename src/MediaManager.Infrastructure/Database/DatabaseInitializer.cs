@@ -3,9 +3,12 @@ using Microsoft.Extensions.Logging;
 
 namespace MediaManager.Infrastructure.Database;
 
-/// <summary>数据库初始化：建表 + PRAGMA 配置。</summary>
+/// <summary>数据库初始化：建表 + PRAGMA 配置 + 一次性迁移。</summary>
 public class DatabaseInitializer
 {
+    /// <summary>v1.3.2「收藏夹并入分类」迁移在 SchemaMigration 里的名字。</summary>
+    public const string CollectionMergeMigration = "v1.3.2_CollectionToCategory";
+
     private readonly IDbConnectionFactory _factory;
     private readonly ILogger<DatabaseInitializer> _logger;
 
@@ -109,6 +112,11 @@ public class DatabaseInitializer
             """);
         Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_MediaCategory_Cat ON MediaCategory(CategoryId);");
 
+        // —— 以下是 v1.3.1 及更早版本的「收藏夹」旧表 ——
+        // v1.3.2 起收藏夹已并入「分类」，程序里不再有任何读写路径。
+        // 这里仍然 CREATE TABLE IF NOT EXISTS：① 老库的数据要留给下面的迁移读；
+        // ② 新库建出空表，迁移逻辑可以无分支地跑（0 行 = 直接标记完成）。
+        // 数据搬完、映射记进 CollectionMigrationMap 之后，这两张表就只剩归档价值，可以随时手工删掉。
         Execute(cmd, """
             CREATE TABLE IF NOT EXISTS Collection (
               Id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,6 +135,24 @@ public class DatabaseInitializer
             );
             """);
         Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_MediaCollection_Col ON MediaCollection(CollectionId);");
+
+        // 一次性迁移的执行台账：同一个迁移无论启动多少次都只跑一遍。
+        Execute(cmd, """
+            CREATE TABLE IF NOT EXISTS SchemaMigration (
+              Name       TEXT PRIMARY KEY,
+              AppliedUtc TEXT NOT NULL
+            );
+            """);
+
+        // 旧收藏夹 id → 迁移后的分类 id。
+        // 「最近删除」里 v1.3.2 之前留下的记录还存着收藏夹 id，还原时靠这张表把归属续上。
+        Execute(cmd, """
+            CREATE TABLE IF NOT EXISTS CollectionMigrationMap (
+              CollectionId INTEGER PRIMARY KEY,
+              CategoryId   INTEGER NOT NULL,
+              MigratedUtc  TEXT    NOT NULL
+            );
+            """);
 
         // 旧库迁移：给 MediaItem 补 Note 列
         MigrateColumn(cmd, "MediaItem", "Note", "TEXT");
@@ -242,7 +268,179 @@ public class DatabaseInitializer
             END;
             """);
 
+        // v1.3.2 一次性迁移：旧「收藏夹」→「分类」（必须在 FTS 表建好之后跑，尾部要同步搜索索引）
+        MigrateCollectionsIntoCategories(conn);
+
         _logger.LogInformation("数据库初始化完成：{Path}", _factory.DatabasePath);
+    }
+
+    /// <summary>
+    /// v1.3.2 一次性迁移：把旧「收藏夹（Collection）」整体并入「分类（Category）」。
+    /// <para>
+    /// 规则：每个旧收藏夹变成一个<b>同名顶级分类</b>；已经有同名顶级分类就直接复用，不建重复的。
+    /// 媒体归属从 MediaCollection 搬到 MediaCategory（INSERT OR IGNORE，纯增量，不动已有分类）。
+    /// </para>
+    /// <para>
+    /// 安全性：整个过程在一个事务里，失败全回滚，下次启动重跑；成功后在 SchemaMigration 记一笔，
+    /// 之后每次启动只多一次 COUNT 查询。旧表一行都不删——用户的原始数据永远还在。
+    /// </para>
+    /// </summary>
+    private void MigrateCollectionsIntoCategories(SqliteConnection conn)
+    {
+        // 1. 台账检查：跑过了就直接返回（幂等）
+        using (var check = conn.CreateCommand())
+        {
+            check.CommandText = "SELECT COUNT(*) FROM SchemaMigration WHERE Name = @Name;";
+            check.Parameters.AddWithValue("@Name", CollectionMergeMigration);
+            if (Convert.ToInt64(check.ExecuteScalar() ?? 0L) > 0)
+                return;
+        }
+
+        var legacy = new List<(long Id, string Name, long SortOrder, string CreatedAt)>();
+        using (var read = conn.CreateCommand())
+        {
+            read.CommandText = "SELECT Id, Name, SortOrder, CreatedAtUtc FROM Collection ORDER BY SortOrder, Id;";
+            using var r = read.ExecuteReader();
+            while (r.Read())
+            {
+                legacy.Add((
+                    r.GetInt64(0),
+                    r.IsDBNull(1) ? "" : r.GetString(1),
+                    r.IsDBNull(2) ? 0L : r.GetInt64(2),
+                    r.IsDBNull(3) ? DateTime.UtcNow.ToString("O") : r.GetString(3)));
+            }
+        }
+
+        if (legacy.Count == 0)
+        {
+            // 新库或本来就没用过收藏夹：什么都不用搬，只记台账
+            using var empty = conn.CreateCommand();
+            empty.CommandText = "INSERT OR REPLACE INTO SchemaMigration(Name, AppliedUtc) VALUES(@Name, @Now);";
+            empty.Parameters.AddWithValue("@Name", CollectionMergeMigration);
+            empty.Parameters.AddWithValue("@Now", DateTime.UtcNow.ToString("O"));
+            empty.ExecuteNonQuery();
+            return;
+        }
+
+        var now = DateTime.UtcNow.ToString("O");
+        using var tx = conn.BeginTransaction();
+        try
+        {
+            // 新分类排到现有顶级分类之后，保持原收藏夹的相对顺序
+            long nextSort;
+            using (var q = conn.CreateCommand())
+            {
+                q.Transaction = tx;
+                q.CommandText = "SELECT COALESCE(MAX(SortOrder), -1) + 1 FROM Category WHERE ParentId IS NULL;";
+                nextSort = Convert.ToInt64(q.ExecuteScalar() ?? 0L);
+            }
+
+            int createdCategories = 0, createdLinks = 0;
+            using var work = conn.CreateCommand();
+            work.Transaction = tx;
+
+            foreach (var col in legacy)
+            {
+                var name = col.Name.Trim();
+                if (name.Length == 0) name = "未命名收藏夹 " + col.Id;
+
+                // 2. 已有同名顶级分类？复用。不区分大小写，避免「旅行」和「旅行 」拆成两个
+                long categoryId;
+                work.Parameters.Clear();
+                work.CommandText = "SELECT Id FROM Category WHERE ParentId IS NULL AND Name = @Name COLLATE NOCASE LIMIT 1;";
+                work.Parameters.AddWithValue("@Name", name);
+                var existing = work.ExecuteScalar();
+                if (existing is not null and not DBNull)
+                {
+                    categoryId = Convert.ToInt64(existing);
+                }
+                else
+                {
+                    // 分两步：INSERT 和 last_insert_rowid() 分开执行。
+                    // 多语句 ExecuteScalar 在不同 provider 下取哪条语句的结果集并不一致，这里不赌。
+                    work.CommandText = """
+                        INSERT INTO Category(Name, ParentId, SortOrder, CreatedAtUtc)
+                        VALUES(@Name, NULL, @SortOrder, @CreatedAt);
+                        """;
+                    work.Parameters.Clear();
+                    work.Parameters.AddWithValue("@Name", name);
+                    work.Parameters.AddWithValue("@SortOrder", nextSort++);
+                    work.Parameters.AddWithValue("@CreatedAt", col.CreatedAt);
+                    work.ExecuteNonQuery();
+
+                    work.CommandText = "SELECT last_insert_rowid();";
+                    work.Parameters.Clear();
+                    categoryId = Convert.ToInt64(work.ExecuteScalar() ?? 0L);
+                    createdCategories++;
+                }
+
+                // 3. 媒体归属搬家（重复的忽略，一条不丢也不重）
+                //    JOIN MediaItem 不能省：MediaCategory 对 MediaItem 有外键，而 SQLite 的
+                //    OR IGNORE 只忽略唯一约束、**不忽略外键冲突**。旧库里万一有指向已删媒体的
+                //    残留行（历史版本关过 foreign_keys），整批 INSERT 会抛错 → 整个迁移回滚 →
+                //    以后每次启动都失败。这里直接把这些孤儿行滤掉。
+                work.CommandText = """
+                    INSERT OR IGNORE INTO MediaCategory(MediaId, CategoryId)
+                    SELECT mc.MediaId, @CategoryId
+                    FROM MediaCollection mc
+                    JOIN MediaItem m ON m.Id = mc.MediaId
+                    WHERE mc.CollectionId = @CollectionId;
+                    """;
+                work.Parameters.Clear();
+                work.Parameters.AddWithValue("@CategoryId", categoryId);
+                work.Parameters.AddWithValue("@CollectionId", col.Id);
+                createdLinks += work.ExecuteNonQuery();
+
+                // 4. 记下 id 对应关系，供「最近删除」还原旧记录用
+                work.CommandText = """
+                    INSERT INTO CollectionMigrationMap(CollectionId, CategoryId, MigratedUtc)
+                    VALUES(@CollectionId, @CategoryId, @Now)
+                    ON CONFLICT(CollectionId) DO UPDATE SET CategoryId=@CategoryId, MigratedUtc=@Now;
+                    """;
+                work.Parameters.Clear();
+                work.Parameters.AddWithValue("@CollectionId", col.Id);
+                work.Parameters.AddWithValue("@CategoryId", categoryId);
+                work.Parameters.AddWithValue("@Now", now);
+                work.ExecuteNonQuery();
+            }
+
+            // 5. 搜索索引里的「分类」列要跟上，否则按新分类名搜不到这些媒体。
+            //    注意：MediaFts 是 external content 表（content='MediaItem'），Tags/Categories
+            //    这两列在 MediaItem 里并不存在，所以 UPDATE / rebuild 都会报
+            //    "no such column: T.Tags"。唯一可靠的办法是 delete-all 之后按 MediaItem 重新灌一遍。
+            work.Parameters.Clear();
+            work.CommandText = "INSERT INTO MediaFts(MediaFts) VALUES('delete-all');";
+            work.ExecuteNonQuery();
+
+            work.CommandText = """
+                INSERT INTO MediaFts(rowid, FileName, Path, Tags, Categories)
+                SELECT m.Id, m.FileName, m.Path,
+                  (SELECT group_concat(t.Name, ' ') FROM MediaTag mt JOIN Tag t ON t.Id = mt.TagId WHERE mt.MediaId = m.Id),
+                  (SELECT group_concat(c.Name, ' ') FROM MediaCategory mc JOIN Category c ON c.Id = mc.CategoryId WHERE mc.MediaId = m.Id)
+                FROM MediaItem m;
+                """;
+            work.ExecuteNonQuery();
+
+            // 6. 落台账
+            work.CommandText = "INSERT OR REPLACE INTO SchemaMigration(Name, AppliedUtc) VALUES(@Name, @Now);";
+            work.Parameters.Clear();
+            work.Parameters.AddWithValue("@Name", CollectionMergeMigration);
+            work.Parameters.AddWithValue("@Now", now);
+            work.ExecuteNonQuery();
+
+            tx.Commit();
+
+            _logger.LogInformation(
+                "收藏夹已并入分类：{Collections} 个收藏夹 → 新建 {Created} 个分类（{Reused} 个同名复用），迁移 {Links} 条媒体归属",
+                legacy.Count, createdCategories, legacy.Count - createdCategories, createdLinks);
+        }
+        catch (Exception ex)
+        {
+            tx.Rollback();
+            // 刻意不往上抛：迁移失败就保持原样（旧表一行没动，数据不会丢），
+            // 只让用户暂时看不到旧收藏夹，也不该让程序打不开。下次启动会自动重试。
+            _logger.LogError(ex, "收藏夹并入分类失败，已回滚；旧表数据完好，下次启动会重试");
+        }
     }
 
     private static void Execute(SqliteCommand cmd, string sql)

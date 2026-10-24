@@ -37,7 +37,7 @@ public partial class ViewerWindow : Window
     private enum ToolMode { None, Crop, Ink, Privacy, Shape }
 
     /// <summary>随机跳转的范围。</summary>
-    private enum RandomScope { List, Folder, All, Favorite, Category, Collection, Tag }
+    private enum RandomScope { List, Folder, All, Favorite, Category, Tag }
 
     private const string RandomScopeSettingKey = "ViewerRandomScope";
     private const string RandomScopeIdSettingKey = "ViewerRandomScopeId";
@@ -2120,6 +2120,8 @@ public partial class ViewerWindow : Window
             FontSizeText.Text = ((int)Math.Round(FontSizeSlider.Value)).ToString();
             TextAngleSlider.Value = Math.Clamp(item.Angle, TextAngleSlider.Minimum, TextAngleSlider.Maximum);
             TextAngleText.Text = $"{(int)Math.Round(TextAngleSlider.Value)}°";
+            SyncTextAngleInput();
+            SyncTextScaleInput();
             BoldToggle.IsChecked = item.Bold;
             ItalicToggle.IsChecked = item.Italic;
 
@@ -2183,6 +2185,89 @@ public partial class ViewerWindow : Window
         }
 
         if (_activeText == null) RebuildOverlays();
+    }
+
+    /// <summary>缩放比例 100% 对应的字号基准。</summary>
+    private const double BaseTextFontSize = 48;
+
+    private void OnTextAngleInputKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        CommitTextAngleInput();
+        e.Handled = true;
+    }
+
+    private void OnTextAngleInputCommitted(object sender, RoutedEventArgs e) => CommitTextAngleInput();
+
+    /// <summary>把数字框里的 0-360 角度转成内部使用的 -180~180，并驱动滑块。</summary>
+    private void CommitTextAngleInput()
+    {
+        if (TextAngleInput == null || TextAngleSlider == null) return;
+
+        if (!double.TryParse(TextAngleInput.Text.Trim().TrimEnd('°', ' '), out var value))
+        {
+            SyncTextAngleInput();
+            return;
+        }
+
+        value = ((value % 360) + 360) % 360;
+        var angle = value > 180 ? value - 360 : value;
+        TextAngleSlider.Value = angle;      // 触发 OnTextAngleChanged，应用到当前文字
+        TextAngleInput.Text = ((int)Math.Round(value)).ToString();
+    }
+
+    private void SyncTextAngleInput()
+    {
+        if (TextAngleInput == null || TextAngleSlider == null) return;
+        var angle = TextAngleSlider.Value;
+        TextAngleInput.Text = ((int)Math.Round(((angle % 360) + 360) % 360)).ToString();
+    }
+
+    private void OnTextScaleInputKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        CommitTextScaleInput();
+        e.Handled = true;
+    }
+
+    private void OnTextScaleInputCommitted(object sender, RoutedEventArgs e) => CommitTextScaleInput();
+
+    /// <summary>缩放比例：相对默认字号 48px 的百分比，换算后驱动字号滑块。</summary>
+    private void CommitTextScaleInput()
+    {
+        if (TextScaleInput == null) return;
+
+        if (!double.TryParse(TextScaleInput.Text.Trim().TrimEnd('%', ' '), out var percent))
+        {
+            SyncTextScaleInput();
+            return;
+        }
+
+        percent = Math.Clamp(percent, 20, 300);
+        TextScaleInput.Text = ((int)Math.Round(percent)).ToString();
+
+        var item = _activeText ?? _doc?.Texts.LastOrDefault();
+        if (item == null) return;
+
+        var targetPx = BaseTextFontSize * percent / 100.0;
+        if (_activeTextBox != null)
+        {
+            var scale = DisplayScale <= 0 ? 1 : DisplayScale;
+            FontSizeSlider.Value = Math.Clamp(targetPx * scale, FontSizeSlider.Minimum, FontSizeSlider.Maximum);
+        }
+        else
+        {
+            item.FontSize = targetPx;
+            RebuildOverlays();
+        }
+    }
+
+    private void SyncTextScaleInput()
+    {
+        if (TextScaleInput == null) return;
+        var item = _activeText ?? _doc?.Texts.LastOrDefault();
+        var percent = item == null ? 100 : item.FontSize / BaseTextFontSize * 100;
+        TextScaleInput.Text = ((int)Math.Round(percent)).ToString();
     }
 
     private void OnTextStyleChanged(object sender, RoutedEventArgs e)
@@ -3038,8 +3123,11 @@ public partial class ViewerWindow : Window
         _suppressTextPanel = true;
         TextAngleSlider.Value = item == null ? 0 : Math.Clamp(item.Angle, -180, 180);
         TextAngleSlider.IsEnabled = item != null;
+        if (TextAngleInput != null) TextAngleInput.IsEnabled = item != null;
         _suppressTextPanel = false;
         TextAngleText.Text = $"{(int)Math.Round(TextAngleSlider.Value)}°";
+        SyncTextAngleInput();
+        SyncTextScaleInput();
     }
 
     /// <summary>整栏收起/展开：保留分类图标轨，只把右侧属性面板藏起来。</summary>
@@ -3412,7 +3500,6 @@ public partial class ViewerWindow : Window
     // ================= 沉浸式随机跳转 =================
 
     private readonly List<(long Id, string Name)> _randomCategories = new();
-    private readonly List<(long Id, string Name)> _randomCollections = new();
     private readonly List<(long Id, string Name)> _randomTags = new();
 
     private async void OnViewerLoaded(object sender, RoutedEventArgs e)
@@ -3437,7 +3524,7 @@ public partial class ViewerWindow : Window
 
             await BuildSpecifiedMenusAsync();
 
-            // 分类/收藏夹/标签被删掉后，别让随机范围指向一个空目标
+            // 分类/标签被删掉后，别让随机范围指向一个空目标
             if (IsSpecifiedScope(_randomScope) && !SpecifiedScopeExists())
                 SetRandomScope(RandomScope.List, null, null, persist: false);
         }
@@ -3457,13 +3544,10 @@ public partial class ViewerWindow : Window
 
         _randomCategories.Clear();
         foreach (var c in await repo.GetCategoriesAsync()) _randomCategories.Add((c.Id, c.Name));
-        _randomCollections.Clear();
-        foreach (var c in await repo.GetCollectionsAsync()) _randomCollections.Add((c.Id, c.Name));
         _randomTags.Clear();
         foreach (var t in await repo.GetTagsAsync()) _randomTags.Add((t.Id, t.Name));
 
         FillScopeMenu(ScopeCategoryItem, _randomCategories, "category", "（还没有分类）");
-        FillScopeMenu(ScopeCollectionItem, _randomCollections, "collection", "（还没有收藏夹）");
         FillScopeMenu(ScopeTagItem, _randomTags, "tag", "（还没有标签）");
     }
 
@@ -3490,7 +3574,7 @@ public partial class ViewerWindow : Window
     }
 
     private static bool IsSpecifiedScope(RandomScope scope)
-        => scope is RandomScope.Category or RandomScope.Collection or RandomScope.Tag;
+        => scope is RandomScope.Category or RandomScope.Tag;
 
     private bool SpecifiedScopeExists()
     {
@@ -3498,7 +3582,6 @@ public partial class ViewerWindow : Window
         var list = _randomScope switch
         {
             RandomScope.Category => _randomCategories,
-            RandomScope.Collection => _randomCollections,
             RandomScope.Tag => _randomTags,
             _ => null,
         };
@@ -3538,7 +3621,6 @@ public partial class ViewerWindow : Window
         var scope = parts[0] switch
         {
             "category" => RandomScope.Category,
-            "collection" => RandomScope.Collection,
             "tag" => RandomScope.Tag,
             _ => RandomScope.List,
         };
@@ -3579,7 +3661,7 @@ public partial class ViewerWindow : Window
             : "当前文件夹（这张图所在根目录）";
         ScopeSpecifiedItem.Header = IsSpecifiedScope(_randomScope) && !string.IsNullOrWhiteSpace(_randomScopeName)
             ? $"指定：{_randomScopeName}"
-            : "指定分类 / 收藏夹 / 标签";
+            : "指定分类 / 标签";
 
         ScopeListItem.IsChecked = _randomScope == RandomScope.List;
         ScopeFolderItem.IsChecked = _randomScope == RandomScope.Folder;
@@ -3588,7 +3670,6 @@ public partial class ViewerWindow : Window
         ScopeSpecifiedItem.IsChecked = IsSpecifiedScope(_randomScope);
 
         SetSpecifiedChecks(ScopeCategoryItem, RandomScope.Category, "category");
-        SetSpecifiedChecks(ScopeCollectionItem, RandomScope.Collection, "collection");
         SetSpecifiedChecks(ScopeTagItem, RandomScope.Tag, "tag");
     }
 
@@ -3713,10 +3794,6 @@ public partial class ViewerWindow : Window
             case RandomScope.Category:
                 if (!_randomScopeId.HasValue) return (new(), true);
                 filter.CategoryId = _randomScopeId.Value;
-                break;
-            case RandomScope.Collection:
-                if (!_randomScopeId.HasValue) return (new(), true);
-                filter.CollectionId = _randomScopeId.Value;
                 break;
             case RandomScope.Tag:
                 if (!_randomScopeId.HasValue) return (new(), true);

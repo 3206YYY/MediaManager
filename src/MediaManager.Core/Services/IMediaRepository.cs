@@ -53,14 +53,11 @@ public interface IMediaRepository
     Task<List<long>> GetMediaCategoryIdsAsync(long mediaId);
     Task<Dictionary<long, List<long>>> GetMediaCategoryMapAsync(IEnumerable<long> mediaIds);
 
-    // Collection（收藏夹）
-    Task<long> AddCollectionAsync(Collection collection);
-    Task RenameCollectionAsync(long id, string name);
-    Task DeleteCollectionAsync(long id);
-    Task<List<Collection>> GetCollectionsAsync();
-    Task AddMediaCollectionAsync(long mediaId, long collectionId);
-    Task RemoveMediaCollectionAsync(long mediaId, long collectionId);
-    Task<List<long>> GetMediaCollectionIdsAsync(long mediaId);
+    /// <summary>
+    /// 把旧版「收藏夹」id 映射成迁移后的分类 id（v1.3.2 合并时建立的对应关系）。
+    /// 仅在还原「最近删除」里 v1.3.2 之前的记录时用得上，查不到的 id 直接丢弃。
+    /// </summary>
+    Task<List<long>> MapLegacyCollectionIdsAsync(IEnumerable<long> collectionIds);
 
     // Settings
     Task<string?> GetSettingAsync(string key);
@@ -89,7 +86,6 @@ public interface IMediaRepository
     // 排序（拖动排序）
     Task UpdateTagSortOrderAsync(IReadOnlyList<(long Id, int SortOrder)> orders);
     Task UpdateCategorySortOrderAsync(IReadOnlyList<(long Id, int SortOrder)> orders);
-    Task UpdateCollectionSortOrderAsync(IReadOnlyList<(long Id, int SortOrder)> orders);
 
     // 按 id 列表查询媒体（发现页按批次 MediaIds 加载）
     Task<List<MediaItem>> GetByIdsAsync(IEnumerable<long> ids);
@@ -98,7 +94,6 @@ public interface IMediaRepository
     Task<long> GetFavoriteCountAsync();
     Task<long> GetTagCountAsync();
     Task<long> GetCategoryCountAsync();
-    Task<long> GetCollectionCountAsync();
 
     // ---------- 最近删除 / 撤销 ----------
 
@@ -118,8 +113,7 @@ public interface IMediaRepository
     Task ClearDeletedAsync();
 
     /// <summary>还原媒体项（尽量沿用原 Id 与收藏/评分/备注），返回新的媒体 Id。</summary>
-    Task<long> RestoreMediaAsync(MediaItem item, IEnumerable<long> tagIds, IEnumerable<long> categoryIds,
-        IEnumerable<long> collectionIds);
+    Task<long> RestoreMediaAsync(MediaItem item, IEnumerable<long> tagIds, IEnumerable<long> categoryIds);
 
     /// <summary>清空所有媒体项的缩略图路径（清理缓存后调用，迫使重新生成）。</summary>
     Task ClearThumbnailPathsAsync();

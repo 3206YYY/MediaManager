@@ -25,9 +25,6 @@ public class MediaFilter
     /// <summary>展开后的分类 id（含所有子分类），由仓库层填充。</summary>
     public List<long>? CategoryIds { get; set; }
 
-    /// <summary>按收藏夹筛选。</summary>
-    public long? CollectionId { get; set; }
-
     /// <summary>仅显示编辑副本（文件名含 _edited）。</summary>
     public bool? EditedOnly { get; set; }
 

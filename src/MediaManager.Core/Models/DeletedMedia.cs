@@ -21,6 +21,11 @@ public class DeletedMedia
     public string? SnapshotJson { get; set; }
     public string? TagIdsJson { get; set; }
     public string? CategoryIdsJson { get; set; }
+
+    /// <summary>
+    /// 旧版「收藏夹」id 快照。v1.3.2 合并进分类后不再写入，只保留读旧记录的能力：
+    /// 还原时会经 CollectionMigrationMap 换算成分类 id。
+    /// </summary>
     public string? CollectionIdsJson { get; set; }
     public bool IsRestored { get; set; }
 

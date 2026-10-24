@@ -34,7 +34,6 @@ public partial class MainViewModel : ObservableObject
     private long? _currentRootFolderId;
     private long? _currentTagId;
     private long? _currentCategoryId;
-    private long? _currentCollectionId;
 
     // 发现页状态
     private DiscoveryPoolType _discoveryPool = DiscoveryPoolType.Favorite;
@@ -161,13 +160,9 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<NavigationItemViewModel> FolderItems { get; } = new();
     public ObservableCollection<NavigationItemViewModel> TagItems { get; } = new();
     public ObservableCollection<Category> CategoryItems { get; } = new();
-    public ObservableCollection<Collection> CollectionItems { get; } = new();
 
     /// <summary>当前选中项已加入的分类。</summary>
     public ObservableCollection<Category> SelectedCategories { get; } = new();
-
-    /// <summary>当前选中项已加入的收藏夹。</summary>
-    public ObservableCollection<Collection> SelectedCollections { get; } = new();
 
     public ObservableCollection<KeyValuePair<string, string>> ExifItems { get; } = new();
 
@@ -227,7 +222,7 @@ public partial class MainViewModel : ObservableObject
 
     // ---------- 发现页 ----------
 
-    /// <summary>发现页池子类型（收藏/全部/未分类/指定分类收藏夹）。</summary>
+    /// <summary>发现页池子类型（收藏/全部/未分类/指定分类）。</summary>
     [ObservableProperty]
     private int _discoveryPoolIndex;
 
@@ -243,13 +238,13 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _isDiscoveryView;
 
-    /// <summary>发现页可选的指定分类/收藏夹（池子类型=指定时用）。</summary>
-    public ObservableCollection<Collection> DiscoveryPoolCollections { get; } = new();
+    /// <summary>发现页可选的指定分类（池子类型=指定时用）。</summary>
+    public ObservableCollection<Category> DiscoveryPoolCategories { get; } = new();
 
     /// <summary>发现页下拉框选项。</summary>
     public IReadOnlyList<string> DiscoveryPoolOptions { get; } = new[]
     {
-        "收藏", "全部", "未分类", "指定分类/收藏夹",
+        "收藏", "全部", "未分类", "指定分类",
     };
 
     // ---------- 侧栏数量显示 ----------
@@ -262,9 +257,6 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private int _categoryCount;
-
-    [ObservableProperty]
-    private int _collectionCount;
 
     /// <summary>最近查看数量。</summary>
     [ObservableProperty]
@@ -279,11 +271,9 @@ public partial class MainViewModel : ObservableObject
             Folders: await _repo.GetRootFoldersAsync(),
             Tags: await _repo.GetTagsAsync(),
             Categories: await _repo.GetCategoriesAsync(),
-            Collections: await _repo.GetCollectionsAsync(),
             FavoriteCount: await _repo.GetFavoriteCountAsync(),
             TagCount: await _repo.GetTagCountAsync(),
-            CategoryCount: await _repo.GetCategoryCountAsync(),
-            CollectionCount: await _repo.GetCollectionCountAsync()));
+            CategoryCount: await _repo.GetCategoryCountAsync()));
 
         FolderItems.Clear();
         foreach (var f in data.Folders)
@@ -313,20 +303,15 @@ public partial class MainViewModel : ObservableObject
         foreach (var c in data.Categories)
             CategoryItems.Add(c);
 
-        CollectionItems.Clear();
-        foreach (var c in data.Collections)
-            CollectionItems.Add(c);
-
-        // 发现页"指定分类/收藏夹"的候选
-        DiscoveryPoolCollections.Clear();
-        foreach (var c in data.Collections)
-            DiscoveryPoolCollections.Add(c);
+        // 发现页「指定分类」的候选（v1.3.2 起收藏夹已并入分类，只列顶级分类）
+        DiscoveryPoolCategories.Clear();
+        foreach (var c in data.Categories.Where(c => c.ParentId == null))
+            DiscoveryPoolCategories.Add(c);
 
         // 侧栏数量
         FavoriteCount = (int)data.FavoriteCount;
         TagCount = (int)data.TagCount;
         CategoryCount = (int)data.CategoryCount;
-        CollectionCount = (int)data.CollectionCount;
     }
 
     private void StartWatchers()
@@ -451,9 +436,15 @@ public partial class MainViewModel : ObservableObject
             await DbAsync(() => _repo.UpsertMediaAsync(item));
 
             // 原地覆盖了副本：磁盘上的缩略图还是旧画面，必须让它失效并重建，
-            // 否则列表里永远显示编辑前的样子（缓存文件名带 QuickHash，只改 mtime 不会变）。
+            // 否则列表里永远显示编辑前的样子。
             if (overwritten && item.Id > 0)
+            {
                 await DbAsync(() => _repo.InvalidateThumbnailAsync(item.Id));
+                // 缓存文件名带内容签名，但旧文件还占着磁盘；删掉并同步清内存 LRU，
+                // 这样无论 Id 是否被复用都不会命中上一轮的图。
+                foreach (var stale in _thumbnailService.Invalidate(item.Id))
+                    Services.ThumbnailMemoryCache.Remove(stale);
+            }
         }
         catch (Exception ex)
         {
@@ -538,11 +529,23 @@ public partial class MainViewModel : ObservableObject
         Dictionary<string, bool>? rootOnline = null;
         foreach (var m in items)
         {
-            if (!string.IsNullOrEmpty(m.ThumbnailPath)) continue;
-
             // 音频/文档/压缩包不生成缩略图（列表用固定图标），避免 worker 空转
             if (m.MediaType is Core.Enums.MediaType.Audio or Core.Enums.MediaType.Text or Core.Enums.MediaType.Archive)
                 continue;
+
+            // 当前源文件（大小 + 修改时间）对应的缓存是否已经存在。
+            // 存在就直接用；和库里记的旧路径不一致时切过去 —— 源文件被原地覆盖后
+            // 旧缓存必须立刻作废，否则列表会一直显示编辑前的画面。
+            var expected = _thumbnailService.GetCachedPath(m);
+            if (expected != null)
+            {
+                if (!string.Equals(m.ThumbnailPath, expected, StringComparison.OrdinalIgnoreCase))
+                    m.ThumbnailPath = expected;
+                continue;
+            }
+
+            // 缓存不存在（首次入库 / 缩略图被删 / 源文件已变化）→ 清掉旧路径后重新生成
+            m.ThumbnailPath = null;
 
             rootOnline ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             var root = System.IO.Path.GetPathRoot(m.Path) ?? string.Empty;
@@ -788,9 +791,6 @@ public partial class MainViewModel : ObservableObject
             case "category":
                 f.CategoryId = _currentCategoryId;
                 break;
-            case "collection":
-                f.CollectionId = _currentCollectionId;
-                break;
         }
 
         // 顶部类型多选：全部勾选 = 不筛选；部分勾选 = 只显示选中的类型
@@ -872,16 +872,18 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task AddFolderAsync()
     {
-        // Explorer 风格选择器：右侧缩略图网格能直接看到文件夹里有什么
-        var dialog = new FolderPickerWindow
+        // 系统原生文件夹选择器（IFileOpenDialog + FOS_PICKFOLDERS）：
+        // 左侧导航、网络位置、新建文件夹等行为与资源管理器完全一致，不再自绘选择器。
+        var dialog = new Microsoft.Win32.OpenFolderDialog
         {
-            Owner = System.Windows.Application.Current.MainWindow,
+            Title = "选择媒体文件夹",
+            Multiselect = false,
         };
         if (dialog.ShowDialog() != true) return;
 
         // 统一成反斜杠的完整路径：否则 C:/a/b 与 C://a//b 会被当成两个不同路径，
         // 扫描时会往库里插入重复记录（尤其是重命名后再增量扫描）。
-        var path = System.IO.Path.GetFullPath(dialog.SelectedPath!);
+        var path = System.IO.Path.GetFullPath(dialog.FolderName);
         var serial = VolumeHelper.GetVolumeSerial(path);
         var relative = VolumeHelper.GetRelativePath(path);
 
@@ -1062,7 +1064,6 @@ public partial class MainViewModel : ObservableObject
         _currentRootFolderId = null;
         _currentTagId = null;
         _currentCategoryId = null;
-        _currentCollectionId = null;
 
         if (key.StartsWith("folder:"))
         {
@@ -1078,11 +1079,6 @@ public partial class MainViewModel : ObservableObject
         {
             _currentViewKey = "category";
             _currentCategoryId = long.Parse(key.Substring(9));
-        }
-        else if (key.StartsWith("collection:"))
-        {
-            _currentViewKey = "collection";
-            _currentCollectionId = long.Parse(key.Substring(11));
         }
         else
         {
@@ -1174,6 +1170,41 @@ public partial class MainViewModel : ObservableObject
         await RefreshStatusAsync();
 
         ShowUndoToast(new[] { record });
+    }
+
+    // ---------- 操作轻提示（只反馈，不带按钮） ----------
+
+    /// <summary>底部轻提示是否显示。</summary>
+    [ObservableProperty]
+    private bool _isActionToastVisible;
+
+    /// <summary>底部轻提示文案（如「✅ 已加入分类【旅行】」）。</summary>
+    [ObservableProperty]
+    private string _actionToastText = string.Empty;
+
+    private System.Windows.Threading.DispatcherTimer? _actionToastTimer;
+
+    /// <summary>
+    /// 弹一条 1.8 秒的轻提示。连续调用会重置计时（拖 10 张进去不会叠 10 条，只留最后一条）。
+    /// 与撤销条分工：撤销条带按钮、5 秒；轻提示只说结果。
+    /// </summary>
+    private void ShowActionToast(string text)
+    {
+        ActionToastText = text;
+        IsActionToastVisible = true;
+
+        _actionToastTimer?.Stop();
+        _actionToastTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(1800),
+        };
+        _actionToastTimer.Tick += (_, _) =>
+        {
+            _actionToastTimer?.Stop();
+            _actionToastTimer = null;
+            IsActionToastVisible = false;
+        };
+        _actionToastTimer.Start();
     }
 
     // ---------- 最近删除 / 撤销 ----------
@@ -1506,10 +1537,8 @@ public partial class MainViewModel : ObservableObject
         {
             if (debounce) await Task.Delay(120, ct);
 
-            // 已加入的分类 / 收藏夹
-            var (catIds, colIds) = await DbAsync(async () => (
-                await _repo.GetMediaCategoryIdsAsync(item.Id),
-                await _repo.GetMediaCollectionIdsAsync(item.Id)));
+            // 已加入的分类（v1.3.2 起收藏夹已并入这里，只有一个列表）
+            var catIds = await DbAsync(() => _repo.GetMediaCategoryIdsAsync(item.Id));
             ct.ThrowIfCancellationRequested();
 
             SelectedCategories.Clear();
@@ -1517,13 +1546,6 @@ public partial class MainViewModel : ObservableObject
             {
                 var cat = CategoryItems.FirstOrDefault(c => c.Id == id);
                 if (cat != null) SelectedCategories.Add(cat);
-            }
-
-            SelectedCollections.Clear();
-            foreach (var id in colIds)
-            {
-                var col = CollectionItems.FirstOrDefault(c => c.Id == id);
-                if (col != null) SelectedCollections.Add(col);
             }
 
             // EXIF（仅图片）：命中缓存时几乎零成本，未命中才真正读文件
@@ -1780,7 +1802,17 @@ public partial class MainViewModel : ObservableObject
     private async Task AssignCategoryAsync(string? categoryIdStr)
     {
         if (SelectedItem == null || !long.TryParse(categoryIdStr, out var catId)) return;
+
         await _repo.AddMediaCategoryAsync(SelectedItem.Id, catId);
+
+        // 缩略图角标 + 详情面板同时跟上，别等下次刷新
+        if (!SelectedItem.CategoryIds.Contains(catId))
+            SelectedItem.CategoryIds.Add(catId);
+        UpdateCategoryMark(SelectedItem);
+
+        var name = CategoryItems.FirstOrDefault(c => c.Id == catId)?.Name ?? "分类";
+        ShowActionToast($"✅ 已加入分类【{name}】");
+        await RefreshDetailAsync(SelectedItem);
     }
 
     // ---------- 备注 ----------
@@ -1795,55 +1827,14 @@ public partial class MainViewModel : ObservableObject
         StatusText = string.IsNullOrEmpty(note) ? "已清除备注" : "备注已保存";
     }
 
-    // ---------- 收藏夹管理 ----------
-
-    [RelayCommand]
-    private async Task AddCollectionAsync()
-    {
-        var name = CustomPrompt.Show("给这个收藏夹起个名字：", "新建收藏夹");
-        if (string.IsNullOrWhiteSpace(name)) return;
-
-        await _repo.AddCollectionAsync(new Collection { Name = name.Trim() });
-        await LoadNavigationAsync();
-    }
-
-    [RelayCommand]
-    private async Task RenameCollectionAsync(Collection? collection)
-    {
-        if (collection == null) return;
-        var name = CustomPrompt.Show("输入新的收藏夹名称：", "重命名收藏夹", collection.Name);
-        if (string.IsNullOrWhiteSpace(name)) return;
-
-        await _repo.RenameCollectionAsync(collection.Id, name.Trim());
-        await LoadNavigationAsync();
-    }
-
-    [RelayCommand]
-    private async Task DeleteCollectionAsync(Collection? collection)
-    {
-        if (collection == null) return;
-        var confirm = CustomMessageBox.ConfirmDanger(
-            $"确定删除收藏夹「{collection.Name}」？（不会删除其中的图片）", "删除收藏夹");
-        if (!confirm) return;
-
-        await _repo.DeleteCollectionAsync(collection.Id);
-        await LoadNavigationAsync();
-        await LoadMediaAsync();
-    }
-
-    [RelayCommand]
-    private async Task AssignCollectionAsync(string? collectionIdStr)
-    {
-        if (SelectedItem == null || !long.TryParse(collectionIdStr, out var colId)) return;
-        await _repo.AddMediaCollectionAsync(SelectedItem.Id, colId);
-        StatusText = "已加入收藏夹";
-    }
-
     // ---------- 刷新 ----------
 
     [RelayCommand]
     private async Task RefreshAsync()
     {
+        // 手动刷新要连解码后的内存缓存一起丢掉：只重读数据库的话，
+        // 源文件已被外部修改、缩略图文件却还命中的旧图会继续显示。
+        Services.ThumbnailMemoryCache.Clear();
         await LoadNavigationAsync();
         await LoadMediaAsync();
         StatusText = "已刷新";
@@ -1899,11 +1890,22 @@ public partial class MainViewModel : ObservableObject
         foreach (var item in items)
         {
             await _repo.AddMediaCategoryAsync(item.Id, categoryId);
-            item.CategoryIds.Add(categoryId);
+            if (!item.CategoryIds.Contains(categoryId))
+                item.CategoryIds.Add(categoryId);
         }
         foreach (var item in items)
             UpdateCategoryMark(item);
-        StatusText = $"已将 {items.Count} 项加入分类";
+
+        var name = CategoryItems.FirstOrDefault(c => c.Id == categoryId)?.Name ?? "分类";
+        ShowActionToast(items.Count == 1
+            ? $"✅ 已加入分类【{name}】"
+            : $"✅ 已将 {items.Count} 项加入分类【{name}】");
+        StatusText = $"已将 {items.Count} 项加入分类「{name}」";
+
+        // 拖拽/批量也走这条路：如果当前详情面板正开着被拖的其中之一，
+        // 「所属分类」必须立刻把新分类列出来，否则右侧看起来像没生效。
+        if (SelectedItem != null && items.Any(i => i.Id == SelectedItem.Id))
+            await RefreshDetailAsync(SelectedItem);
     }
 
     /// <summary>切换单张图片是否属于某分类（已加入→移出，未加入→加入）。</summary>
@@ -1934,12 +1936,19 @@ public partial class MainViewModel : ObservableObject
         item.RefreshCategoryState();
     }
 
-    public async Task BatchAssignCollectionAsync(IReadOnlyList<ThumbnailItemViewModel> items, long collectionId)
+    /// <summary>批量打标签（把网格里选中的媒体拖到侧栏标签上）。重复的由 INSERT OR IGNORE 忽略。</summary>
+    public async Task BatchAssignTagAsync(IReadOnlyList<ThumbnailItemViewModel> items, long tagId)
     {
         if (items.Count == 0) return;
         foreach (var item in items)
-            await _repo.AddMediaCollectionAsync(item.Id, collectionId);
-        StatusText = $"已将 {items.Count} 项加入收藏夹";
+            await _repo.AddMediaTagAsync(item.Id, tagId);
+
+        // 和「拖到分类」保持同一种反馈：底部轻提示 + 状态栏，不再只有状态栏
+        var name = TagItems.FirstOrDefault(t => t.RelatedId == tagId)?.Title ?? "标签";
+        ShowActionToast(items.Count == 1
+            ? $"✅ 已打上标签【{name}】"
+            : $"✅ 已给 {items.Count} 项打上标签【{name}】");
+        StatusText = $"已给 {items.Count} 项打上标签「{name}」";
     }
 
     public async Task BatchSetRatingAsync(IReadOnlyList<ThumbnailItemViewModel> items, int rating)
@@ -2012,23 +2021,17 @@ public partial class MainViewModel : ObservableObject
             ShowUndoToast(records);
     }
 
-    // ---------- 移出分类 / 收藏夹（多分类支持） ----------
+    // ---------- 移出分类（多分类支持：详情面板里可以单独移出某一个） ----------
 
     [RelayCommand]
     private async Task RemoveCategoryAsync(Category? category)
     {
         if (category == null || SelectedItem == null) return;
+
         await _repo.RemoveMediaCategoryAsync(SelectedItem.Id, category.Id);
         SelectedItem.CategoryIds.Remove(category.Id);
         UpdateCategoryMark(SelectedItem);
-        await RefreshDetailAsync(SelectedItem);
-    }
-
-    [RelayCommand]
-    private async Task RemoveCollectionAsync(Collection? collection)
-    {
-        if (collection == null || SelectedItem == null) return;
-        await _repo.RemoveMediaCollectionAsync(SelectedItem.Id, collection.Id);
+        ShowActionToast($"已从分类【{category.Name}】移出");
         await RefreshDetailAsync(SelectedItem);
     }
 
@@ -2072,16 +2075,6 @@ public partial class MainViewModel : ObservableObject
             await _repo.UpdateCategorySortOrderAsync(orders);
     }
 
-    /// <summary>保存收藏夹顺序（拖动排序后调用）。</summary>
-    public async Task SaveCollectionOrderAsync()
-    {
-        var orders = new List<(long Id, int SortOrder)>();
-        for (int i = 0; i < CollectionItems.Count; i++)
-            orders.Add((CollectionItems[i].Id, i + 1));
-        if (orders.Count > 0)
-            await _repo.UpdateCollectionSortOrderAsync(orders);
-    }
-
     /// <summary>将标签移动到指定索引（拖动松手时调用）。</summary>
     public void MoveTag(int fromIndex, int toIndex)
     {
@@ -2100,16 +2093,6 @@ public partial class MainViewModel : ObservableObject
         if (fromIndex == toIndex) return;
         var item = CategoryItems[fromIndex];
         CategoryItems.Move(fromIndex, toIndex);
-    }
-
-    /// <summary>将收藏夹移动到指定索引。</summary>
-    public void MoveCollection(int fromIndex, int toIndex)
-    {
-        if (fromIndex < 0 || fromIndex >= CollectionItems.Count) return;
-        if (toIndex < 0 || toIndex >= CollectionItems.Count) return;
-        if (fromIndex == toIndex) return;
-        var item = CollectionItems[fromIndex];
-        CollectionItems.Move(fromIndex, toIndex);
     }
 
     // ---------- 发现页命令 ----------
@@ -2148,13 +2131,13 @@ public partial class MainViewModel : ObservableObject
         _ = SaveDiscoveryPoolAndReloadAsync();
     }
 
-    /// <summary>指定收藏夹选择变化。</summary>
+    /// <summary>「指定分类」选择变化。</summary>
     [RelayCommand]
-    private async Task SelectDiscoveryCollectionAsync(Collection? collection)
+    private async Task SelectDiscoveryCategoryAsync(Category? category)
     {
-        if (collection == null) return;
-        _discoveryPoolId = collection.Id;
-        await _repo.SetSettingAsync("DiscoveryPoolId", collection.Id.ToString());
+        if (category == null) return;
+        _discoveryPoolId = category.Id;
+        await _repo.SetSettingAsync("DiscoveryPoolId", category.Id.ToString());
         if (_discoveryPool == DiscoveryPoolType.Category)
             await LoadMediaAsync();
     }

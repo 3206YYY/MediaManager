@@ -232,9 +232,8 @@
                                           Tag="all" IsCheckable="True" Click="OnRandomScopeItemClick" />
                                 <MenuItem x:Name="ScopeFavoriteItem" Header="仅收藏"
                                           Tag="favorite" IsCheckable="True" Click="OnRandomScopeItemClick" />
-                                <MenuItem x:Name="ScopeSpecifiedItem" Header="指定分类 / 收藏夹 / 标签">
+                                <MenuItem x:Name="ScopeSpecifiedItem" Header="指定分类 / 标签">
                                     <MenuItem x:Name="ScopeCategoryItem" Header="分类" />
-                                    <MenuItem x:Name="ScopeCollectionItem" Header="收藏夹" />
                                     <MenuItem x:Name="ScopeTagItem" Header="标签" />
                                 </MenuItem>
                                 <Separator />
@@ -514,8 +513,9 @@
                                                 Margin="0,0,6,6" ToolTip="上下镜像（文字内容不镜像）" />
                                     </WrapPanel>
 
-                                    <TextBlock Text="拉直（±15°）" Style="{StaticResource SectionTitle}" />
-                                    <DockPanel Margin="0,0,0,2">
+                                    <TextBlock Text="拉直（±15°）" Style="{StaticResource SectionTitle}"
+                                               ToolTip="微调并自动纠正倾斜的画面" />
+                                    <DockPanel Margin="0,0,0,2" ToolTip="微调并自动纠正倾斜的画面；旋转后自动裁掉四角">
                                         <TextBlock x:Name="StraightenText" DockPanel.Dock="Right" Text="0°"
                                                    Width="44" TextAlignment="Right" FontSize="11"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -524,7 +524,8 @@
                                     </DockPanel>
                                     <Slider x:Name="StraightenSlider" Width="238" Minimum="-15" Maximum="15"
                                             IsSnapToTickEnabled="True" TickFrequency="0.1" Value="0"
-                                            ValueChanged="OnStraightenChanged" />
+                                            ValueChanged="OnStraightenChanged"
+                                            ToolTip="微调并自动纠正倾斜的画面（±15°）" />
                                     <Button Content="重置拉直" Click="OnResetStraighten" Style="{StaticResource ChipButton}"
                                             HorizontalAlignment="Left" Margin="0,6,0,0" />
 
@@ -657,6 +658,17 @@
                                                 Width="238" IsSnapToTickEnabled="True" TickFrequency="1"
                                                 ValueChanged="OnTextAngleChanged"
                                                 ToolTip="−180° ~ +180°，正值顺时针；水印可任意角度斜放" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                            <TextBlock Text="旋转角度" FontSize="11" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBox x:Name="TextAngleInput" Width="52" Margin="6,0,4,0"
+                                                     Padding="4,2" FontSize="11" Text="0" TextAlignment="Right"
+                                                     LostFocus="OnTextAngleInputCommitted"
+                                                     KeyDown="OnTextAngleInputKeyDown"
+                                                     ToolTip="可直接输入 0-360°（360° 等同于 0°），与上方滑块联动。" />
+                                            <TextBlock Text="°（0-360）" FontSize="11" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </StackPanel>
                                         <TextBlock Text="作用于当前选中的文字；没有选中时作用于最后一段。" FontSize="11"
                                                    TextWrapping="Wrap" Margin="0,2,0,8"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -693,6 +705,18 @@
                                         <Slider x:Name="FontSizeSlider" Minimum="12" Maximum="140" Value="32"
                                                 Width="238" IsSnapToTickEnabled="True" TickFrequency="1" Margin="0,2,0,8"
                                                 ValueChanged="OnFontSizeChanged" />
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                            <TextBlock Text="缩放比例" FontSize="11" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBox x:Name="TextScaleInput" Width="52" Margin="6,0,4,0"
+                                                     Padding="4,2" FontSize="11" Text="100" TextAlignment="Right"
+                                                     LostFocus="OnTextScaleInputCommitted"
+                                                     KeyDown="OnTextScaleInputKeyDown"
+                                                     ToolTip="相对默认字号（48px）的百分比：100% = 48px，范围 20%-300%。" />
+                                            <TextBlock Text="%（20-300）" FontSize="11" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </StackPanel>
 
                                         <TextBlock Text="颜色" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
                                                    Margin="0,0,0,4" />

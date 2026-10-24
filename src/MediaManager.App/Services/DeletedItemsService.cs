@@ -28,7 +28,7 @@ public class DeletedItemsService
         _logger = logger;
     }
 
-    /// <summary>删除文件「之前」调用：抓取快照（含标签/分类/收藏夹），写入最近删除表。</summary>
+    /// <summary>删除文件「之前」调用：抓取快照（含标签/分类），写入最近删除表。</summary>
     public async Task<DeletedMedia> TrackAsync(MediaItem item, string? thumbnailPath, string? batchId = null)
     {
         var deleted = new DeletedMedia
@@ -47,9 +47,9 @@ public class DeletedItemsService
 
         try
         {
+            // v1.3.2 起不再写 CollectionIdsJson（收藏夹已并入分类）
             deleted.TagIdsJson = JsonSerializer.Serialize(await _repo.GetMediaTagIdsAsync(item.Id));
             deleted.CategoryIdsJson = JsonSerializer.Serialize(await _repo.GetMediaCategoryIdsAsync(item.Id));
-            deleted.CollectionIdsJson = JsonSerializer.Serialize(await _repo.GetMediaCollectionIdsAsync(item.Id));
         }
         catch (Exception ex)
         {
@@ -102,11 +102,20 @@ public class DeletedItemsService
             if (string.IsNullOrWhiteSpace(media.ThumbnailPath)) media.ThumbnailPath = deleted.ThumbnailPath;
             media.IsMissing = false;
 
+            // v1.3.2 之前的记录里还存着收藏夹 id：走迁移映射表换算成分类 id 再一起还原，
+            // 这样升级前删掉、升级后才还原的文件，也不会丢掉原有的归类。
+            var categoryIds = DeserializeIds(deleted.CategoryIdsJson);
+            var legacyCollectionIds = DeserializeIds(deleted.CollectionIdsJson);
+            if (legacyCollectionIds.Count > 0)
+            {
+                var mapped = await _repo.MapLegacyCollectionIdsAsync(legacyCollectionIds);
+                categoryIds = categoryIds.Concat(mapped).Distinct().ToList();
+            }
+
             await _repo.RestoreMediaAsync(
                 media,
                 DeserializeIds(deleted.TagIdsJson),
-                DeserializeIds(deleted.CategoryIdsJson),
-                DeserializeIds(deleted.CollectionIdsJson));
+                categoryIds);
 
             await _repo.MarkDeletedRestoredAsync(deleted.Id);
             return (true, deleted.FileName);

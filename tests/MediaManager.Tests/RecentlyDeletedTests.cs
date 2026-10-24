@@ -102,7 +102,7 @@ public class RecentlyDeletedTests : IDisposable
         // 还原：Id、收藏、评分、备注、标签全部回来
         var snapshot = JsonSerializer.Deserialize<MediaItem>(record.SnapshotJson!, JsonOptions)!;
         var newId = await _repo.RestoreMediaAsync(snapshot,
-            new List<long> { tagId }, new List<long>(), new List<long>());
+            new List<long> { tagId }, new List<long>());
 
         Assert.Equal(mediaId, newId);
         var restored = await _repo.GetByIdAsync(newId);

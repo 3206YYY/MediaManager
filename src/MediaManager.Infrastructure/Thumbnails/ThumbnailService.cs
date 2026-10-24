@@ -53,8 +53,54 @@ public class ThumbnailService : IThumbnailService, IDisposable
 
     public string? GetCachedPath(MediaItem item)
     {
-        var path = Path.Combine(_config.ThumbnailDirectory, $"{item.Id}_{item.QuickHash ?? "0"}.jpg");
+        var path = BuildCachePath(item);
         return File.Exists(path) ? path : null;
+    }
+
+    /// <summary>
+    /// 缓存文件名 = {Id}_{源文件签名}.jpg。
+    ///
+    /// 以前只带 Id（QuickHash 实际从未写入过），同一个 Id 只要路径不变就一直复用同一张缓存：
+    /// - 原地覆盖 _edited 副本 → 永远显示旧画面；
+    /// - 删除副本后 SQLite 复用 Id → 新建的副本直接命中上次的缓存。
+    /// 把「大小 + 最后写入时间」拼进文件名，内容一变就是新文件，不用再依赖任何缓存失效逻辑。
+    /// </summary>
+    private string BuildCachePath(MediaItem item)
+    {
+        var signature = GetFileSignature(item.Path);
+        return Path.Combine(_config.ThumbnailDirectory, $"{item.Id}_{signature}.jpg");
+    }
+
+    private static string GetFileSignature(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists ? $"{info.Length}_{info.LastWriteTimeUtc.Ticks}" : "0";
+        }
+        catch
+        {
+            return "0";
+        }
+    }
+
+    /// <summary>删除某个媒体项的所有缩略图缓存文件（原地覆盖 / 重建前调用）。</summary>
+    public IReadOnlyList<string> Invalidate(long mediaId)
+    {
+        var removed = new List<string>();
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(_config.ThumbnailDirectory, $"{mediaId}_*.jpg"))
+            {
+                removed.Add(file);
+                try { File.Delete(file); } catch { /* 被占用就留给下次生成 */ }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "清理缩略图缓存失败：{MediaId}", mediaId);
+        }
+        return removed;
     }
 
     private async Task WorkerLoopAsync(CancellationToken ct)
@@ -111,7 +157,7 @@ public class ThumbnailService : IThumbnailService, IDisposable
         if (item.MediaType is Core.Enums.MediaType.Audio or Core.Enums.MediaType.Text or Core.Enums.MediaType.Archive)
             return;
 
-        var output = Path.Combine(_config.ThumbnailDirectory, $"{item.Id}_{item.QuickHash ?? "0"}.jpg");
+        var output = BuildCachePath(item);
 
         // 缓存文件早就在盘上、只是内存/数据库里的路径丢了（清过缓存标记、
         // 备份恢复、老库升级…）：以前直接 return，这一格就永远是空白灰块。

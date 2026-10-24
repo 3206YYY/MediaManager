@@ -111,8 +111,20 @@ public static class ThumbnailMemoryCache
         return false;
     }
 
-    /// <summary>
-    /// 异步取图：命中直接返回；未命中则排队解码。
+    /// <summary>移除单个缓存项（缩略图文件被删除 / 重建时调用，避免继续占用内存）。</summary>
+    public static void Remove(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        lock (Gate)
+        {
+            if (!Map.TryGetValue(path, out var node)) return;
+            Lru.Remove(node);
+            Map.Remove(path);
+            _currentBytes -= node.Value.Bytes;
+        }
+    }
+
+    /// <summary>异步取图：命中直接返回；未命中则排队解码。
     /// <paramref name="stillWanted"/> 用于「滚动已经把这个格子划走了」时提前放弃，避免白干活。
     ///
     /// 注意：<paramref name="stillWanted"/> 会在**线程池**上被调用，

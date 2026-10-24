@@ -7,9 +7,9 @@
 
 **[📥 下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[🌐 官网](https://3206yyy.github.io/MediaManager/)** ｜ **[🇨🇳 Gitee 源码镜像](https://gitee.com/yyy3206/MediaManager)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
 
-> 当前版本 **v1.3.1** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
+> 当前版本 **v1.3.2** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
 >
-> 🆕 **v1.3.1**：新增音频 / 文档 / 压缩包支持（共 80 个扩展名）、类型多选筛选、Explorer 风格文件夹选择器、单实例右键打开。详见 [更新说明](docs/changelog/v1.3.1.md)。
+> 🆕 **v1.3.2**：产品减法 —— 废弃「收藏夹」，数据与能力并入「分类」（升级时自动迁移，不丢数据）。详见 [更新说明](docs/changelog/v1.3.2.md)。
 
 ---
 
@@ -72,7 +72,7 @@ C 盘、D 盘、移动硬盘里的图片、视频、音频、文档、压缩包�
 | 压缩包 | 10 | `.zip .rar .7z .tar .gz .bz2 .xz .tgz .tbz2 .txz` |
 
 > 除图片/视频外，均为**只读预览**；`rar / 7z / bz2 / xz` 读取依赖 SharpCompress。
-> 完整行为见 [v1.3.1 更新说明](docs/changelog/v1.3.1.md)。
+> 完整行为见 [v1.3.2 更新说明](docs/changelog/v1.3.2.md)。
 
 ---
 

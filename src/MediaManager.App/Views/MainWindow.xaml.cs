@@ -39,6 +39,17 @@ public partial class MainWindow : Window
     /// <summary>框选拖到边缘多少像素内开始自动滚动。</summary>
     private const double MarqueeEdge = 26;
 
+    // 网格拖拽状态：按住缩略图后移动超过系统阈值才启动（拖到侧栏归类 / 拖到桌面导出）
+    private Point _thumbDragStart;
+    private ThumbnailItemViewModel? _thumbDragItem;
+    private bool _thumbDragArmed;
+
+    /// <summary>内部拖拽的自定义数据格式：媒体 id（归类用）。</summary>
+    private const string MediaIdsFormat = "MediaManager.MediaIds";
+
+    /// <summary>内部拖拽的自定义数据格式：媒体绝对路径（备用）。</summary>
+    private const string MediaPathsFormat = "MediaManager.MediaPaths";
+
     // 拖动排序状态
     private bool _reorderDragging;
     private bool _reorderArmed;          // 长按已触发，进入可拖动状态
@@ -221,12 +232,12 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// 左侧导航只保留「最后一次点击」的高亮：点中某个列表项后，
-    /// 清掉另外几个导航列表（库 / 文件夹 / 标签 / 分类 / 收藏夹）的选中项，
+    /// 清掉另外几个导航列表（库 / 文件夹 / 标签 / 分类）的选中项，
     /// 避免同一个侧栏里同时出现两个蓝框。
     /// </summary>
     private void ClearSidebarSelectionExcept(ListBox keep)
     {
-        foreach (var list in new[] { NavList, FolderListBox, TagListBox, CategoryListBox, CollectionListBox })
+        foreach (var list in new[] { NavList, FolderListBox, TagListBox, CategoryListBox })
         {
             if (list == keep || list.SelectedIndex < 0) continue;
             list.SelectedIndex = -1;
@@ -301,21 +312,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnCollectionSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (sender is ListBox lb && lb.SelectedItem is Core.Models.Collection col)
-        {
-            ClearSidebarSelectionExcept(lb);
-            _viewModel.SelectViewCommand.Execute($"collection:{col.Id}");
-        }
-    }
-
     // ---------- 发现页 ----------
 
-    private void OnDiscoveryCollectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnDiscoveryCategoryChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (sender is ComboBox cb && cb.SelectedItem is Core.Models.Collection col)
-            _ = _viewModel.SelectDiscoveryCollectionCommand.ExecuteAsync(col);
+        if (sender is ComboBox cb && cb.SelectedItem is Core.Models.Category cat)
+            _ = _viewModel.SelectDiscoveryCategoryCommand.ExecuteAsync(cat);
     }
 
     // ---------- 侧边栏折叠 ----------
@@ -328,9 +330,10 @@ public partial class MainWindow : Window
         var expanded = tb.IsChecked == true;
         (ListBox? list, System.Windows.UIElement? addPanel) = tag switch
         {
+            "Nav" => (NavList, null),
+            "Folder" => (FolderListBox, null),
             "Tag" => (TagListBox, TagAddPanel),
             "Category" => (CategoryListBox, CategoryAddPanel),
-            "Collection" => (CollectionListBox, CollectionAddPanel),
             _ => (null, null),
         };
         if (list == null) return;
@@ -361,7 +364,23 @@ public partial class MainWindow : Window
         if (e.ChangedButton != MouseButton.Left) return;
         // 点击落在滚动条（thumb/track/箭头）上时，交给滚动条处理，不启动框选
         if (IsOverScrollBar(e.OriginalSource as DependencyObject)) return;
-        if (IsOverItem(e.GetPosition(ThumbList))) return;
+
+        var pos = e.GetPosition(ThumbList);
+        if (IsOverItem(pos))
+        {
+            // 按在缩略图上：先只记下起点，等移动超过系统阈值再启动拖拽。
+            // 这里绝对不能 e.Handled = true，否则 ListBox 收不到点击，选择和双击都会失效。
+            var hit = VisualTreeHelper.HitTest(ThumbList, pos);
+            var container = FindAncestor<ListBoxItem>(hit?.VisualHit);
+            _thumbDragItem = container?.DataContext as ThumbnailItemViewModel;
+            _thumbDragStart = pos;
+            _thumbDragArmed = _thumbDragItem != null;
+            return;
+        }
+
+        // 空白区：不参与拖拽，走原来的框选逻辑
+        _thumbDragArmed = false;
+        _thumbDragItem = null;
 
         // 不加修饰键时清空原选择；Ctrl/Shift 则叠加
         if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control) &&
@@ -390,7 +409,11 @@ public partial class MainWindow : Window
 
     private void OnThumbListMouseMove(object sender, MouseEventArgs e)
     {
-        if (!_isMarqueeSelecting) return;
+        if (!_isMarqueeSelecting)
+        {
+            TryStartThumbDrag(e);
+            return;
+        }
         if (e.LeftButton != MouseButtonState.Pressed)
         {
             EndMarquee();
@@ -403,6 +426,119 @@ public partial class MainWindow : Window
         UpdateMarqueeRect(rect);
         UpdateMarqueeSelection(rect);
         UpdateMarqueeAutoScroll(pos);
+    }
+
+    // ---------- 拖拽源：网格 → 侧栏归类 / 外部文件夹 ----------
+
+    /// <summary>
+    /// 按住缩略图移动超过系统拖拽阈值后启动拖拽。
+    /// 数据同时带 FileDrop（绝对路径，可拖到桌面 / 微信 / 资源管理器）
+    /// 和内部格式 MediaIds（拖到侧栏标签 / 分类时归类和打标签）。
+    /// </summary>
+    private void TryStartThumbDrag(MouseEventArgs e)
+    {
+        if (!_thumbDragArmed || _thumbDragItem == null) return;
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            _thumbDragArmed = false;
+            return;
+        }
+
+        var pos = e.GetPosition(ThumbList);
+        if (Math.Abs(pos.X - _thumbDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(pos.Y - _thumbDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        // 标记先清掉：DoDragDrop 会阻塞到松手，返回前不再重复启动
+        _thumbDragArmed = false;
+
+        // 按在已选中的项上 → 拖整批选中项；按在未选中的项上 → 只拖这一项
+        var items = ThumbList.SelectedItems.OfType<ThumbnailItemViewModel>().ToList();
+        if (!items.Any(i => ReferenceEquals(i, _thumbDragItem)))
+            items = new List<ThumbnailItemViewModel> { _thumbDragItem };
+
+        // 源文件已不存在的项不参与拖拽（拖出去也是坏路径）
+        items = items.Where(i => System.IO.File.Exists(i.Path)).ToList();
+        if (items.Count == 0) return;
+
+        var paths = items.Select(i => i.Path).ToArray();
+        var ids = items.Select(i => i.Id).ToArray();
+
+        var data = new DataObject();
+        // 外部应用只认 FileDrop：绝对路径数组
+        data.SetData(DataFormats.FileDrop, paths);
+        // 内部归类用 id，避免大小写 / 相对路径匹配问题
+        data.SetData(MediaIdsFormat, ids);
+        data.SetData(MediaPathsFormat, paths);
+
+        try
+        {
+            // Copy：拖过资源管理器 / 微信时显示「允许复制」光标；
+            // 落到无效区域（窗口空白、侧栏空白）由 OnDragOver 设为 None，显示禁止光标。
+            DragDrop.DoDragDrop(ThumbList, data, DragDropEffects.Copy);
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "启动缩略图拖拽失败");
+        }
+        finally
+        {
+            _thumbDragItem = null;
+        }
+    }
+
+    /// <summary>拖拽经过侧栏列表：命中具体某一项才允许放下（Copy），空白处为 None（禁止光标）。</summary>
+    private void OnSidebarDragOver(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        e.Effects = DragDropEffects.None;
+
+        if (sender is not ListBox list) return;
+        if (e.Data.GetData(MediaIdsFormat) is not long[] { Length: > 0 }) return;
+        if (FindSidebarTarget(list, e.OriginalSource as DependencyObject) == null) return;
+
+        e.Effects = DragDropEffects.Copy;
+    }
+
+    private async void OnSidebarDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+
+        if (sender is not ListBox list) return;
+        var target = FindSidebarTarget(list, e.OriginalSource as DependencyObject);
+        if (target == null) return;
+        if (e.Data.GetData(MediaIdsFormat) is not long[] ids || ids.Length == 0) return;
+
+        var idSet = ids.ToHashSet();
+        var items = _viewModel.MediaItems.Where(i => idSet.Contains(i.Id)).ToList();
+        if (items.Count == 0) return;
+
+        try
+        {
+            switch (target)
+            {
+                case NavigationItemViewModel nav when nav.Key == "tag" && nav.RelatedId is long tagId:
+                    await _viewModel.BatchAssignTagAsync(items, tagId);
+                    break;
+                case Core.Models.Category category:
+                    await _viewModel.BatchAssignCategoryAsync(items, category.Id);
+                    break;
+                default:
+                    return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "拖拽归类失败：{Target}", target);
+        }
+    }
+
+    /// <summary>取鼠标下那个侧栏列表项的数据对象；列表空白处返回 null（视为无效区域）。</summary>
+    private static object? FindSidebarTarget(ListBox list, DependencyObject? source)
+    {
+        if (source == null) return null;
+        var container = ItemsControl.ContainerFromElement(list, source) as ListBoxItem;
+        return container?.DataContext;
     }
 
     // ---------- 鼠标滚轮（含框选中的自动滚动） ----------
@@ -499,6 +635,8 @@ public partial class MainWindow : Window
 
     private void OnThumbListMouseUp(object sender, MouseButtonEventArgs e)
     {
+        // 松手后不再具备拖拽资格（无论有没有真的拖起来）
+        _thumbDragArmed = false;
         if (!_isMarqueeSelecting) return;
         var rect = new Rect(_marqueeStart, e.GetPosition(ThumbList));
         UpdateMarqueeSelection(rect);
@@ -591,9 +729,12 @@ public partial class MainWindow : Window
             var videos = _viewModel.MediaItems.Where(i => i.IsVideo).Select(i => i.Path).ToList();
             var startIndex = videos.FindIndex(p => string.Equals(p, item.Path, StringComparison.OrdinalIgnoreCase));
 
-            var player = new VideoPlayerWindow { Owner = this };
+            // 不能设 Owner：WPF/Windows 会把「有主窗口」的窗口跟主窗口一起最小化，
+            // 主窗口一最小化视频窗口就被藏掉、只剩透明/黑屏。必须做成独立顶层窗口。
+            var player = new VideoPlayerWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
             player.SetPlaylist(videos, startIndex);
             player.Show();
+            player.Activate();
             WindowThemeHelper.ApplyTitleBarDarkMode(player, App.IsDarkTheme);
             return;
         }
@@ -695,6 +836,11 @@ public partial class MainWindow : Window
     {
         e.Effects = DragDropEffects.None;
         e.Handled = true;
+
+        // 软件内部拖拽（网格里往外拖）：不是「拖文件进来」。
+        // 不排除的话，往窗口空白处松手会误开独立查看器，而且空白处应当显示禁止光标。
+        if (e.Data.GetDataPresent(MediaIdsFormat)) return;
+
         if (e.Data.GetDataPresent(DataFormats.FileDrop)
             && e.Data.GetData(DataFormats.FileDrop) is string[] files
             && files.Length > 0
@@ -707,6 +853,8 @@ public partial class MainWindow : Window
     private void OnDrop(object sender, DragEventArgs e)
     {
         e.Handled = true;
+        // 内部拖拽落到网格空白处：不做任何事（归类只认侧栏，导出只认外部应用）
+        if (e.Data.GetDataPresent(MediaIdsFormat)) return;
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
             OpenStandaloneFiles(files);
     }
@@ -758,9 +906,11 @@ public partial class MainWindow : Window
         if (videos.Count > 0)
         {
             Serilog.Log.Debug("独立打开视频 x{Count}（第一个 {First}）", videos.Count, videos[0]);
-            var player = new VideoPlayerWindow { Owner = this };
+            // 同上：播放器不挂 Owner，主窗口最小化时仍能单独观看
+            var player = new VideoPlayerWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
             player.SetPlaylist(videos, 0);
             player.Show();
+            player.Activate();
             WindowThemeHelper.ApplyTitleBarDarkMode(player, App.IsDarkTheme);
             return;
         }
@@ -1113,18 +1263,6 @@ public partial class MainWindow : Window
             _ = _viewModel.DeleteCategoryCommand.ExecuteAsync(cat);
     }
 
-    private void OnRenameCollectionMenu(object sender, RoutedEventArgs e)
-    {
-        if (GetContextListSelectedItem(sender) is Core.Models.Collection col)
-            _ = _viewModel.RenameCollectionCommand.ExecuteAsync(col);
-    }
-
-    private void OnDeleteCollectionMenu(object sender, RoutedEventArgs e)
-    {
-        if (GetContextListSelectedItem(sender) is Core.Models.Collection col)
-            _ = _viewModel.DeleteCollectionCommand.ExecuteAsync(col);
-    }
-
     /// <summary>文件夹右键：从库中移除。</summary>
     private void OnRemoveFolderMenu(object sender, RoutedEventArgs e)
     {
@@ -1238,11 +1376,62 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnAssignCollectionMenu(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 详情面板「＋ 加入」：弹出可勾选的分类清单。
+    /// 关键在 <c>StaysOpenOnClick</c> —— 勾一个菜单不收起，能连着勾好几个，这就是「多选加入」。
+    /// 再点一下已勾的项就是移出（单张移除在列表里也有 ✕）。
+    /// </summary>
+    private void OnDetailAddCategoryClick(object sender, RoutedEventArgs e)
     {
-        var col = FindMenuItemData<Core.Models.Collection>(e.OriginalSource);
-        if (col != null)
-            _ = _viewModel.BatchAssignCollectionAsync(GetSelectedItems(), col.Id);
+        if (_viewModel.SelectedItem == null) return;
+
+        var menu = new ContextMenu
+        {
+            PlacementTarget = sender as UIElement,
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+        };
+
+        if (_viewModel.CategoryItems.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "（还没有分类，先在左侧「分类」里新建）", IsEnabled = false });
+        }
+        else
+        {
+            var current = _viewModel.SelectedItem.CategoryIds.ToHashSet();
+            foreach (var cat in _viewModel.CategoryItems.ToList())
+            {
+                var mi = new MenuItem
+                {
+                    Header = cat.Name,
+                    IsCheckable = true,
+                    IsChecked = current.Contains(cat.Id),
+                    StaysOpenOnClick = true,
+                    Tag = cat,
+                };
+                mi.Click += OnDetailCategoryToggleClick;
+                menu.Items.Add(mi);
+            }
+        }
+
+        menu.IsOpen = true;
+    }
+
+    private async void OnDetailCategoryToggleClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: Core.Models.Category cat }) return;
+        if (_viewModel.SelectedItem == null) return;
+
+        try
+        {
+            if (_viewModel.SelectedItem.CategoryIds.Contains(cat.Id))
+                await _viewModel.RemoveCategoryCommand.ExecuteAsync(cat);
+            else
+                await _viewModel.AssignCategoryCommand.ExecuteAsync(cat.Id.ToString());
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "详情面板切换分类失败：{Category}", cat.Name);
+        }
     }
 
     /// <summary>从点击源头向上找 MenuItem，取其 DataContext。</summary>
@@ -1368,10 +1557,6 @@ public partial class MainWindow : Window
             case "Category":
                 _viewModel.MoveCategory(from, to);
                 await _viewModel.SaveCategoryOrderAsync();
-                break;
-            case "Collection":
-                _viewModel.MoveCollection(from, to);
-                await _viewModel.SaveCollectionOrderAsync();
                 break;
         }
         _viewModel.StatusText = "顺序已保存";

@@ -14,6 +14,9 @@ public interface IThumbnailService
     /// <summary>获取缩略图缓存路径（若存在）。</summary>
     string? GetCachedPath(MediaItem item);
 
+    /// <summary>删除某个媒体项的所有缩略图缓存文件，返回被清理的文件路径。</summary>
+    IReadOnlyList<string> Invalidate(long mediaId);
+
     /// <summary>清理缩略图缓存。</summary>
     Task<long> CleanCacheAsync(CancellationToken ct = default);
 }

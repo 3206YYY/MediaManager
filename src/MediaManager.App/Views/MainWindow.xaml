@@ -19,6 +19,46 @@
         DragOver="OnDragOver"
         Drop="OnDrop">
 
+    <Window.Resources>
+        <!-- 侧边栏可折叠分组标题：库 / 文件夹 / 标签 / 分类共用同一套视觉与悬停反馈 -->
+        <Style x:Key="SidebarSectionHeader" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="4" Padding="6,4">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 侧栏文字：统一继承宿主（ListBoxItem / ToggleButton）的 Foreground。
+             全局隐式 TextBlock 样式会把 Foreground 写死成 TextBrush，正好盖掉
+             宿主 hover/selected 时设的 PrimaryBrush —— 那才是「悬停没反应」的真正原因。
+             这里在 DataTemplate / 内联内容里给个 local value，把颜色拉回宿主。 -->
+        <Style x:Key="SidebarText" TargetType="TextBlock">
+            <Setter Property="Foreground"
+                    Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType={x:Type Control}}}" />
+        </Style>
+
+        <!-- 折叠箭头：紧跟标题文字，不吃宿主颜色以外的任何设定 -->
+        <Style x:Key="SidebarChevron" TargetType="TextBlock" BasedOn="{StaticResource SidebarText}">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Opacity" Value="0.8" />
+        </Style>
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -127,33 +167,64 @@
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="6">
-                        <TextBlock Text="库" FontWeight="Bold" Margin="8,8,8,4" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <ToggleButton x:Name="NavToggle" IsChecked="True" Margin="8,8,8,4"
+                                      Click="OnToggleSection" Tag="Nav"
+                                      Style="{StaticResource SidebarSectionHeader}"
+                                      HorizontalAlignment="Left"
+                                      ToolTip="展开 / 收起库视图">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="NavChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
+                                <TextBlock Text=" 库" FontWeight="Bold" Style="{StaticResource SidebarText}" />
+                            </StackPanel>
+                        </ToggleButton>
                         <ListBox x:Name="NavList" BorderThickness="0" Background="Transparent"
                                  ItemContainerStyle="{StaticResource SidebarItemStyle}">
-                            <ListBoxItem Tag="discovery" PreviewMouseLeftButtonDown="OnNavClick" IsSelected="True">✨ 发现</ListBoxItem>
-                            <ListBoxItem Tag="all" PreviewMouseLeftButtonDown="OnNavClick">🏠 全部媒体</ListBoxItem>
-                            <ListBoxItem Tag="favorites" PreviewMouseLeftButtonDown="OnNavClick">
-                                <DockPanel>
-                                    <TextBlock Text="⭐ 收藏" />
-                                    <TextBlock Text="{Binding DataContext.FavoriteCount, StringFormat=( {0} ), RelativeSource={RelativeSource AncestorType=Window}}"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11"
-                                               VerticalAlignment="Center" Margin="4,0,0,0" />
-                                </DockPanel>
+                            <ListBoxItem Tag="discovery" PreviewMouseLeftButtonDown="OnNavClick" IsSelected="True">
+                                <TextBlock Text="✨ 发现" Style="{StaticResource SidebarText}" />
                             </ListBoxItem>
-                            <ListBoxItem Tag="unfiled" PreviewMouseLeftButtonDown="OnNavClick">📥 未分类</ListBoxItem>
-                            <ListBoxItem Tag="recent-view" PreviewMouseLeftButtonDown="OnNavClick">🕒 最近查看</ListBoxItem>
-                            <ListBoxItem Tag="recent" PreviewMouseLeftButtonDown="OnNavClick">🕘 最近添加</ListBoxItem>
-                            <ListBoxItem Tag="trash" PreviewMouseLeftButtonDown="OnNavClick">🗑 最近删除</ListBoxItem>
+                            <ListBoxItem Tag="all" PreviewMouseLeftButtonDown="OnNavClick">
+                                <TextBlock Text="🏠 全部媒体" Style="{StaticResource SidebarText}" />
+                            </ListBoxItem>
+                            <ListBoxItem Tag="favorites" PreviewMouseLeftButtonDown="OnNavClick">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="⭐ 收藏" Style="{StaticResource SidebarText}" />
+                                    <TextBlock Text="{Binding DataContext.FavoriteCount, StringFormat=( {0} ), RelativeSource={RelativeSource AncestorType=Window}}"
+                                               Style="{StaticResource SidebarText}" Opacity="0.65" FontSize="11"
+                                               VerticalAlignment="Center" Margin="4,0,0,0" />
+                                </StackPanel>
+                            </ListBoxItem>
+                            <ListBoxItem Tag="unfiled" PreviewMouseLeftButtonDown="OnNavClick">
+                                <TextBlock Text="📥 未分类" Style="{StaticResource SidebarText}" />
+                            </ListBoxItem>
+                            <ListBoxItem Tag="recent-view" PreviewMouseLeftButtonDown="OnNavClick">
+                                <TextBlock Text="🕒 最近查看" Style="{StaticResource SidebarText}" />
+                            </ListBoxItem>
+                            <ListBoxItem Tag="recent" PreviewMouseLeftButtonDown="OnNavClick">
+                                <TextBlock Text="🕘 最近添加" Style="{StaticResource SidebarText}" />
+                            </ListBoxItem>
+                            <ListBoxItem Tag="trash" PreviewMouseLeftButtonDown="OnNavClick">
+                                <TextBlock Text="🗑 最近删除" Style="{StaticResource SidebarText}" />
+                            </ListBoxItem>
                         </ListBox>
 
-                        <TextBlock Text="文件夹" FontWeight="Bold" Margin="8,16,8,4" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <ToggleButton x:Name="FolderToggle" IsChecked="True" Margin="8,16,8,4"
+                                      Click="OnToggleSection" Tag="Folder"
+                                      Style="{StaticResource SidebarSectionHeader}"
+                                      HorizontalAlignment="Left"
+                                      ToolTip="展开 / 收起文件夹分组">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="FolderChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
+                                <TextBlock Text=" 文件夹" FontWeight="Bold" Style="{StaticResource SidebarText}" />
+                            </StackPanel>
+                        </ToggleButton>
                         <ListBox x:Name="FolderListBox" BorderThickness="0" Background="Transparent"
                                  ItemsSource="{Binding FolderItems}"
                                  ItemContainerStyle="{StaticResource SidebarItemStyle}"
                                  SelectionChanged="OnFolderSelectionChanged">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                               Style="{StaticResource SidebarText}" />
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                             <ListBox.ContextMenu>
@@ -167,13 +238,15 @@
 
                         <ToggleButton x:Name="TagToggle" IsChecked="True" Margin="8,16,8,4"
                                       Click="OnToggleSection" Tag="Tag"
-                                      Background="Transparent" BorderThickness="0" Padding="0"
-                                      HorizontalAlignment="Left" Cursor="Hand">
+                                      Style="{StaticResource SidebarSectionHeader}"
+                                      HorizontalAlignment="Left"
+                                      ToolTip="展开 / 收起标签分组">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="▼" FontSize="10" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <TextBlock Text=" 标签" FontWeight="Bold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock x:Name="TagChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
+                                <TextBlock Text=" 标签" FontWeight="Bold" Style="{StaticResource SidebarText}" />
                                 <TextBlock Text="{Binding TagCount, StringFormat=( {0} )}" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                                           Style="{StaticResource SidebarText}" Opacity="0.65"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
                             </StackPanel>
                         </ToggleButton>
                         <StackPanel x:Name="TagAddPanel" Orientation="Horizontal" Margin="8,0,8,4">
@@ -186,10 +259,11 @@
                                  PreviewMouseLeftButtonDown="OnReorderMouseDown"
                                  PreviewMouseMove="OnReorderMouseMove"
                                  PreviewMouseLeftButtonUp="OnReorderMouseUp"
+                                 AllowDrop="True" DragOver="OnSidebarDragOver" Drop="OnSidebarDrop"
                                  Tag="Tag">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding Title}" />
+                                    <TextBlock Text="{Binding Title}" Style="{StaticResource SidebarText}" />
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                             <ListBox.ContextMenu>
@@ -201,15 +275,18 @@
                             </ListBox.ContextMenu>
                         </ListBox>
 
+                        <!-- 分类：v1.3.2 起是唯一的归类维度（收藏夹已并入），也是拖拽归类的落点 -->
                         <ToggleButton x:Name="CategoryToggle" IsChecked="True" Margin="8,16,8,4"
                                       Click="OnToggleSection" Tag="Category"
-                                      Background="Transparent" BorderThickness="0" Padding="0"
-                                      HorizontalAlignment="Left" Cursor="Hand">
+                                      Style="{StaticResource SidebarSectionHeader}"
+                                      HorizontalAlignment="Left"
+                                      ToolTip="展开 / 收起分类分组">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="▼" FontSize="10" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <TextBlock Text=" 分类" FontWeight="Bold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock x:Name="CategoryChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
+                                <TextBlock Text=" 分类" FontWeight="Bold" Style="{StaticResource SidebarText}" />
                                 <TextBlock Text="{Binding CategoryCount, StringFormat=( {0} )}" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="4,0,0,0" />
+                                           Style="{StaticResource SidebarText}" Opacity="0.65"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
                             </StackPanel>
                         </ToggleButton>
                         <StackPanel x:Name="CategoryAddPanel" Orientation="Horizontal" Margin="8,0,8,4">
@@ -219,48 +296,22 @@
                                  ItemsSource="{Binding CategoryItems}"
                                  ItemContainerStyle="{StaticResource SidebarItemStyle}"
                                  SelectionChanged="OnCategorySelectionChanged"
-                                 DisplayMemberPath="Name"
                                  PreviewMouseLeftButtonDown="OnReorderMouseDown"
                                  PreviewMouseMove="OnReorderMouseMove"
                                  PreviewMouseLeftButtonUp="OnReorderMouseUp"
+                                 AllowDrop="True" DragOver="OnSidebarDragOver" Drop="OnSidebarDrop"
                                  Tag="Category">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                               Style="{StaticResource SidebarText}" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
                             <ListBox.ContextMenu>
                                 <ContextMenu>
                                     <MenuItem Header="重命名" Click="OnRenameCategoryMenu" />
                                     <Separator />
                                     <MenuItem Header="删除" Click="OnDeleteCategoryMenu" />
-                                </ContextMenu>
-                            </ListBox.ContextMenu>
-                        </ListBox>
-
-                        <ToggleButton x:Name="CollectionToggle" IsChecked="True" Margin="8,16,8,4"
-                                      Click="OnToggleSection" Tag="Collection"
-                                      Background="Transparent" BorderThickness="0" Padding="0"
-                                      HorizontalAlignment="Left" Cursor="Hand">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="▼" FontSize="10" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <TextBlock Text=" 收藏夹" FontWeight="Bold" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <TextBlock Text="{Binding CollectionCount, StringFormat=( {0} )}" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="4,0,0,0" />
-                            </StackPanel>
-                        </ToggleButton>
-                        <StackPanel x:Name="CollectionAddPanel" Orientation="Horizontal" Margin="8,0,8,4">
-                            <Button Content="＋ 新建收藏夹" Command="{Binding AddCollectionCommand}" />
-                        </StackPanel>
-                        <ListBox x:Name="CollectionListBox" BorderThickness="0" Background="Transparent"
-                                 ItemsSource="{Binding CollectionItems}"
-                                 ItemContainerStyle="{StaticResource SidebarItemStyle}"
-                                 SelectionChanged="OnCollectionSelectionChanged"
-                                 DisplayMemberPath="Name"
-                                 PreviewMouseLeftButtonDown="OnReorderMouseDown"
-                                 PreviewMouseMove="OnReorderMouseMove"
-                                 PreviewMouseLeftButtonUp="OnReorderMouseUp"
-                                 Tag="Collection">
-                            <ListBox.ContextMenu>
-                                <ContextMenu>
-                                    <MenuItem Header="重命名" Click="OnRenameCollectionMenu" />
-                                    <Separator />
-                                    <MenuItem Header="删除" Click="OnDeleteCollectionMenu" />
                                 </ContextMenu>
                             </ListBox.ContextMenu>
                         </ListBox>
@@ -288,10 +339,10 @@
                                   ItemsSource="{Binding DiscoveryPoolOptions}"
                                   SelectedIndex="{Binding DiscoveryPoolIndex}" />
                         <ComboBox x:Name="DiscoveryPoolCombo" DockPanel.Dock="Left" Width="160" Margin="10,0,0,0"
-                                  ItemsSource="{Binding DiscoveryPoolCollections}"
+                                  ItemsSource="{Binding DiscoveryPoolCategories}"
                                   DisplayMemberPath="Name"
                                   Visibility="{Binding DiscoveryPoolIndex, Converter={StaticResource DiscoveryPoolVis}}"
-                                  SelectionChanged="OnDiscoveryCollectionChanged" />
+                                  SelectionChanged="OnDiscoveryCategoryChanged" />
                     </DockPanel>
                 </Border>
 
@@ -347,8 +398,6 @@
                             <MenuItem Header="⭐ 收藏/取消收藏 (F)" Click="OnFavoriteMenu" />
                             <Separator />
                             <MenuItem x:Name="CategoryMenu" Header="📁 分类" />
-                            <MenuItem Header="🗂 加入收藏夹" ItemsSource="{Binding CollectionItems}"
-                                      DisplayMemberPath="Name" Click="OnAssignCollectionMenu" />
                             <Separator />
                             <MenuItem Header="📂 打开所在位置 (Ctrl+Enter)" Click="OnOpenLocationMenu" />
                             <MenuItem Header="重命名 (F2)" Click="OnRenameMenu" />
@@ -516,7 +565,14 @@
 
                         <Separator Margin="0,12" />
 
-                        <TextBlock Text="已加入的分类" FontWeight="Bold" Margin="0,0,0,6" />
+                        <DockPanel Margin="0,0,0,6" LastChildFill="False">
+                            <TextBlock DockPanel.Dock="Left" Text="所属分类" FontWeight="Bold"
+                                       VerticalAlignment="Center" />
+                            <Button DockPanel.Dock="Right" Content="＋ 加入" MinWidth="58" Padding="8,1"
+                                    FontSize="11.5"
+                                    ToolTip="把当前文件加入一个或多个分类（可连续勾选）"
+                                    Click="OnDetailAddCategoryClick" />
+                        </DockPanel>
                         <ItemsControl ItemsSource="{Binding SelectedCategories}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -531,20 +587,25 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
 
-                        <TextBlock Text="已加入的收藏夹" FontWeight="Bold" Margin="0,10,0,6" />
-                        <ItemsControl ItemsSource="{Binding SelectedCollections}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel Margin="0,2">
-                                        <Button Content="✕" Width="20" Height="20" Padding="0" DockPanel.Dock="Right"
-                                                ToolTip="移出该收藏夹"
-                                                Command="{Binding DataContext.RemoveCollectionCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding}" />
-                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
-                                    </DockPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- 一个都没加时给个提示，避免「空一块」看着像坏了 -->
+                        <TextBlock Text="还没有归入任何分类" FontSize="11.5" Margin="0,2,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SelectedCategories.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <!-- 没选中任何文件时别显示这句：面板本身是常驻的，
+                                             空选状态下说「还没有归入任何分类」会让人以为是个坏掉的文件 -->
+                                        <DataTrigger Binding="{Binding SelectedItem}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
 
                         <Separator Margin="0,12" />
 
@@ -600,6 +661,17 @@
                             Margin="8,0,0,0" />
                 </StackPanel>
             </StackPanel>
+        </Border>
+
+        <!-- 操作轻提示（1.8 秒自动消失）：只用来说结果，不带按钮 -->
+        <Border Grid.Row="1" Panel.ZIndex="899"
+                HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                Margin="0,0,0,74" Padding="12,7" CornerRadius="14"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="1"
+                IsHitTestVisible="False"
+                Visibility="{Binding IsActionToastVisible, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="{Binding ActionToastText}" FontSize="12.5" />
         </Border>
 
         <Border Grid.Row="1" Panel.ZIndex="900"
