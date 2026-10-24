@@ -42,7 +42,18 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 ; self-contained 发布输出（含 .NET runtime + FFmpeg + LibVLC）
 ; Excludes 必须排除 logs：发布目录里残留的运行日志含本机路径/媒体路径，
 ; 打进安装包等于把开发机的隐私带到每个用户机器上。
-Source: "..\dist\MediaManager-win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "logs\*,logs\*.*"
+;
+; 瘦身排除项（本应用只做本地浏览/播放，以下模块运行时永不加载）：
+;   access_output / stream_out  —— LibVLC 推流输出与推流管线
+;   visualization               —— 音频频谱可视化（无此 UI）
+;   services_discovery          —— UPnP/SAP 网络设备发现
+;   hrtfs                       —— 双耳 HRTF 音效数据（无空间音频）
+;   *.lib                       —— 链接期导入库，运行时不读取
+;   System.Windows.Forms.Design —— WinForms 设计器支持（托盘只用运行时）
+;   mscordbi / mscordaccore / DiaSymReader —— 调试器与 dump 分析资产
+; 注意：codec / demux / access / video_output / audio_output / text_renderer /
+; spu 等播放核心一律不能动。
+Source: "..\dist\MediaManager-win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "logs\*,logs\*.*,System.Windows.Forms.Design.dll,Microsoft.DiaSymReader.Native.amd64.dll,mscordbi.dll,mscordaccore_*.dll,libvlc\win-x64\*.lib,libvlc\win-x64\hrtfs\*,libvlc\win-x64\plugins\access_output\*,libvlc\win-x64\plugins\stream_out\*,libvlc\win-x64\plugins\visualization\*,libvlc\win-x64\plugins\services_discovery\*"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
