@@ -82,7 +82,7 @@ C 盘、D 盘、移动硬盘里的图片、视频、音频、文档、压缩包�
 2. 双击安装后启动，点击主界面的「添加文件夹」选择你的媒体目录。
 3. 程序会在后台自动扫描并生成缩略图，立马就能使用！
 
-> 🇨🇳 **GitHub 打不开？** 源码在国内镜像 **[gitee.com/yyy3206/MediaManager](https://gitee.com/yyy3206/MediaManager)** 也有一份（同步更新）。
+> 🇨🇳 **GitHub 打不开？** 源码在国内镜像 **[gitee.com/yyy3206/MediaManager](https://gitee.com/yyy3206/MediaManager)** 也有一份（手动同步，可能滞后一版，**以 GitHub 为准**）。
 > **安装包目前只有 GitHub 这一个源** —— Gitee 单个附件上限 100 MB，而这个安装包是 101 MB，传不上去。
 > 下载慢就隔几分钟重试，或者提个 issue 说明情况。GitHub 是主仓库，issue / PR 请提到这边。
 
