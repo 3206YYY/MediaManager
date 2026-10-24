@@ -23,7 +23,7 @@
 - **时光机备份**：保留最近 7 个时间节点，随时把整个库退回去；坏的备份一律拒绝恢复
 - **装完就能用**：安装包自带 .NET、FFmpeg、LibVLC，双击安装，不联网、不要管理员权限
 
-C# / .NET 8 / WPF · MIT · [源码](https://github.com/3206YYY/MediaManager)
+C# / .NET 8 / WPF · MIT · [官网](https://3206yyy.github.io/MediaManager/) · [源码](https://github.com/3206YYY/MediaManager)
 
 ---
 

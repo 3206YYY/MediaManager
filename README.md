@@ -5,7 +5,7 @@
 > 免费、开源、纯本地无广告的 Windows 媒体管理器 —— **一个窗口，管完你的图片、视频、音频、文档和压缩包**。
 > 把电脑和移动硬盘里散落各处的文件收进同一个库，数据始终在自己手里。
 
-**[📥 下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[🇨🇳 Gitee 源码镜像](https://gitee.com/yyy3206/MediaManager)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
+**[📥 下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[🌐 官网](https://3206yyy.github.io/MediaManager/)** ｜ **[🇨🇳 Gitee 源码镜像](https://gitee.com/yyy3206/MediaManager)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
 
 > 当前版本 **v1.3.1** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
 >

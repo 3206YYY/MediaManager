@@ -5,7 +5,8 @@
     set GH_TOKEN=github_pat_xxx
     python build/update_repo_meta.py
 
-主页链接指向 Releases：README 的「下载」按钮也是指那里，保持一致。
+主页链接指向官网首页（docs/ 目录托管在 GitHub Pages），下载按钮在首页和 Releases 都能点到；
+赞助走 README 里的爱发电，不占 About 区的 Link。
 """
 import http.client
 import json
@@ -14,7 +15,7 @@ import sys
 
 REPO = "3206YYY/MediaManager"
 DESCRIPTION = "免费开源的 Windows 媒体管理器：一个窗口管完图片 / 视频 / 音频 / 文档 / 压缩包，纯本地、无广告，内置轻量编辑器与「时光机」备份回退。"
-HOMEPAGE = "https://afdian.com/a/3206YYY"
+HOMEPAGE = "https://3206yyy.github.io/MediaManager/"
 TOPICS = [
     "windows", "wpf", "dotnet", "csharp", "photo-manager", "image-viewer",
     "image-editor", "video-player", "audio-player", "media-manager", "file-manager",
