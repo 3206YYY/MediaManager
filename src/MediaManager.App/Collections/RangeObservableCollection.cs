@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
@@ -26,5 +27,25 @@ public class RangeObservableCollection<T> : ObservableCollection<T>
         OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
         OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
         OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+    }
+
+    /// <summary>
+    /// 追加一批数据，只发一次 Add 通知。
+    /// 用 Add 而不是 Reset：Reset 会让 ListBox 重建容器、滚动位置可能跳回顶部。
+    /// </summary>
+    public void AddRange(IEnumerable<T> items)
+    {
+        var buffer = (items as IList<T> ?? items.ToList()).ToList();
+        if (buffer.Count == 0) return;
+
+        CheckReentrancy();
+        var start = Items.Count;
+        foreach (var item in buffer)
+            Items.Add(item);
+
+        OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
+        OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+        OnCollectionChanged(new NotifyCollectionChangedEventArgs(
+            NotifyCollectionChangedAction.Add, (IList)buffer, start));
     }
 }

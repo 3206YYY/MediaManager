@@ -537,6 +537,16 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
 
+                <!-- 分页：加载更多（方案 A）。只在还有未加载项时显示 -->
+                <Button Grid.Row="1"
+                        Content="{Binding LoadMoreText}"
+                        Command="{Binding LoadMoreCommand}"
+                        HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                        Margin="0,0,0,20" Padding="18,8" FontSize="13"
+                        Panel.ZIndex="20" Opacity="0.95"
+                        Visibility="{Binding CanLoadMore, Converter={StaticResource BoolToVis}}"
+                        ToolTip="加载下一页（每页 2000 项）" />
+
                 <!-- 框选矩形层 -->
                 <Border x:Name="SelectionRect"
                         Grid.Row="1"

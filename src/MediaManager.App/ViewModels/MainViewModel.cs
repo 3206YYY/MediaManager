@@ -35,6 +35,12 @@ public partial class MainViewModel : ObservableObject
     private long? _currentTagId;
     private long? _currentCategoryId;
 
+    /// <summary>列表分页大小（「加载更多」一次追加的条数）。</summary>
+    private const int PageSize = 2000;
+
+    private int _totalCount;
+    private bool _isLoadingMore;
+
     // 发现页状态
     private DiscoveryPoolType _discoveryPool = DiscoveryPoolType.Favorite;
     private int _discoveryCount = 30;
@@ -193,6 +199,14 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _statusText = "就绪";
 
+    /// <summary>列表是否还有未加载的项（控制「加载更多」按钮）。</summary>
+    [ObservableProperty]
+    private bool _canLoadMore;
+
+    /// <summary>「加载更多」按钮文案（含剩余数量）。</summary>
+    [ObservableProperty]
+    private string _loadMoreText = string.Empty;
+
     [ObservableProperty]
     private double _scanProgress;
 
@@ -329,6 +343,8 @@ public partial class MainViewModel : ObservableObject
     private async Task LoadMediaAsync()
     {
         var generation = ++_loadGeneration;
+        CanLoadMore = false;
+        LoadMoreText = string.Empty;
 
         if (!HasSelectedType)
         {
@@ -372,12 +388,73 @@ public partial class MainViewModel : ObservableObject
         // 一次性替换：只触发一次布局，比逐条 Add 快很多
         MediaItems.ReplaceAll(vms);
 
+        _totalCount = total;
+        UpdateLoadMoreState();
+
         // 一次性把缺缩略图的排队（同目录只探测一次，去掉逐条系统调用）
         EnsureThumbnails(items);
         _logger.LogDebug("  · 列表绑定 {Ms} ms", swLoad.ElapsedMilliseconds);
 
-        StatusText = $"共 {total} 项";
+        StatusText = total > MediaItems.Count
+            ? $"已加载 {MediaItems.Count} / 共 {total} 项"
+            : $"共 {total} 项";
         _logger.LogDebug("  · 列表就绪 {Ms} ms", swLoad.ElapsedMilliseconds);
+    }
+
+    /// <summary>
+    /// 「加载更多」：只追加一页，保留当前滚动位置和已选项。
+    /// 方案 A：按钮显式触发，不自动加载，避免滚动时位置跳动/重复请求。
+    /// </summary>
+    [RelayCommand]
+    private async Task LoadMoreAsync()
+    {
+        if (_isLoadingMore || !CanLoadMore) return;
+        if (_currentViewKey is "discovery" or "recent-view") return;
+
+        _isLoadingMore = true;
+        var generation = _loadGeneration;
+        try
+        {
+            var filter = BuildFilter();
+            filter.Offset = MediaItems.Count;
+            filter.Limit = PageSize;
+
+            var items = await DbAsync(() => _repo.QueryAsync(filter));
+            if (generation != _loadGeneration) return;
+            if (items.Count == 0)
+            {
+                // 库里的数据变少了：以实际为准，别让按钮一直挂着
+                _totalCount = MediaItems.Count;
+                UpdateLoadMoreState();
+                return;
+            }
+
+            var vms = items.Select(ToViewModel).ToList();
+            await ApplyCategoryMarksAsync(vms);
+            if (generation != _loadGeneration) return;
+
+            MediaItems.AddRange(vms);
+            EnsureThumbnails(items);
+
+            _totalCount = Math.Max(_totalCount, MediaItems.Count);
+            UpdateLoadMoreState();
+            StatusText = $"已加载 {MediaItems.Count} / 共 {_totalCount} 项";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "加载更多失败");
+        }
+        finally
+        {
+            _isLoadingMore = false;
+        }
+    }
+
+    private void UpdateLoadMoreState()
+    {
+        var remaining = _totalCount - MediaItems.Count;
+        CanLoadMore = remaining > 0;
+        LoadMoreText = remaining > 0 ? $"加载更多（还有 {remaining} 项）" : string.Empty;
     }
 
     /// <summary>MediaItem → 列表项（纯内存对象，不碰磁盘）。</summary>
@@ -768,7 +845,7 @@ public partial class MainViewModel : ObservableObject
             SearchText = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
             SortField = SortField.DateAdded,
             SortDirection = SortDirection.Descending,
-            Limit = 10000,
+            Limit = PageSize,
         };
 
         switch (_currentViewKey)
