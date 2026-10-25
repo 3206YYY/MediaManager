@@ -13,6 +13,10 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={localappdata}\Programs\MediaManager
+; 固定安装目录：默认行为会在升级时沿用注册表里上次的 InstallLocation，
+; 只要有过一次「装到别处」的测试安装（例如 %TEMP% 下的临时目录），以后每次升级都会跟过去，
+; 用户点开始菜单快捷方式就被指向那个随时会被清理的目录，等于快捷方式失效。
+UsePreviousAppDir=no
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist

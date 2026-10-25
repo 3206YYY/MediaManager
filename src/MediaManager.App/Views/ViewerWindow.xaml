@@ -770,6 +770,10 @@
                                     <ToggleButton x:Name="InkTool" Style="{StaticResource CompactToggle}"
                                                   Content="✏ 涂鸦" Click="OnInkToolClick"
                                                   HorizontalAlignment="Stretch" Margin="0,0,0,6" />
+                                    <ToggleButton x:Name="EraseTool" Style="{StaticResource CompactToggle}"
+                                                  Content="🧽 橡皮擦" Click="OnEraseToolClick"
+                                                  HorizontalAlignment="Stretch" Margin="0,0,0,6"
+                                                  ToolTip="拖过涂鸦整笔删除（文字 / 形状仍用点选删除）" />
                                     <WrapPanel x:Name="InkColorPanel" Margin="0,0,0,4" />
                                     <DockPanel Margin="0,0,0,4">
                                         <TextBlock DockPanel.Dock="Right" x:Name="InkWidthText" Text="4"
@@ -804,6 +808,10 @@
                                     <ToggleButton x:Name="MosaicTool" Style="{StaticResource CompactToggle}"
                                                   Content="▦ 涂抹打码" Click="OnMosaicToolClick"
                                                   HorizontalAlignment="Stretch" Margin="0,0,0,6" />
+                                    <ToggleButton x:Name="EraseToolPrivacy" Style="{StaticResource CompactToggle}"
+                                                  Content="🧽 橡皮擦" Click="OnEraseToolClick"
+                                                  HorizontalAlignment="Stretch" Margin="0,0,0,6"
+                                                  ToolTip="拖过打码区域整笔删除（可撤销）" />
                                     <ComboBox x:Name="PrivacyModeCombo" Margin="0,0,0,6" SelectionChanged="OnPrivacyModeChanged">
                                         <ComboBoxItem Content="马赛克" Tag="mosaic" />
                                         <ComboBoxItem Content="高斯模糊" Tag="blur" />

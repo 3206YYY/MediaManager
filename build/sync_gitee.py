@@ -29,10 +29,10 @@ API = "https://gitee.com/api/v5"
 OWNER, REPO = "yyy3206", "MediaManager"
 REMOTE = f"https://gitee.com/{OWNER}/{REPO}.git"
 
-TAG = "v1.3.1"
-RELEASE_NAME = "v1.3.1 — 扩展格式支持（音频 / 文档 / 压缩包）"
-BODY_FILE = os.path.join(ROOT, "更新说明_V1.3.1.md")
-EXE = os.path.join(ROOT, "dist", "MediaManager-Setup-1.3.1.exe")
+TAG = "v1.3.3"
+RELEASE_NAME = "v1.3.3 — 稳定性与手感"
+BODY_FILE = os.path.join(ROOT, "更新说明_V1.3.3.md")
+EXE = os.path.join(ROOT, "dist", "MediaManager-Setup-1.3.3.exe")
 
 # Gitee 的仓库介绍要跟 GitHub 对齐（那边已经改成「媒体管理器」了）
 DESCRIPTION = (

@@ -34,7 +34,7 @@ namespace MediaManager.App.Views;
 /// </summary>
 public partial class ViewerWindow : Window
 {
-    private enum ToolMode { None, Crop, Ink, Privacy, Shape }
+    private enum ToolMode { None, Crop, Ink, Privacy, Shape, Erase }
 
     /// <summary>随机跳转的范围。</summary>
     private enum RandomScope { List, Folder, All, Favorite, Category, Tag }
@@ -104,6 +104,11 @@ public partial class ViewerWindow : Window
     private ShapeKind _shapeKind = ShapeKind.Rect;
     private ShapeOverlayItem? _shapeDraft;
     private FrameworkElement? _shapeDraftElement;
+
+    // 橡皮擦
+    private bool _eraseActive;
+    private bool _eraseChanged;
+    private Point _eraseLast;
 
     // 编辑预设
     private readonly List<EditorPreset> _presets = new();
@@ -305,6 +310,10 @@ public partial class ViewerWindow : Window
         CropTool.IsChecked = false;
         TextTool.IsChecked = false;
         InkTool.IsChecked = false;
+        EraseTool.IsChecked = false;
+        EraseToolPrivacy.IsChecked = false;
+        _eraseActive = false;
+        _eraseChanged = false;
         MosaicTool.IsChecked = false;
         ShapeRectTool.IsChecked = false;
         ShapeArrowTool.IsChecked = false;
@@ -2475,6 +2484,125 @@ public partial class ViewerWindow : Window
         if (InkLayer != null) InkLayer.DefaultDrawingAttributes.Color = ParseColor(hex);
     }
 
+    // ================= 局部：橡皮擦 =================
+
+    /// <summary>橡皮擦半径（屏幕 DIP）：按「笔迹整笔删除」算，不需要精确压线。</summary>
+    private const double EraseRadiusPx = 14;
+
+    private void OnEraseToolClick(object sender, RoutedEventArgs e)
+    {
+        if (_doc == null) return;
+        if (sender is ToggleButton { IsChecked: true }) EnterEraseMode();
+        else ExitEraseMode();
+    }
+
+    private void EnterEraseMode()
+    {
+        if (_doc == null) return;
+
+        EndTextEditing();
+        EndOtherModes(except: ToolMode.Erase);
+        _mode = ToolMode.Erase;
+        SyncEraseToolState(true);
+        _eraseActive = false;
+        _eraseChanged = false;
+
+        // 橡皮擦靠 ImageArea 的鼠标事件命中，InkCanvas 必须让出鼠标
+        InkLayer.IsHitTestVisible = false;
+        InkLayer.EditingMode = InkCanvasEditingMode.None;
+        ToolHint.Text = "橡皮擦：拖过涂鸦或打码，整笔删除（Ctrl+Z 可撤销）";
+    }
+
+    private void ExitEraseMode()
+    {
+        EndEraseSession();
+        if (_mode == ToolMode.Erase) _mode = ToolMode.None;
+        SyncEraseToolState(false);
+        ToolHint.Text = HintText;
+    }
+
+    /// <summary>两个面板里的橡皮按钮是同一个工具，勾选状态保持一致。</summary>
+    private void SyncEraseToolState(bool on)
+    {
+        if (EraseTool != null) EraseTool.IsChecked = on;
+        if (EraseToolPrivacy != null) EraseToolPrivacy.IsChecked = on;
+    }
+
+    /// <summary>结束本次拖拽：擦掉了东西才入撤销栈，空拖不污染历史。</summary>
+    private void EndEraseSession()
+    {
+        if (_doc == null || !_eraseActive) return;
+
+        _eraseActive = false;
+        if (_eraseChanged) _doc.Commit("橡皮擦");
+        else _doc.CancelEdit();
+        _eraseChanged = false;
+    }
+
+    /// <summary>按鼠标轨迹整笔删除涂鸦 / 打码（矩形马赛克按矩形相交算）。</summary>
+    private void EraseAlong(Point from, Point to)
+    {
+        if (_doc == null || _mode != ToolMode.Erase) return;
+
+        var w = Math.Max(1, CanvasW);
+        var h = Math.Max(1, CanvasH);
+        var r = EraseRadiusPx;
+
+        var removed = _doc.Strokes.RemoveAll(s => PolylineTouches(s.Points, from, to, w, h, r));
+        removed += _doc.Privacies.RemoveAll(p =>
+            PolylineTouches(p.Points, from, to, w, h, r + Math.Max(2, p.Thickness * w * 0.5)));
+        removed += _doc.Mosaics.RemoveAll(m => SegmentTouchesRect(
+            from, to,
+            new Rect(m.X * w - r, m.Y * h - r, m.W * w + 2 * r, m.H * h + 2 * r)));
+
+        if (removed == 0) return;
+
+        _eraseChanged = true;
+        RebuildInk(w, h);
+        RebuildMosaics(w, h);
+    }
+
+    /// <summary>笔迹的任意采样点是否落在擦除轨迹的半径内。</summary>
+    private static bool PolylineTouches(IReadOnlyList<Point> points, Point from, Point to,
+                                        double w, double h, double radius)
+    {
+        var r2 = radius * radius;
+        foreach (var pt in points)
+        {
+            if (DistanceToSegmentSq(new Point(pt.X * w, pt.Y * h), from, to) <= r2) return true;
+        }
+        return false;
+    }
+
+    private static double DistanceToSegmentSq(Point p, Point a, Point b)
+    {
+        var vx = b.X - a.X;
+        var vy = b.Y - a.Y;
+        var wx = p.X - a.X;
+        var wy = p.Y - a.Y;
+        var len2 = vx * vx + vy * vy;
+
+        var t = len2 < 1e-9 ? 0 : Math.Clamp((wx * vx + wy * vy) / len2, 0, 1);
+        var dx = wx - t * vx;
+        var dy = wy - t * vy;
+        return dx * dx + dy * dy;
+    }
+
+    /// <summary>擦除轨迹是否扫过矩形（矩形已按擦除半径外扩）。</summary>
+    private static bool SegmentTouchesRect(Point a, Point b, Rect rect)
+    {
+        if (rect.Contains(a) || rect.Contains(b)) return true;
+
+        var len = Math.Sqrt((b.X - a.X) * (b.X - a.X) + (b.Y - a.Y) * (b.Y - a.Y));
+        var steps = Math.Max(1, (int)Math.Ceiling(len / 4));
+        for (var i = 1; i <= steps; i++)
+        {
+            var t = (double)i / steps;
+            if (rect.Contains(new Point(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t))) return true;
+        }
+        return false;
+    }
+
     // ================= 局部：打码（马赛克 / 模糊） =================
 
     private void OnMosaicToolClick(object sender, RoutedEventArgs e)
@@ -3133,6 +3261,27 @@ public partial class ViewerWindow : Window
 
         if (tag != "text") EndTextEditing();
         if (tag == "text" && !IsTextEditing) SyncTextAngleFromDocument();
+
+        // 点「标注」/「打码」直接进对应工具，省掉面板里再点一次「开始涂鸦/涂抹」；
+        // 反过来切到别的分类时退出绘制工具，否则注水层会一直挡着鼠标（文字点不中）。
+        if (_doc != null)
+        {
+            switch (tag)
+            {
+                case "draw":
+                    EnterInkMode();
+                    break;
+                case "privacy":
+                    EnterPrivacyMode();
+                    break;
+                default:
+                    if (_mode == ToolMode.Ink) ExitInkMode();
+                    if (_mode == ToolMode.Privacy) ExitPrivacyMode();
+                    if (_mode == ToolMode.Shape) ExitShapeMode();
+                    if (_mode == ToolMode.Erase) ExitEraseMode();
+                    break;
+            }
+        }
     }
 
     /// <summary>没有选中文字时，把角度滑块同步到「最后一段文字」，避免滑块显示 0° 与实际不符。</summary>
@@ -3174,13 +3323,14 @@ public partial class ViewerWindow : Window
         if (except != ToolMode.Ink && _mode == ToolMode.Ink) ExitInkMode();
         if (except != ToolMode.Privacy && _mode == ToolMode.Privacy) ExitPrivacyMode();
         if (except != ToolMode.Shape && _mode == ToolMode.Shape) ExitShapeMode();
+        if (except != ToolMode.Erase && _mode == ToolMode.Erase) ExitEraseMode();
     }
 
     // ================= 鼠标 / 缩放 / 平移 =================
 
     private void OnMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (_mode is ToolMode.Crop or ToolMode.Ink or ToolMode.Privacy or ToolMode.Shape) return;
+        if (_mode is ToolMode.Crop or ToolMode.Ink or ToolMode.Privacy or ToolMode.Shape or ToolMode.Erase) return;
         var factor = e.Delta > 0 ? 1.1 : 1 / 1.1;
         ApplyZoom(_viewModel.Zoom * factor);
     }
@@ -3327,6 +3477,20 @@ public partial class ViewerWindow : Window
         if (_mode == ToolMode.Crop) return;      // 交给裁剪手柄
         if (_mode == ToolMode.Ink) return;       // InkCanvas 自己处理
 
+        if (_mode == ToolMode.Erase)
+        {
+            var p = e.GetPosition(ImageBox);
+            ImageArea.CaptureMouse();
+            e.Handled = true;
+
+            _eraseActive = true;
+            _eraseChanged = false;
+            _eraseLast = p;
+            _doc?.BeginEdit();        // 一次拖动 = 一个撤销步骤
+            EraseAlong(p, p);         // 单击也能擦（拖动事件可能一个都不来）
+            return;
+        }
+
         if (_mode == ToolMode.Shape)
         {
             var p = e.GetPosition(ImageBox);
@@ -3410,6 +3574,14 @@ public partial class ViewerWindow : Window
             return;
         }
 
+        if (_mode == ToolMode.Erase && e.LeftButton == MouseButtonState.Pressed && _eraseActive)
+        {
+            var p = e.GetPosition(ImageBox);
+            EraseAlong(_eraseLast, p);
+            _eraseLast = p;
+            return;
+        }
+
         if (_mode == ToolMode.Shape && e.LeftButton == MouseButtonState.Pressed && _shapeDraft != null)
         {
             var p = e.GetPosition(ImageBox);
@@ -3478,6 +3650,13 @@ public partial class ViewerWindow : Window
             _wmDragSource = null;
 
             if (_doc != null && _doc.IsEditing) _doc.Commit("移动水印");
+            return;
+        }
+
+        if (_mode == ToolMode.Erase && e.LeftButton == MouseButtonState.Released)
+        {
+            ImageArea.ReleaseMouseCapture();
+            EndEraseSession();
             return;
         }
 
@@ -3590,6 +3769,7 @@ public partial class ViewerWindow : Window
                 if (_mode == ToolMode.Ink) { ExitInkMode(); e.Handled = true; return; }
                 if (_mode == ToolMode.Privacy) { ExitPrivacyMode(); e.Handled = true; return; }
                 if (_mode == ToolMode.Shape) { ExitShapeMode(); e.Handled = true; return; }
+                if (_mode == ToolMode.Erase) { ExitEraseMode(); e.Handled = true; return; }
                 if (_isFullScreen) OnFullScreen(sender, e);
                 else Close();
                 e.Handled = true;
