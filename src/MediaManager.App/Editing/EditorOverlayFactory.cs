@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -334,11 +335,18 @@ public static class EditorOverlayFactory
             if (geometry == null) continue;
 
             var blockRatio = group.Key;
+            // 预览阶段（画布尺寸 = 屏幕尺寸）才预模糊并缓存；导出大图直接交给渲染管线，
+            // 否则一张 4000×3000 的模糊位图就是 48MB，得不偿失。
+            var useCachedBlur = mode == PrivacyMode.Blur && (long)w * (long)h <= 4_000_000;
+
             var img = new Image
             {
-                Source = mode == PrivacyMode.Mosaic
-                    ? BuildMosaicSource(baseBitmap, w, blockRatio)
-                    : baseBitmap,
+                Source = mode switch
+                {
+                    PrivacyMode.Mosaic => BuildMosaicSource(baseBitmap, w, blockRatio),
+                    _ when useCachedBlur => BuildBlurSource(baseBitmap, w, h, blockRatio),
+                    _ => baseBitmap,
+                },
                 Width = w,
                 Height = h,
                 Stretch = Stretch.Fill,
@@ -350,7 +358,7 @@ public static class EditorOverlayFactory
             {
                 RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);
             }
-            else
+            else if (!useCachedBlur)
             {
                 img.Effect = new BlurEffect
                 {
@@ -375,22 +383,127 @@ public static class EditorOverlayFactory
     public static double NormalizeBlockRatio(double ratio)
         => double.IsFinite(ratio) ? Math.Clamp(ratio, 1.0 / 500, 1.0 / 8) : 1.0 / 60;
 
+    /// <summary>
+    /// 打码取样图缓存。键 = 「底图实例 + 画布宽度 + 颗粒比例」：
+    /// 涂抹时每移动几个像素就会重建一次叠加层，不缓存的话每次都要把整张大图重新降采样一遍，
+    /// 大图上必然掉帧。<see cref="ConditionalWeakTable{TKey,TValue}"/> 以底图实例为键，
+    /// 底图一换（调色/裁剪/翻页）旧缓存自动失效，不会泄漏。
+    /// </summary>
+    private static readonly ConditionalWeakTable<BitmapSource, Dictionary<(int W, int Ratio), BitmapSource>>
+        MosaicCache = new();
+
+    private static readonly ConditionalWeakTable<BitmapSource, Dictionary<(int W, int H, int Radius), BitmapSource>>
+        BlurCache = new();
+
+    /// <summary>单个底图最多缓存几张取样图（超过就整表清空，防止调参数时无限增长）。</summary>
+    private const int MaxCachedSources = 6;
+
     private static BitmapSource BuildMosaicSource(
         BitmapSource baseBitmap, double canvasWidth, double blockRatio)
     {
+        var key = ((int)Math.Round(canvasWidth), (int)Math.Round(NormalizeBlockRatio(blockRatio) * 10000));
+        var cache = MosaicCache.GetValue(baseBitmap, _ => new Dictionary<(int W, int Ratio), BitmapSource>());
+
+        lock (cache)
+        {
+            if (cache.TryGetValue(key, out var cached)) return cached;
+        }
+
         // 颗粒 = 画布宽度 × BlockRatio，画面越大方块越大，保证「视觉上粗细一致」
         var factor = Math.Max(2.0, canvasWidth * NormalizeBlockRatio(blockRatio));
+        BitmapSource result;
         try
         {
             var tiny = new TransformedBitmap(baseBitmap,
                 new ScaleTransform(1.0 / factor, 1.0 / factor));
             tiny.Freeze();
-            return tiny;
+            // 立刻解成一张真正的小位图：TransformedBitmap 是惰性的，留着它等于每帧都重新采样大图
+            result = Materialize(tiny);
         }
         catch
         {
-            return baseBitmap;
+            result = baseBitmap;
         }
+
+        lock (cache)
+        {
+            if (cache.Count >= MaxCachedSources) cache.Clear();
+            cache[key] = result;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 模糊取样图：整张画布预模糊一次并缓存。
+    /// 原来是给图层挂 <see cref="BlurEffect"/>，半径最大 120 —— 每一帧都要对整块画布做高斯模糊，
+    /// 拖涂抹时直接掉到个位数帧率。缓存后一条笔迹只模糊一次，后续只是贴图。
+    /// </summary>
+    private static BitmapSource BuildBlurSource(
+        BitmapSource baseBitmap, double w, double h, double blockRatio)
+    {
+        if (w < 1 || h < 1) return baseBitmap;
+
+        var radius = Math.Clamp(w * blockRatio, 3, 120);
+        var key = ((int)Math.Round(w), (int)Math.Round(h), (int)Math.Round(radius));
+        var cache = BlurCache.GetValue(baseBitmap, _ => new Dictionary<(int, int, int), BitmapSource>());
+
+        lock (cache)
+        {
+            if (cache.TryGetValue(key, out var cached)) return cached;
+        }
+
+        BitmapSource result;
+        try
+        {
+            var visual = new DrawingVisual
+            {
+                Effect = new BlurEffect
+                {
+                    Radius = radius,
+                    KernelType = KernelType.Gaussian,
+                    RenderingBias = RenderingBias.Performance,
+                },
+            };
+
+            using (var dc = visual.RenderOpen())
+                dc.DrawImage(baseBitmap, new Rect(0, 0, w, h));
+
+            var rtb = new RenderTargetBitmap(
+                Math.Max(1, key.Item1), Math.Max(1, key.Item2), 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(visual);
+            rtb.Freeze();
+            result = rtb;
+        }
+        catch
+        {
+            result = baseBitmap;
+        }
+
+        lock (cache)
+        {
+            if (cache.Count >= 4) cache.Clear();   // 每张都是整块画布大小，缓存要收紧
+            cache[key] = result;
+        }
+        return result;
+    }
+
+    /// <summary>把惰性位图真正光栅化成独立小位图并冻结，之后重绘只是贴图。</summary>
+    private static BitmapSource Materialize(BitmapSource source)
+    {
+        var pw = source.PixelWidth;
+        var ph = source.PixelHeight;
+        if (pw <= 0 || ph <= 0) return source;
+        // 大到位图本身（说明没降采样成功）就不折腾了
+        if ((long)pw * ph > 32_000_000) return source;
+
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+            dc.DrawImage(source, new Rect(0, 0, pw, ph));
+
+        var rtb = new RenderTargetBitmap(pw, ph, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(visual);
+        rtb.Freeze();
+        return rtb;
     }
 
     // ---------- 平铺文字水印 ----------

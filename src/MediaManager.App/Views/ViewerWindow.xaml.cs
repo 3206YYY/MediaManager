@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -55,6 +55,11 @@ public partial class ViewerWindow : Window
 
     // 视图状态
     private bool _isDragging;
+    /// <summary>左键已按下但还没超过拖动死区（避免手抖把图挪歪）。</summary>
+    private bool _dragArmed;
+    private Point _dragStartPosition;
+    /// <summary>拖动死区（DIP）：移动小于这个距离不算拖动。</summary>
+    private const double DragDeadZone = 4.0;
     private Point _lastPosition;
     private bool _isFullScreen;
     private WindowState _prevState;
@@ -167,6 +172,8 @@ public partial class ViewerWindow : Window
         ImageBox.SizeChanged += (_, _) =>
         {
             if (!_suppressOverlayRebuild) RebuildOverlays();
+            // 窗口变大后旧的平移量可能已经越界（图片边缘会离开窗口），重新夹一次
+            ClampPan();
         };
 
         BuildColorPalettes();
@@ -542,6 +549,21 @@ public partial class ViewerWindow : Window
             var layer = EditorOverlayFactory.BuildPrivacyLayer(_doc.Privacies, mode, baseBmp, w, h);
             if (layer != null) MosaicLayer.Children.Add(layer);
         }
+
+        ApplyOverlayZOrder();
+    }
+
+    /// <summary>
+    /// 打码与涂鸦的上下关系跟随「最近一次用的是哪个工具」：
+    /// 最后用的是打码 → 打码盖在涂鸦上；最后用的是画笔 → 画笔回到打码之上。
+    /// 55 = 在涂鸦(50) 之上、平铺水印(60) 之下；10 = 原来的位置（所有标注之下）。
+    /// </summary>
+    private void ApplyOverlayZOrder()
+    {
+        if (_doc == null) return;
+
+        var z = _doc.PrivacyAboveInk ? 55 : 10;
+        if (Panel.GetZIndex(MosaicLayer) != z) Panel.SetZIndex(MosaicLayer, z);
     }
 
     private void RebuildWatermarks(double w, double h)
@@ -2380,10 +2402,7 @@ public partial class ViewerWindow : Window
     {
         EndTextEditing();
         EndOtherModes(except: ToolMode.Ink);
-        ApplyZoom(1.0);
-        PanTranslate.X = 0;
-        PanTranslate.Y = 0;
-
+        // 刻意不复位缩放/平移：放大到 300% 精修时点一下工具就被缩回去，是最容易被当成「bug」的操作
         _mode = ToolMode.Ink;
         InkTool.IsChecked = true;
         InkLayer.IsHitTestVisible = true;
@@ -2424,9 +2443,15 @@ public partial class ViewerWindow : Window
         };
 
         _suppressOverlayRebuild = true;
-        _doc.Mutate("涂鸦", () => _doc.Strokes.Add(model));
+        // 画笔是最近一次操作：涂鸦回到打码之上
+        _doc.Mutate("涂鸦", () =>
+        {
+            _doc.Strokes.Add(model);
+            _doc.PrivacyAboveInk = false;
+        });
         _suppressOverlayRebuild = false;
         RebuildInk(w, h);
+        ApplyOverlayZOrder();   // 画笔是最近一次操作 → 涂鸦层回到打码之上
         UpdateHistoryButtons();
     }
 
@@ -2491,9 +2516,7 @@ public partial class ViewerWindow : Window
 
         EndTextEditing();
         EndOtherModes(except: ToolMode.Privacy);
-        ApplyZoom(1.0);
-        PanTranslate.X = 0;
-        PanTranslate.Y = 0;
+        // 不复位缩放/平移：切工具不该改变用户当前的观察位置
 
         _mode = ToolMode.Privacy;
         MosaicTool.IsChecked = true;
@@ -2619,6 +2642,8 @@ public partial class ViewerWindow : Window
         }
 
         _doc.Privacies.Add(draft);
+        // 打码是最近一次操作：盖到已有涂鸦之上
+        _doc.PrivacyAboveInk = true;
         _continuousName = null;
         _doc.Commit("打码");
         ShowToast(_privacyMode == PrivacyMode.Mosaic ? "已添加马赛克（可撤销）" : "已添加模糊（可撤销）");
@@ -2705,9 +2730,7 @@ public partial class ViewerWindow : Window
     {
         EndTextEditing();
         EndOtherModes(except: ToolMode.Shape);
-        ApplyZoom(1.0);
-        PanTranslate.X = 0;
-        PanTranslate.Y = 0;
+        // 不复位缩放/平移：切工具不该改变用户当前的观察位置
 
         _mode = ToolMode.Shape;
         SyncShapeToggles();
@@ -3163,30 +3186,88 @@ public partial class ViewerWindow : Window
     }
 
     private const double MinZoom = 0.15;
-    private const double MaxZoom = 4.0;
+
+    /// <summary>
+    /// 相对「适应窗口」的最大放大倍数。固定值不够用：4000px 宽的图适应窗口后
+    /// DisplayScale 可能只有 0.2，×4 才 80%，根本到不了 1:1 看细节。
+    /// 这里保证至少能放大到「实际像素 400%」。
+    /// </summary>
+    private double MaxZoom
+    {
+        get
+        {
+            var fit = DisplayScale;
+            if (fit <= 0.001) return 4.0;
+            return Math.Clamp(4.0 / fit, 4.0, 32.0);
+        }
+    }
+
+    /// <summary>图片在屏幕上的真实缩放比（1.0 = 一个图片像素对一个屏幕 DIP）。</summary>
+    private double AbsoluteScale => DisplayScale * _viewModel.Zoom;
 
     private void ApplyZoom(double zoom)
     {
-        var previous = _viewModel.Zoom;
         zoom = Math.Clamp(zoom, MinZoom, MaxZoom);
         _viewModel.Zoom = zoom;
         ZoomScale.ScaleX = zoom;
         ZoomScale.ScaleY = zoom;
 
         if (ZoomText != null)
-            ZoomText.Text = zoom <= 1.001 && zoom >= 0.999 ? "适应窗口" : $"{zoom * 100:F0}%";
-
-        if (zoom >= 0.999 && previous < 0.999)
         {
-            PanTranslate.X = 0;
-            PanTranslate.Y = 0;
+            if (Math.Abs(zoom - 1.0) < 0.001)
+            {
+                // 「适应窗口」时顺便告诉用户真实比例，否则 100% 到底代表什么没人知道
+                var fitPct = DisplayScale * 100;
+                ZoomText.Text = fitPct is > 0 and < 99.5 ? $"适应窗口（{fitPct:F0}%）" : "适应窗口";
+            }
+            else
+            {
+                // 显示的是「相对原图」的真实比例，而不是相对适应窗口的倍数：
+                // 之前 zoom*100% 在 4000px 的图上会把「实际 100%」显示成 300%，永远对不上。
+                ZoomText.Text = $"{AbsoluteScale * 100:F0}%";
+            }
         }
 
-        if (zoom < 1.0)
-        {
-            PanTranslate.X = 0;
-            PanTranslate.Y = 0;
-        }
+        ClampPan();
+    }
+
+    /// <summary>
+    /// 把平移量限制在「图片边缘不离开窗口」的范围内。
+    /// 适应窗口 / 缩小状态下可移动量为 0，等于禁止平移 —— 这正好挡住
+    /// 「没东西可看时手一抖把图拖歪」的问题。
+    /// </summary>
+    private void ClampPan()
+    {
+        if (ImageArea == null) return;   // 构造期间（XAML 字段还没赋值）安全跳过
+
+        var viewW = ImageArea.ActualWidth;
+        var viewH = ImageArea.ActualHeight;
+        if (viewW <= 1 || viewH <= 1) return;
+
+        var contentW = CanvasW * _viewModel.Zoom;
+        var contentH = CanvasH * _viewModel.Zoom;
+
+        var maxX = Math.Max(0, (contentW - viewW) / 2);
+        var maxY = Math.Max(0, (contentH - viewH) / 2);
+
+        PanTranslate.X = Math.Clamp(PanTranslate.X, -maxX, maxX);
+        PanTranslate.Y = Math.Clamp(PanTranslate.Y, -maxY, maxY);
+    }
+
+    /// <summary>按屏幕位移平移，并夹在合法范围内。</summary>
+    private void PanBy(double dx, double dy)
+    {
+        PanTranslate.X += dx;
+        PanTranslate.Y += dy;
+        ClampPan();
+    }
+
+    /// <summary>缩放到 1:1（一个图片像素对一个屏幕像素）。</summary>
+    private void ZoomToActualSize()
+    {
+        var fit = DisplayScale;
+        if (fit <= 0.0001) return;
+        ApplyZoom(1.0 / fit);
     }
 
     /// <summary>翻页按钮的「热区」宽度：鼠标进入距左右边缘这么近的范围才淡入。</summary>
@@ -3233,12 +3314,6 @@ public partial class ViewerWindow : Window
 
     private void OnCanvasMouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount == 2 && _mode == ToolMode.None && !IsTextEditing)
-        {
-            FitToWindow();
-            return;
-        }
-
         if (IsTextEditing)
         {
             var src = e.OriginalSource as DependencyObject;
@@ -3307,8 +3382,12 @@ public partial class ViewerWindow : Window
             return;
         }
 
-        _isDragging = true;
-        _lastPosition = e.GetPosition(this);
+        // 不直接进入拖动：先「武装」，等鼠标真的移出死区才平移。
+        // 之前左键一按下就 _isDragging = true，单击时的轻微手抖会把图挪歪几个像素。
+        _isDragging = false;
+        _dragArmed = true;
+        _dragStartPosition = e.GetPosition(this);
+        _lastPosition = _dragStartPosition;
         ImageArea.CaptureMouse();
     }
 
@@ -3363,11 +3442,30 @@ public partial class ViewerWindow : Window
             return;
         }
 
-        if (!_isDragging) return;
+        if (!_dragArmed) return;
+
+        // 鼠标抬起事件可能丢失（Alt+Tab、捕获被抢）：没按住左键时绝不能继续平移
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            _dragArmed = false;
+            _isDragging = false;
+            return;
+        }
 
         var pos = e.GetPosition(this);
-        PanTranslate.X += pos.X - _lastPosition.X;
-        PanTranslate.Y += pos.Y - _lastPosition.Y;
+
+        if (!_isDragging)
+        {
+            // 死区：移动量不足就不算拖动（单击、双击、轻微手抖都不动画面）
+            if (Math.Abs(pos.X - _dragStartPosition.X) < DragDeadZone &&
+                Math.Abs(pos.Y - _dragStartPosition.Y) < DragDeadZone)
+                return;
+
+            _isDragging = true;
+            _lastPosition = pos;
+        }
+
+        PanBy(pos.X - _lastPosition.X, pos.Y - _lastPosition.Y);
         _lastPosition = pos;
     }
 
@@ -3412,7 +3510,11 @@ public partial class ViewerWindow : Window
                 var item = BuildRectPrivacy(rect, CanvasW, CanvasH);
                 if (item == null) return;
 
-                _doc.Mutate("打码", () => _doc.Privacies.Add(item));
+                _doc.Mutate("打码", () =>
+                {
+                    _doc.Privacies.Add(item);
+                    _doc.PrivacyAboveInk = true;   // 最新一次是打码 → 盖在涂鸦之上
+                });
                 ShowToast(_privacyMode == PrivacyMode.Mosaic ? "已添加马赛克（可撤销）" : "已添加模糊（可撤销）");
             }
             else if (_privacyDraft != null)
@@ -3423,6 +3525,7 @@ public partial class ViewerWindow : Window
         }
 
         _isDragging = false;
+        _dragArmed = false;
         ImageArea.ReleaseMouseCapture();
     }
 
@@ -3447,6 +3550,21 @@ public partial class ViewerWindow : Window
         if (ctrl && e.Key == Key.Enter)
         {
             OpenCurrentLocation();
+            e.Handled = true;
+            return;
+        }
+        // Ctrl+0 / Ctrl+小键盘0：回到适应窗口（与工具栏按钮一致，不在画面上做双击手势）
+        // 文字编辑中不响应：否则正在输入的文本框会跟着缩放移动
+        if (!IsTextEditing && ctrl && (e.Key == Key.D0 || e.Key == Key.NumPad0))
+        {
+            FitToWindow();
+            e.Handled = true;
+            return;
+        }
+        // Ctrl+1 / Ctrl+小键盘1：按实际像素显示（1:1）
+        if (!IsTextEditing && ctrl && (e.Key == Key.D1 || e.Key == Key.NumPad1))
+        {
+            ZoomToActualSize();
             e.Handled = true;
             return;
         }
@@ -3885,6 +4003,8 @@ public partial class ViewerWindow : Window
     private void OnZoomOut(object sender, RoutedEventArgs e) => ApplyZoom(_viewModel.Zoom / 1.25);
 
     private void OnFit(object sender, RoutedEventArgs e) => FitToWindow();
+
+    private void OnZoomActual(object sender, RoutedEventArgs e) => ZoomToActualSize();
 
     private void FitToWindow()
     {

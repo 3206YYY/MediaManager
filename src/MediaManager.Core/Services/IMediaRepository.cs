@@ -13,6 +13,10 @@ public interface IMediaRepository
 
     // MediaItem
     Task<long> UpsertMediaAsync(MediaItem item);
+
+    /// <summary>批量写入（同一连接 + 同一事务）。扫描入库用，避免逐条开连接与逐条 SELECT。</summary>
+    Task UpsertMediaBatchAsync(IReadOnlyList<MediaItem> items, CancellationToken ct = default);
+
     Task DeleteMediaAsync(long id);
 
     /// <summary>取出还没有宽高的图片（启动后台补齐用）。</summary>

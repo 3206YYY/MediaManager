@@ -3,6 +3,8 @@ using System.IO;
 using System.IO.Pipes;
 using System.Runtime;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Windows;
 using MediaManager.App.Services;
 using MediaManager.App.ViewModels;
@@ -186,14 +188,9 @@ public partial class App : Application
 
             LogMemory("数据加载完成");
 
-            // 启动期产生了大量一次性临时对象（DTO/查询字符串/字体资源），
-            // 这里做一次紧凑回收，把碎片内存直接还给系统，避免带着几十 MB 垃圾跑一整天。
-            await Task.Run(() =>
-            {
-                GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
-                GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
-            });
-            LogMemory("首次回收后");
+            // 不在启动关键路径上做 full blocking GC：GC.Collect(2, Forced, blocking, compacting)
+            // 会让整个进程暂停，正好压在缩略图解码和用户第一次交互上。
+            // 启动期的一次性临时对象交给运行时自然回收即可。
 
             // 5) 右键集成路径修正 + 命令行打开文件：都不影响主界面可用
             await Task.Run(ShellIntegrationService.EnsureRegistered);
@@ -819,16 +816,18 @@ public partial class App : Application
             {
                 try
                 {
-                    using var server = new NamedPipeServerStream(
-                        OpenFilePipeName, PipeDirection.In, 1,
-                        PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+                    using var server = CreateOpenFilePipeServer();
                     await server.WaitForConnectionAsync();
 
                     using var reader = new StreamReader(server);
-                    var payload = await reader.ReadToEndAsync();
+
+                    // 限读 64KB：管道没有大小上限时，本机任意进程都能发超长数据把内存吃满
+                    var payload = await ReadLimitedAsync(reader, 64 * 1024);
                     var paths = payload
                         .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                         .Where(System.IO.File.Exists)
+                        .Where(IsAllowedOpenPath)
+                        .Take(32)
                         .ToArray();
                     if (paths.Length == 0) continue;
 
@@ -847,6 +846,64 @@ public partial class App : Application
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// 创建只允许当前用户访问的命名管道：防止同机其它账户/进程借它让程序打开文件。
+    /// </summary>
+    private static NamedPipeServerStream CreateOpenFilePipeServer()
+    {
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            if (identity.User != null)
+            {
+                var security = new PipeSecurity();
+                security.AddAccessRule(new PipeAccessRule(
+                    identity.User, PipeAccessRights.FullControl, AccessControlType.Allow));
+
+                return NamedPipeServerStreamAcl.Create(
+                    OpenFilePipeName, PipeDirection.In, 1,
+                    PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 0, 0, security);
+            }
+        }
+        catch
+        {
+            // 取不到 SID 时不能传空 PipeSecurity（空 ACL = 谁都连不上），走下面的默认 ACL
+        }
+
+        // 默认 ACL 兜底；仍有 64KB 限读 + 绝对路径/类型校验
+        return new NamedPipeServerStream(
+            OpenFilePipeName, PipeDirection.In, 1,
+            PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+    }
+
+    /// <summary>限量读取管道内容（按字符数），避免异常/恶意长数据把内存吃满。</summary>
+    private static async Task<string> ReadLimitedAsync(StreamReader reader, int maxChars)
+    {
+        var buffer = new char[maxChars];
+        var total = 0;
+        while (total < maxChars)
+        {
+            var n = await reader.ReadAsync(buffer.AsMemory(total, maxChars - total));
+            if (n == 0) break;
+            total += n;
+        }
+        return new string(buffer, 0, total);
+    }
+
+    /// <summary>只接受「绝对路径 + 受支持类型」的文件，防止本机其它进程借管道打开任意文件。</summary>
+    private static bool IsAllowedOpenPath(string path)
+    {
+        try
+        {
+            if (!System.IO.Path.IsPathFullyQualified(path)) return false;
+            return MediaManager.Infrastructure.FileSystem.MediaFormat.GetMediaTypeForOpen(path) != null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private const int SW_RESTORE = 9;

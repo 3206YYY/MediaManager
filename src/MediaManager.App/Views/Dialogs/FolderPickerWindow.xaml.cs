@@ -21,7 +21,7 @@ public partial class FolderPickerWindow : Window
     private const int ThumbSize = 112;
 
     private string _currentPath = string.Empty;
-    private int _thumbnailBudget = MaxThumbnails;
+    private CancellationTokenSource? _navCts;
 
     /// <summary>用户选中的文件夹（DialogResult=true 时有效）。</summary>
     public string? SelectedPath { get; private set; }
@@ -78,7 +78,7 @@ public partial class FolderPickerWindow : Window
         return node;
     }
 
-    private void OnNodeExpanded(object sender, RoutedEventArgs e)
+    private async void OnNodeExpanded(object sender, RoutedEventArgs e)
     {
         if (sender is not TreeViewItem node || node.Tag is not string path) return;
         // 只有一个 Tag 为 null 的占位项 → 还没加载过
@@ -88,7 +88,9 @@ public partial class FolderPickerWindow : Window
         node.Items.Clear();
         try
         {
-            foreach (var dir in Directory.GetDirectories(path))
+            // 展开大目录时枚举子目录放到后台，避免 UI 卡住
+            var dirs = await Task.Run(() => Directory.GetDirectories(path));
+            foreach (var dir in dirs)
             {
                 try
                 {
@@ -113,20 +115,70 @@ public partial class FolderPickerWindow : Window
 
     // ---------- 右侧内容 ----------
 
-    private void NavigateTo(string path)
+    private async void NavigateTo(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path)) return;
 
         _currentPath = path;
         PathBox.Text = path;
-        _thumbnailBudget = MaxThumbnails;
 
+        _navCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _navCts = cts;
+
+        ItemList.ItemsSource = null;
+        HintText.Text = "正在读取…";
+
+        List<FolderEntry> entries;
+        try
+        {
+            // 枚举 + 图片缩略图解码放后台：网络盘 / 上千文件的目录不再卡 UI
+            entries = await Task.Run(() => BuildEntries(path, cts.Token), cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            if (cts.IsCancellationRequested) return;
+            HintText.Text = "读取失败：" + ex.Message;
+            return;
+        }
+
+        // 期间用户又点了别的目录：丢弃本次结果
+        if (cts.IsCancellationRequested ||
+            !string.Equals(_currentPath, path, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        // 系统图标在 UI 线程补齐（Shell COM 依赖 UI 线程；已按扩展名缓存，开销很小）
+        foreach (var entry in entries)
+        {
+            if (entry.DisplayImage != null) continue;
+            entry.DisplayImage = entry.IsFolder
+                ? SystemIconProvider.GetFolderIcon()
+                : SystemIconProvider.GetFileIcon(entry.FullPath);
+        }
+
+        ItemList.ItemsSource = entries;
+
+        var folderCount = entries.Count(e => e.IsFolder);
+        var fileCount = entries.Count(e => !e.IsFolder);
+        HintText.Text = $"此文件夹：{folderCount} 个子文件夹，{fileCount} 个文件" +
+                        (entries.Count >= MaxItems ? $"（仅显示前 {MaxItems} 项）" : "");
+    }
+
+    /// <summary>后台线程：枚举目录/文件并解码图片缩略图（不碰 Shell COM 和 UI）。</summary>
+    private static List<FolderEntry> BuildEntries(string path, CancellationToken ct)
+    {
         var entries = new List<FolderEntry>();
+        var thumbnailBudget = MaxThumbnails;
 
         try
         {
             foreach (var dir in Directory.GetDirectories(path))
             {
+                ct.ThrowIfCancellationRequested();
                 if (entries.Count >= MaxItems) break;
                 try
                 {
@@ -139,7 +191,6 @@ public partial class FolderPickerWindow : Window
                         IsFolder = true,
                         Glyph = "📁",
                         TypeName = "文件夹",
-                        DisplayImage = SystemIconProvider.GetFolderIcon(),
                     });
                 }
                 catch { }
@@ -151,6 +202,7 @@ public partial class FolderPickerWindow : Window
         {
             foreach (var file in Directory.GetFiles(path))
             {
+                ct.ThrowIfCancellationRequested();
                 if (entries.Count >= MaxItems) break;
                 try
                 {
@@ -165,14 +217,11 @@ public partial class FolderPickerWindow : Window
                         TypeName = TypeNameFor(type),
                     };
 
-                    // 图片优先真缩略图；其它文件用系统文件图标；都失败才显示 glyph
-                    BitmapImage? thumb = null;
-                    if (type == MediaType.Image && _thumbnailBudget > 0)
+                    if (type == MediaType.Image && thumbnailBudget > 0)
                     {
-                        thumb = LoadThumbnail(file);
-                        if (thumb != null) _thumbnailBudget--;
+                        item.DisplayImage = LoadThumbnail(file);
+                        if (item.DisplayImage != null) thumbnailBudget--;
                     }
-                    item.DisplayImage = thumb ?? SystemIconProvider.GetFileIcon(file);
 
                     entries.Add(item);
                 }
@@ -181,12 +230,7 @@ public partial class FolderPickerWindow : Window
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
 
-        ItemList.ItemsSource = entries;
-
-        var folderCount = entries.Count(e => e.IsFolder);
-        var fileCount = entries.Count(e => !e.IsFolder);
-        HintText.Text = $"此文件夹：{folderCount} 个子文件夹，{fileCount} 个文件" +
-                        (entries.Count >= MaxItems ? $"（仅显示前 {MaxItems} 项）" : "");
+        return entries;
     }
 
     private static BitmapImage? LoadThumbnail(string path)
@@ -270,6 +314,12 @@ public partial class FolderPickerWindow : Window
     }
 
     private void OnCancel(object sender, RoutedEventArgs e) => DialogResult = false;
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _navCts?.Cancel();
+        base.OnClosed(e);
+    }
 }
 
 /// <summary>文件夹选择器里的网格项（子文件夹或文件）。</summary>

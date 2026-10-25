@@ -91,4 +91,31 @@ public class MediaFormatTests
     {
         Assert.Equal(expected, MediaFormat.IsExtendedType(type));
     }
+
+    /// <summary>
+    /// Windows 每个目录都塞一个 desktop.ini。它曾被当成「文本文档」扫进图库，
+    /// 于是图库里全是文档图标 —— 这条守住不再收录 ini。
+    /// </summary>
+    [Fact]
+    public void IniIsNotIndexedAsText()
+    {
+        Assert.Null(MediaFormat.GetMediaType("desktop.ini"));
+        Assert.Null(MediaFormat.GetMediaType("config.ini"));
+        Assert.Equal(MediaType.Text, MediaFormat.GetMediaType("a.txt"));
+    }
+
+    [Theory]
+    [InlineData("desktop.ini", FileAttributes.Normal, true)]
+    [InlineData("Desktop.INI", FileAttributes.Normal, true)]
+    [InlineData("Thumbs.db", FileAttributes.Normal, true)]
+    [InlineData(".DS_Store", FileAttributes.Normal, true)]
+    [InlineData(".picasa.ini", FileAttributes.Normal, true)]
+    [InlineData(@"D:\图片\a.jpg", FileAttributes.Normal, false)]
+    // 只有「隐藏 + 系统」双属性才算系统垃圾，单纯隐藏的用户文件要保留
+    [InlineData(@"D:\图片\a.jpg", FileAttributes.Hidden, false)]
+    [InlineData(@"D:\图片\a.jpg", FileAttributes.System | FileAttributes.Hidden, true)]
+    public void IsSystemJunk_FiltersOsFilesOnly(string path, FileAttributes attributes, bool expected)
+    {
+        Assert.Equal(expected, MediaFormat.IsSystemJunk(path, attributes));
+    }
 }

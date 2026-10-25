@@ -150,24 +150,61 @@ public static class EditorRenderer
             Height = outH,
         });
 
-        // 2) 矩形马赛克
+        // 2) 打码与涂鸦的上下关系跟着「最近一次用过的工具」：
+        //    打码在上时先画水印/涂鸦/形状/文字，再把马赛克盖上去；否则沿用原来的顺序。
+        var overlay = new Canvas { Width = outW, Height = outH };
+
+        if (doc.PrivacyAboveInk)
+        {
+            AddOverlayContent(overlay, doc, outW, outH, scale);
+            root.Children.Add(overlay);
+            AddPrivacyLayers(root, doc, baseBmp, outW, outH);
+        }
+        else
+        {
+            AddPrivacyLayers(root, doc, baseBmp, outW, outH);
+            root.Children.Add(overlay);
+            AddOverlayContent(overlay, doc, outW, outH, scale);
+        }
+
+        // 3) 平铺文字水印始终盖在最上层（导出与预览共用同一套绘制）
+        if (doc.TileWatermark != null)
+        {
+            var tile = EditorOverlayFactory.BuildTileWatermark(doc.TileWatermark, outW, outH);
+            if (tile != null) root.Children.Add(tile);
+        }
+
+        root.Measure(new System.Windows.Size(outW, outH));
+        root.Arrange(new Rect(0, 0, outW, outH));
+        root.UpdateLayout();
+
+        var rtb = new RenderTargetBitmap(outW, outH, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(root);
+        rtb.Freeze();
+        return rtb;
+    }
+
+    /// <summary>马赛克 / 模糊打码层（取样始终来自烘焙底图，避免「预览灰块、导出暖色块」）。</summary>
+    private static void AddPrivacyLayers(
+        Panel root, EditorDocument doc, BitmapSource baseBmp, int outW, int outH)
+    {
         foreach (var mosaic in doc.Mosaics)
         {
             var img = EditorOverlayFactory.BuildMosaicRect(mosaic, baseBmp, outW, outH);
             if (img != null) root.Children.Add(img);
         }
 
-        // 3) 画笔打码：马赛克 / 模糊分开合成（各自一次绘制）
         foreach (var mode in new[] { PrivacyMode.Mosaic, PrivacyMode.Blur })
         {
             var layer = EditorOverlayFactory.BuildPrivacyLayer(doc.Privacies, mode, baseBmp, outW, outH);
             if (layer != null) root.Children.Add(layer);
         }
+    }
 
-        // 4) 图片水印 + 涂鸦 + 文字
-        var overlay = new Canvas { Width = outW, Height = outH };
-        root.Children.Add(overlay);
-
+    /// <summary>水印 / 涂鸦 / 形状 / 文字（打码在它们之上还是之下由调用方决定）。</summary>
+    private static void AddOverlayContent(
+        Canvas overlay, EditorDocument doc, int outW, int outH, double scale)
+    {
         foreach (var watermark in doc.Watermarks)
             overlay.Children.Add(EditorOverlayFactory.BuildWatermark(watermark, outW, outH));
 
@@ -191,22 +228,6 @@ public static class EditorRenderer
 
             overlay.Children.Add(EditorOverlayFactory.BuildText(text, outW, outH, scale));
         }
-
-        // 5) 平铺文字水印盖在最上层（导出与预览共用同一套绘制）
-        if (doc.TileWatermark != null)
-        {
-            var tile = EditorOverlayFactory.BuildTileWatermark(doc.TileWatermark, outW, outH);
-            if (tile != null) overlay.Children.Add(tile);
-        }
-
-        root.Measure(new System.Windows.Size(outW, outH));
-        root.Arrange(new Rect(0, 0, outW, outH));
-        root.UpdateLayout();
-
-        var rtb = new RenderTargetBitmap(outW, outH, 96, 96, PixelFormats.Pbgra32);
-        rtb.Render(root);
-        rtb.Freeze();
-        return rtb;
     }
 
     /// <summary>渲染并写入编辑副本（原名_edited.扩展名），返回保存结果。</summary>

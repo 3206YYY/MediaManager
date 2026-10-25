@@ -162,4 +162,31 @@ public class MediaRepositoryTests : IDisposable
         var loaded = await _repo.GetByIdAsync(m1.Id);
         Assert.True(loaded!.IsMissing);
     }
+
+    [Fact]
+    public async Task UpsertMediaBatch_ShouldInsertThenUpdate()
+    {
+        var rootId = await _repo.AddRootFolderAsync("C:\\Batch", null, null);
+
+        var items = new List<MediaItem>
+        {
+            new() { RootFolderId = rootId, Path = "C:\\Batch\\a.jpg", FileName = "a.jpg", Extension = "jpg", MediaType = MediaType.Image, SizeBytes = 100 },
+            new() { RootFolderId = rootId, Path = "C:\\Batch\\b.mp3", FileName = "b.mp3", Extension = "mp3", MediaType = MediaType.Audio, SizeBytes = 200 },
+        };
+
+        await _repo.UpsertMediaBatchAsync(items);
+        Assert.All(items, i => Assert.True(i.Id > 0));
+
+        var all = await _repo.QueryAsync(new MediaFilter { RootFolderId = rootId, Limit = 100 });
+        Assert.Equal(2, all.Count);
+        Assert.Contains(all, m => m.MediaType == MediaType.Audio);
+
+        // 同一路径再写一次：应该走 UPDATE，而不是重复插入
+        items[0].SizeBytes = 999;
+        await _repo.UpsertMediaBatchAsync(new[] { items[0] });
+
+        var again = await _repo.QueryAsync(new MediaFilter { RootFolderId = rootId, Limit = 100 });
+        Assert.Equal(2, again.Count);
+        Assert.Equal(999, again.First(m => m.Path.EndsWith("a.jpg", StringComparison.OrdinalIgnoreCase)).SizeBytes);
+    }
 }

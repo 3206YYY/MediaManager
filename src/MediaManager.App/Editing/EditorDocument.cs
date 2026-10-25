@@ -186,6 +186,8 @@ public sealed class EditorSnapshot
     public int? OutputWidth { get; init; }
     public int? OutputHeight { get; init; }
     public int? OutputMaxEdge { get; init; }
+    /// <summary>打码是否盖在涂鸦之上（见 <see cref="EditorDocument.PrivacyAboveInk"/>）。</summary>
+    public bool PrivacyAboveInk { get; init; }
     public List<TextOverlayItem> Texts { get; init; } = new();
     public List<StrokeOverlayItem> Strokes { get; init; } = new();
     public List<MosaicOverlayItem> Mosaics { get; init; } = new();
@@ -208,6 +210,7 @@ public sealed class EditorSnapshot
             OutputWidth = doc.OutputWidth,
             OutputHeight = doc.OutputHeight,
             OutputMaxEdge = doc.OutputMaxEdge,
+            PrivacyAboveInk = doc.PrivacyAboveInk,
             Texts = doc.Texts.Select(t => t.Clone()).ToList(),
             Strokes = doc.Strokes.Select(s => s.Clone()).ToList(),
             Mosaics = doc.Mosaics.Select(m => m.Clone()).ToList(),
@@ -230,6 +233,7 @@ public sealed class EditorSnapshot
         doc.OutputWidth = OutputWidth;
         doc.OutputHeight = OutputHeight;
         doc.OutputMaxEdge = OutputMaxEdge;
+        doc.PrivacyAboveInk = PrivacyAboveInk;
         doc.Texts.Clear();
         doc.Texts.AddRange(Texts.Select(t => t.Clone()));
         doc.Strokes.Clear();
@@ -370,6 +374,13 @@ public sealed class EditorDocument
     public int? OutputHeight { get; set; }
     /// <summary>按长边压缩（旧的「压缩」功能）；自定义宽高优先。</summary>
     public int? OutputMaxEdge { get; set; }
+
+    /// <summary>
+    /// 打码是否盖在涂鸦之上：跟随「马赛克 / 画笔」里最近一次使用的是哪个工具。
+    /// true = 打码在上（最新画的马赛克能盖住之前的涂鸦），false = 涂鸦在上（默认）。
+    /// 快照会一起保存该状态，撤销/重做后顺序也能还原。
+    /// </summary>
+    public bool PrivacyAboveInk { get; set; }
 
     public List<TextOverlayItem> Texts { get; } = new();
     public List<StrokeOverlayItem> Strokes { get; } = new();

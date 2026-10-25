@@ -158,7 +158,7 @@ public partial class VideoPlayerWindow : Window
             UIElement.PreviewMouseMoveEvent,
             new MouseEventHandler(OnSeekMouseMove), handledEventsToo: true);
 
-        // 画面点击 / 双击 / 滚轮
+        // 画面点击 / 滚轮
         OverlayRoot.MouseLeftButtonDown += OnOverlayMouseDown;
         OverlayRoot.PreviewMouseWheel += OnOverlayMouseWheel;
 
@@ -923,23 +923,34 @@ public partial class VideoPlayerWindow : Window
 
     // ---------- 画面点击 / 滚轮 ----------
 
+    /// <summary>画面点击 → 播放/暂停。快速连点会被合并成一次（见 <see cref="OnOverlayMouseDown"/>）。</summary>
+    private long _lastSurfaceClickMs;
+
+    /// <summary>两次画面点击之间的合并窗口（毫秒）。</summary>
+    private const int SurfaceClickCoalesceMs = 320;
+
     private void OnOverlayMouseDown(object sender, MouseButtonEventArgs e)
     {
         // 点在控制栏 / 中央面板上时不要触发播放暂停
         if (IsInsideChrome(e.OriginalSource as DependencyObject)) return;
+        if (e.ChangedButton != MouseButton.Left) return;
 
-        if (e.ClickCount == 2)
+        // 画面双击不再切换全屏：系统的 500ms 双击判定会把「快速点两下播放/暂停」误当成双击，
+        // 导致画面突然放大。全屏统一走 F 键 / Esc / 控制栏按钮。
+        //
+        // 去掉双击分支后，一次双击会连续触发两次 MouseLeftButtonDown（ClickCount 1 再 2），
+        // 暂停后立刻又播放，看起来就是「点了没反应」。这里把窗口内的连点合并成一次。
+        var now = Environment.TickCount64;
+        if (now - _lastSurfaceClickMs < SurfaceClickCoalesceMs)
         {
-            ToggleFullScreen();
+            _lastSurfaceClickMs = now;
             e.Handled = true;
             return;
         }
+        _lastSurfaceClickMs = now;
 
-        if (e.ClickCount == 1)
-        {
-            TogglePlayPause();
-            e.Handled = true;
-        }
+        TogglePlayPause();
+        e.Handled = true;
     }
 
     private void OnOverlayMouseWheel(object sender, MouseWheelEventArgs e)
@@ -1000,7 +1011,7 @@ public partial class VideoPlayerWindow : Window
         catch { /* 窗口正在关闭 */ }
 
         FullScreenGlyph.Text = on ? "\uE73F" : "\uE740";   // BackToWindow / FullScreen
-        FullScreenButton.ToolTip = on ? "退出全屏（F / Esc）" : "全屏（F / 双击画面）";
+        FullScreenButton.ToolTip = on ? "退出全屏（F / Esc）" : "全屏（F）";
 
         ScheduleSurfaceResync();
         ShowChrome();

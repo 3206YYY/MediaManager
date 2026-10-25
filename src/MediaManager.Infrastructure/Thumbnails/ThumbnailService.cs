@@ -229,7 +229,12 @@ public class ThumbnailService : IThumbnailService, IDisposable
             return false;
 
         // 图片用 scale 限制长边，视频截取第 1 秒帧
-        var args = $"-y -i \"{input}\" -vf \"scale='min({MaxLongEdge},iw)':-2\" -frames:v 1 -q:v 3 \"{output}\"";
+        var args = new List<string>
+        {
+            "-y", "-i", input,
+            "-vf", $"scale='min({MaxLongEdge},iw)':-2",
+            "-frames:v", "1", "-q:v", "3", output,
+        };
         return await RunFfmpegAsync(input, ffmpeg, args, ct).ConfigureAwait(false);
     }
 
@@ -247,7 +252,12 @@ public class ThumbnailService : IThumbnailService, IDisposable
             return false;
         }
 
-        var args = $"-y -ss 00:00:01 -i \"{input}\" -vf \"thumbnail,scale={MaxLongEdge}:-1\" -frames:v 1 -q:v 3 \"{output}\"";
+        var args = new List<string>
+        {
+            "-y", "-ss", "00:00:01", "-i", input,
+            "-vf", $"thumbnail,scale={MaxLongEdge}:-1",
+            "-frames:v", "1", "-q:v", "3", output,
+        };
         return await RunFfmpegAsync(input, ffmpeg, args, ct).ConfigureAwait(false);
     }
 
@@ -264,17 +274,19 @@ public class ThumbnailService : IThumbnailService, IDisposable
         return false;
     }
 
-    private static async Task<bool> RunFfmpegAsync(string inputPath, string ffmpeg, string args, CancellationToken ct)
+    private static async Task<bool> RunFfmpegAsync(string inputPath, string ffmpeg, IReadOnlyList<string> args, CancellationToken ct)
     {
         var psi = new System.Diagnostics.ProcessStartInfo
         {
             FileName = ffmpeg,
-            Arguments = args,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
         };
+        // 由 .NET 负责参数转义：不再靠“Windows 文件名不能含引号”兜底
+        foreach (var arg in args)
+            psi.ArgumentList.Add(arg);
 
         System.Diagnostics.Process? proc = null;
         try
@@ -335,28 +347,39 @@ public class ThumbnailService : IThumbnailService, IDisposable
 
     public Task<long> CleanCacheAsync(CancellationToken ct = default)
     {
-        long removed = 0;
-        var dir = _config.ThumbnailDirectory;
-        if (!Directory.Exists(dir)) return Task.FromResult(0L);
-
-        foreach (var file in Directory.EnumerateFiles(dir, "*.jpg"))
+        // 放在线程池执行：目录里有几万张缓存时，同步枚举 + 删除会把 UI 线程卡住；
+        // 同时跳过最近 10 分钟内写过的文件，避免删掉 worker 正在生成的缩略图。
+        return Task.Run(() =>
         {
-            ct.ThrowIfCancellationRequested();
-            try
+            long removed = 0;
+            var dir = _config.ThumbnailDirectory;
+            if (!Directory.Exists(dir)) return 0L;
+
+            var cutoffUtc = DateTime.UtcNow.AddMinutes(-10);
+            foreach (var file in Directory.EnumerateFiles(dir, "*.jpg"))
             {
-                File.Delete(file);
-                removed++;
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    if (File.GetLastWriteTimeUtc(file) > cutoffUtc) continue;
+                    File.Delete(file);
+                    removed++;
+                }
+                catch
+                {
+                    // ignore：单文件删不掉不影响整体清理
+                }
             }
-            catch { /* ignore */ }
-        }
-        return Task.FromResult(removed);
+            return removed;
+        }, ct);
     }
 
     public void Dispose()
     {
         _cts.Cancel();
         _channel.Writer.TryComplete();
-        try { Task.WaitAll(_workers.ToArray(), TimeSpan.FromSeconds(3)); } catch { /* ignore */ }
+        // 退出时不值得为了等 worker 卡 3 秒：worker 本身响应取消，超时就交给进程退出
+        try { Task.WaitAll(_workers.ToArray(), TimeSpan.FromMilliseconds(300)); } catch { /* ignore */ }
         // 兜底：退出时若还有 ffmpeg 挂着，强杀，别让它继续锁住用户的视频文件
         FfmpegProcessTracker.KillAll();
         _cts.Dispose();

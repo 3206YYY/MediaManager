@@ -1662,7 +1662,10 @@ public partial class MainWindow : Window
                 try
                 {
                     var repo = App.Services.GetRequiredService<Core.Services.IMediaRepository>();
-                    repo.SetSettingAsync("CloseBehavior", value).GetAwaiter().GetResult();
+                    // 仓储层的 await 已经全部 ConfigureAwait(false)，直接同步等待其实也不会死锁；
+                    // 但这里仍丢到线程池：不依赖下层实现细节，将来谁加了一个没写 ConfigureAwait 的 await
+                    // 就可能在关闭窗口时永久卡住。多一次线程切换换一个不会挂的关闭流程。
+                    Task.Run(() => repo.SetSettingAsync("CloseBehavior", value)).GetAwaiter().GetResult();
                 }
                 catch { /* 写设置失败不影响关闭流程 */ }
             }
@@ -1685,7 +1688,8 @@ public partial class MainWindow : Window
         try
         {
             var repo = App.Services.GetRequiredService<Core.Services.IMediaRepository>();
-            var val = repo.GetSettingAsync("CloseBehavior").GetAwaiter().GetResult();
+            // 同上：不在 UI 线程上直接阻塞等待异步，避免将来引入没写 ConfigureAwait 的 await 时死锁
+            var val = Task.Run(() => repo.GetSettingAsync("CloseBehavior")).GetAwaiter().GetResult();
             return val switch
             {
                 "Exit" => CloseBehavior.Exit,

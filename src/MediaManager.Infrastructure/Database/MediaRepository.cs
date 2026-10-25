@@ -26,7 +26,7 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         // 幂等：若路径已存在则直接返回已有 id，避免 UNIQUE 冲突
         var existing = await conn.ExecuteScalarAsync<long?>(
-            "SELECT Id FROM RootFolder WHERE Path = @Path;", new { Path = path });
+            "SELECT Id FROM RootFolder WHERE Path = @Path;", new { Path = path }).ConfigureAwait(false);
         if (existing.HasValue)
             return existing.Value;
 
@@ -35,21 +35,21 @@ public class MediaRepository : IMediaRepository
             VALUES(@Path, @VolumeSerial, @RelativePath, 1, @AddedAtUtc);
             SELECT last_insert_rowid();",
             new { Path = path, VolumeSerial = volumeSerial, RelativePath = relativePath,
-                  AddedAtUtc = DateTime.UtcNow.ToString("O") });
+                  AddedAtUtc = DateTime.UtcNow.ToString("O") }).ConfigureAwait(false);
     }
 
     public async Task RemoveRootFolderAsync(long id)
     {
         using var conn = _factory.CreateConnection();
         // 先软标记缺失，再删除根目录（级联删除媒体项）
-        await conn.ExecuteAsync("DELETE FROM RootFolder WHERE Id = @Id;", new { Id = id });
+        await conn.ExecuteAsync("DELETE FROM RootFolder WHERE Id = @Id;", new { Id = id }).ConfigureAwait(false);
     }
 
     public async Task<List<RootFolder>> GetRootFoldersAsync()
     {
         using var conn = _factory.CreateConnection();
         var list = await conn.QueryAsync<RootFolder>(
-            "SELECT * FROM RootFolder ORDER BY Id;");
+            "SELECT * FROM RootFolder ORDER BY Id;").ConfigureAwait(false);
         return list.ToList();
     }
 
@@ -59,7 +59,7 @@ public class MediaRepository : IMediaRepository
         await conn.ExecuteAsync(@"
             UPDATE RootFolder SET Path=@Path, VolumeSerial=@VolumeSerial,
                 RelativePath=@RelativePath, IsEnabled=@IsEnabled, LastScanUtc=@LastScanUtc
-            WHERE Id=@Id;", folder);
+            WHERE Id=@Id;", folder).ConfigureAwait(false);
     }
 
     // ---------- MediaItem ----------
@@ -68,7 +68,7 @@ public class MediaRepository : IMediaRepository
     {
         using var conn = _factory.CreateConnection();
         var id = await conn.ExecuteScalarAsync<long?>(@"
-            SELECT Id FROM MediaItem WHERE Path = @Path;", new { item.Path });
+            SELECT Id FROM MediaItem WHERE Path = @Path;", new { item.Path }).ConfigureAwait(false);
         if (id.HasValue)
         {
             item.Id = id.Value;
@@ -87,7 +87,7 @@ public class MediaRepository : IMediaRepository
                 item.SizeBytes, item.CreatedAtUtc, item.ModifiedAtUtc,
                 item.Width, item.Height,
                 item.LastScanUtc, item.Id,
-            });
+            }).ConfigureAwait(false);
             return id.Value;
         }
 
@@ -105,9 +105,72 @@ public class MediaRepository : IMediaRepository
                 item.SizeBytes, item.Width, item.Height, item.CreatedAtUtc, item.ModifiedAtUtc,
                 Favorite = item.Favorite ? 1 : 0, item.Rating,
                 item.DateAddedUtc, item.LastScanUtc,
-            });
+            }).ConfigureAwait(false);
         item.Id = newId;
         return newId;
+    }
+
+    /// <summary>
+    /// 批量 Upsert：一个连接 + 一个事务，先按路径一次性查已有 Id，再逐条 UPDATE / INSERT。
+    /// 扫描 500 个文件从「每条一次连接 + 一次 SELECT + 一次写」降到两次查询。
+    /// </summary>
+    public async Task UpsertMediaBatchAsync(IReadOnlyList<MediaItem> items, CancellationToken ct = default)
+    {
+        if (items.Count == 0) return;
+
+        using var conn = _factory.CreateConnection();
+        using var tx = conn.BeginTransaction();
+
+        var paths = items.Select(i => i.Path).ToList();
+        var existing = (await conn.QueryAsync<(string Path, long Id)>(
+                "SELECT Path, Id FROM MediaItem WHERE Path IN @Paths;",
+                new { Paths = paths }, tx).ConfigureAwait(false))
+            .ToDictionary(x => x.Path, x => x.Id, StringComparer.OrdinalIgnoreCase);
+
+        var now = DateTime.UtcNow.ToString("O");
+        foreach (var item in items)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (existing.TryGetValue(item.Path, out var id))
+            {
+                item.Id = id;
+                await conn.ExecuteAsync(@"
+                    UPDATE MediaItem SET
+                        FileName=@FileName, Extension=@Extension, MediaType=@MediaType,
+                        SizeBytes=@SizeBytes, CreatedAtUtc=@CreatedAtUtc, ModifiedAtUtc=@ModifiedAtUtc,
+                        Width=COALESCE(@Width, Width), Height=COALESCE(@Height, Height),
+                        IsMissing=0, LastScanUtc=@LastScanUtc
+                    WHERE Id=@Id;", new
+                {
+                    item.FileName, item.Extension,
+                    MediaType = item.MediaType.ToString(),
+                    item.SizeBytes, item.CreatedAtUtc, item.ModifiedAtUtc,
+                    item.Width, item.Height,
+                    item.LastScanUtc, item.Id,
+                }, tx).ConfigureAwait(false);
+            }
+            else
+            {
+                var newId = await conn.ExecuteScalarAsync<long>(@"
+                    INSERT INTO MediaItem(RootFolderId, Path, FileName, Extension, MediaType, SizeBytes,
+                        Width, Height, CreatedAtUtc, ModifiedAtUtc, Favorite, Rating, IsMissing, DateAddedUtc, LastScanUtc)
+                    VALUES(@RootFolderId, @Path, @FileName, @Extension, @MediaType, @SizeBytes,
+                        @Width, @Height, @CreatedAtUtc, @ModifiedAtUtc, @Favorite, @Rating, 0, @DateAddedUtc, @LastScanUtc);
+                    SELECT last_insert_rowid();",
+                    new
+                    {
+                        item.RootFolderId, item.Path, item.FileName, item.Extension,
+                        MediaType = item.MediaType.ToString(),
+                        item.SizeBytes, item.Width, item.Height, item.CreatedAtUtc, item.ModifiedAtUtc,
+                        Favorite = item.Favorite ? 1 : 0, item.Rating,
+                        DateAddedUtc = string.IsNullOrEmpty(item.DateAddedUtc) ? now : item.DateAddedUtc,
+                        item.LastScanUtc,
+                    }, tx).ConfigureAwait(false);
+                item.Id = newId;
+            }
+        }
+
+        tx.Commit();
     }
 
     /// <summary>取出还没有宽高的图片（用于启动后台补齐，一次处理一批）。</summary>
@@ -118,7 +181,7 @@ public class MediaRepository : IMediaRepository
             SELECT Id, Path, Extension, MediaType FROM MediaItem
             WHERE (Width IS NULL OR Width = 0 OR Height IS NULL OR Height = 0)
               AND MediaType = 'Image'
-            LIMIT @Limit;", new { Limit = limit });
+            LIMIT @Limit;", new { Limit = limit }).ConfigureAwait(false);
         return rows.AsList();
     }
 
@@ -128,18 +191,18 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         await conn.ExecuteAsync(
             "UPDATE MediaItem SET Width=@Width, Height=@Height WHERE Id=@Id;",
-            new { Id = id, Width = width, Height = height });
+            new { Id = id, Width = width, Height = height }).ConfigureAwait(false);
     }
 
     public async Task DeleteMediaAsync(long id)
     {
         using var conn = _factory.CreateConnection();
         // 删除关联记录（标签/分类关联表；v1.3.2 起已无收藏夹关联）
-        await conn.ExecuteAsync("DELETE FROM MediaCategory WHERE MediaId=@Id;", new { Id = id });
-        await conn.ExecuteAsync("DELETE FROM MediaTag WHERE MediaId=@Id;", new { Id = id });
-        await conn.ExecuteAsync("DELETE FROM RecentView WHERE MediaId=@Id;", new { Id = id });
-        await conn.ExecuteAsync("DELETE FROM DiscoveryHistory WHERE MediaId=@Id;", new { Id = id });
-        await conn.ExecuteAsync("DELETE FROM MediaItem WHERE Id=@Id;", new { Id = id });
+        await conn.ExecuteAsync("DELETE FROM MediaCategory WHERE MediaId=@Id;", new { Id = id }).ConfigureAwait(false);
+        await conn.ExecuteAsync("DELETE FROM MediaTag WHERE MediaId=@Id;", new { Id = id }).ConfigureAwait(false);
+        await conn.ExecuteAsync("DELETE FROM RecentView WHERE MediaId=@Id;", new { Id = id }).ConfigureAwait(false);
+        await conn.ExecuteAsync("DELETE FROM DiscoveryHistory WHERE MediaId=@Id;", new { Id = id }).ConfigureAwait(false);
+        await conn.ExecuteAsync("DELETE FROM MediaItem WHERE Id=@Id;", new { Id = id }).ConfigureAwait(false);
     }
 
     public async Task<int> MarkMissingAsync(long rootFolderId, ISet<string> existingPaths)
@@ -148,7 +211,7 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         var all = await conn.QueryAsync<string>(
             "SELECT Path FROM MediaItem WHERE RootFolderId=@RootFolderId AND IsMissing=0;",
-            new { RootFolderId = rootFolderId });
+            new { RootFolderId = rootFolderId }).ConfigureAwait(false);
         var toMark = all.Where(p => !existingPaths.Contains(p)).ToList();
         if (toMark.Count == 0) return 0;
 
@@ -157,7 +220,7 @@ public class MediaRepository : IMediaRepository
         {
             count += await conn.ExecuteAsync(
                 "UPDATE MediaItem SET IsMissing=1 WHERE Path IN @Paths AND RootFolderId=@RootFolderId;",
-                new { Paths = chunk, RootFolderId = rootFolderId });
+                new { Paths = chunk, RootFolderId = rootFolderId }).ConfigureAwait(false);
         }
         return count;
     }
@@ -165,12 +228,12 @@ public class MediaRepository : IMediaRepository
     public async Task MarkMissingSingleAsync(long id)
     {
         using var conn = _factory.CreateConnection();
-        await conn.ExecuteAsync("UPDATE MediaItem SET IsMissing=1 WHERE Id=@Id;", new { Id = id });
+        await conn.ExecuteAsync("UPDATE MediaItem SET IsMissing=1 WHERE Id=@Id;", new { Id = id }).ConfigureAwait(false);
     }
 
     public async Task<List<MediaItem>> QueryAsync(MediaFilter filter)
     {
-        filter = await ExpandCategoryAsync(filter);
+        filter = await ExpandCategoryAsync(filter).ConfigureAwait(false);
         var (where, param) = BuildWhere(filter);
         var sql = $@"
             SELECT m.* FROM MediaItem m
@@ -181,17 +244,17 @@ public class MediaRepository : IMediaRepository
         param.Add("Offset", filter.Offset);
 
         using var conn = _factory.CreateConnection();
-        var list = await conn.QueryAsync<MediaItem>(sql, param);
+        var list = await conn.QueryAsync<MediaItem>(sql, param).ConfigureAwait(false);
         return list.ToList();
     }
 
     public async Task<int> CountAsync(MediaFilter filter)
     {
-        filter = await ExpandCategoryAsync(filter);
+        filter = await ExpandCategoryAsync(filter).ConfigureAwait(false);
         var (where, param) = BuildWhere(filter);
         using var conn = _factory.CreateConnection();
         return await conn.ExecuteScalarAsync<int>(
-            $"SELECT COUNT(*) FROM MediaItem m {where};", param);
+            $"SELECT COUNT(*) FROM MediaItem m {where};", param).ConfigureAwait(false);
     }
 
     /// <summary>将分类筛选展开为含所有子分类的 id 列表。</summary>
@@ -200,7 +263,7 @@ public class MediaRepository : IMediaRepository
         if (!filter.CategoryId.HasValue) return filter;
 
         using var conn = _factory.CreateConnection();
-        var cats = await conn.QueryAsync<Category>("SELECT * FROM Category;");
+        var cats = await conn.QueryAsync<Category>("SELECT * FROM Category;").ConfigureAwait(false);
         var all = cats.ToList();
 
         var result = new HashSet<long>();
@@ -221,7 +284,7 @@ public class MediaRepository : IMediaRepository
     {
         using var conn = _factory.CreateConnection();
         return await conn.QueryFirstOrDefaultAsync<MediaItem>(
-            "SELECT * FROM MediaItem WHERE Id=@Id;", new { Id = id });
+            "SELECT * FROM MediaItem WHERE Id=@Id;", new { Id = id }).ConfigureAwait(false);
     }
 
     public async Task UpdateMediaAsync(MediaItem item)
@@ -239,28 +302,28 @@ public class MediaRepository : IMediaRepository
                 item.ThumbnailPath, item.QuickHash,
                 Favorite = item.Favorite ? 1 : 0, item.Rating,
                 IsMissing = item.IsMissing ? 1 : 0,
-            });
+            }).ConfigureAwait(false);
     }
 
     public async Task SetFavoriteAsync(long id, bool favorite)
     {
         using var conn = _factory.CreateConnection();
         await conn.ExecuteAsync("UPDATE MediaItem SET Favorite=@F WHERE Id=@Id;",
-            new { F = favorite ? 1 : 0, Id = id });
+            new { F = favorite ? 1 : 0, Id = id }).ConfigureAwait(false);
     }
 
     public async Task SetRatingAsync(long id, int rating)
     {
         using var conn = _factory.CreateConnection();
         await conn.ExecuteAsync("UPDATE MediaItem SET Rating=@R WHERE Id=@Id;",
-            new { R = rating, Id = id });
+            new { R = rating, Id = id }).ConfigureAwait(false);
     }
 
     public async Task SetNoteAsync(long id, string? note)
     {
         using var conn = _factory.CreateConnection();
         await conn.ExecuteAsync("UPDATE MediaItem SET Note=@Note WHERE Id=@Id;",
-            new { Note = note, Id = id });
+            new { Note = note, Id = id }).ConfigureAwait(false);
     }
 
     public async Task UpdatePathAsync(long id, string newPath)
@@ -274,7 +337,7 @@ public class MediaRepository : IMediaRepository
                 FileName = Path.GetFileName(newPath),
                 Ext = Path.GetExtension(newPath).TrimStart('.'),
                 Id = id,
-            });
+            }).ConfigureAwait(false);
     }
 
     // ---------- Tag ----------
@@ -284,38 +347,38 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         if (tag.SortOrder == 0)
         {
-            var max = await conn.ExecuteScalarAsync<int>("SELECT COALESCE(MAX(SortOrder),0)+1 FROM Tag;");
+            var max = await conn.ExecuteScalarAsync<int>("SELECT COALESCE(MAX(SortOrder),0)+1 FROM Tag;").ConfigureAwait(false);
             tag.SortOrder = max;
         }
         return await conn.ExecuteScalarAsync<long>(@"
             INSERT INTO Tag(Name, Color, SortOrder, CreatedAtUtc)
             VALUES(@Name, @Color, @SortOrder, @CreatedAtUtc);
-            SELECT last_insert_rowid();", tag);
+            SELECT last_insert_rowid();", tag).ConfigureAwait(false);
     }
 
     public async Task RenameTagAsync(long id, string name)
     {
         using var conn = _factory.CreateConnection();
-        await conn.ExecuteAsync("UPDATE Tag SET Name=@Name WHERE Id=@Id;", new { Name = name, Id = id });
+        await conn.ExecuteAsync("UPDATE Tag SET Name=@Name WHERE Id=@Id;", new { Name = name, Id = id }).ConfigureAwait(false);
     }
 
     public async Task DeleteTagAsync(long id)
     {
         using var conn = _factory.CreateConnection();
-        await conn.ExecuteAsync("DELETE FROM Tag WHERE Id=@Id;", new { Id = id });
+        await conn.ExecuteAsync("DELETE FROM Tag WHERE Id=@Id;", new { Id = id }).ConfigureAwait(false);
     }
 
     public async Task<List<Tag>> GetTagsAsync()
     {
         using var conn = _factory.CreateConnection();
-        var list = await conn.QueryAsync<Tag>("SELECT * FROM Tag ORDER BY SortOrder, Name;");
+        var list = await conn.QueryAsync<Tag>("SELECT * FROM Tag ORDER BY SortOrder, Name;").ConfigureAwait(false);
         return list.ToList();
     }
 
     public async Task SetTagColorAsync(long id, string? color)
     {
         using var conn = _factory.CreateConnection();
-        await conn.ExecuteAsync("UPDATE Tag SET Color=@Color WHERE Id=@Id;", new { Color = color, Id = id });
+        await conn.ExecuteAsync("UPDATE Tag SET Color=@Color WHERE Id=@Id;", new { Color = color, Id = id }).ConfigureAwait(false);
     }
 
     // ---------- MediaTag ----------
@@ -325,21 +388,21 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         await conn.ExecuteAsync(
             "INSERT OR IGNORE INTO MediaTag(MediaId, TagId) VALUES(@M, @T);",
-            new { M = mediaId, T = tagId });
+            new { M = mediaId, T = tagId }).ConfigureAwait(false);
     }
 
     public async Task RemoveMediaTagAsync(long mediaId, long tagId)
     {
         using var conn = _factory.CreateConnection();
         await conn.ExecuteAsync("DELETE FROM MediaTag WHERE MediaId=@M AND TagId=@T;",
-            new { M = mediaId, T = tagId });
+            new { M = mediaId, T = tagId }).ConfigureAwait(false);
     }
 
     public async Task<List<long>> GetMediaTagIdsAsync(long mediaId)
     {
         using var conn = _factory.CreateConnection();
         var list = await conn.QueryAsync<long>(
-            "SELECT TagId FROM MediaTag WHERE MediaId=@M;", new { M = mediaId });
+            "SELECT TagId FROM MediaTag WHERE MediaId=@M;", new { M = mediaId }).ConfigureAwait(false);
         return list.ToList();
     }
 
@@ -350,32 +413,32 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         if (category.SortOrder == 0)
         {
-            var max = await conn.ExecuteScalarAsync<int>("SELECT COALESCE(MAX(SortOrder),0)+1 FROM Category;");
+            var max = await conn.ExecuteScalarAsync<int>("SELECT COALESCE(MAX(SortOrder),0)+1 FROM Category;").ConfigureAwait(false);
             category.SortOrder = max;
         }
         return await conn.ExecuteScalarAsync<long>(@"
             INSERT INTO Category(Name, ParentId, SortOrder, CreatedAtUtc)
             VALUES(@Name, @ParentId, @SortOrder, @CreatedAtUtc);
-            SELECT last_insert_rowid();", category);
+            SELECT last_insert_rowid();", category).ConfigureAwait(false);
     }
 
     public async Task RenameCategoryAsync(long id, string name)
     {
         using var conn = _factory.CreateConnection();
-        await conn.ExecuteAsync("UPDATE Category SET Name=@Name WHERE Id=@Id;", new { Name = name, Id = id });
+        await conn.ExecuteAsync("UPDATE Category SET Name=@Name WHERE Id=@Id;", new { Name = name, Id = id }).ConfigureAwait(false);
     }
 
     public async Task DeleteCategoryAsync(long id)
     {
         using var conn = _factory.CreateConnection();
-        await conn.ExecuteAsync("DELETE FROM Category WHERE Id=@Id;", new { Id = id });
+        await conn.ExecuteAsync("DELETE FROM Category WHERE Id=@Id;", new { Id = id }).ConfigureAwait(false);
     }
 
     public async Task<List<Category>> GetCategoriesAsync()
     {
         using var conn = _factory.CreateConnection();
         var list = await conn.QueryAsync<Category>(
-            "SELECT * FROM Category ORDER BY SortOrder, Name;");
+            "SELECT * FROM Category ORDER BY SortOrder, Name;").ConfigureAwait(false);
         return list.ToList();
     }
 
@@ -384,21 +447,21 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         await conn.ExecuteAsync(
             "INSERT OR IGNORE INTO MediaCategory(MediaId, CategoryId) VALUES(@M, @C);",
-            new { M = mediaId, C = categoryId });
+            new { M = mediaId, C = categoryId }).ConfigureAwait(false);
     }
 
     public async Task RemoveMediaCategoryAsync(long mediaId, long categoryId)
     {
         using var conn = _factory.CreateConnection();
         await conn.ExecuteAsync("DELETE FROM MediaCategory WHERE MediaId=@M AND CategoryId=@C;",
-            new { M = mediaId, C = categoryId });
+            new { M = mediaId, C = categoryId }).ConfigureAwait(false);
     }
 
     public async Task<List<long>> GetMediaCategoryIdsAsync(long mediaId)
     {
         using var conn = _factory.CreateConnection();
         var list = await conn.QueryAsync<long>(
-            "SELECT CategoryId FROM MediaCategory WHERE MediaId=@M;", new { M = mediaId });
+            "SELECT CategoryId FROM MediaCategory WHERE MediaId=@M;", new { M = mediaId }).ConfigureAwait(false);
         return list.ToList();
     }
 
@@ -414,7 +477,7 @@ public class MediaRepository : IMediaRepository
         {
             var rows = await conn.QueryAsync<(long MediaId, long CategoryId)>(
                 "SELECT MediaId, CategoryId FROM MediaCategory WHERE MediaId IN @Ids;",
-                new { Ids = chunk });
+                new { Ids = chunk }).ConfigureAwait(false);
             foreach (var (mid, cid) in rows)
             {
                 if (!result.TryGetValue(mid, out var list))
@@ -442,7 +505,7 @@ public class MediaRepository : IMediaRepository
             SELECT m.CategoryId
             FROM CollectionMigrationMap m
             JOIN Category c ON c.Id = m.CategoryId
-            WHERE m.CollectionId IN @Ids;", new { Ids = ids });
+            WHERE m.CollectionId IN @Ids;", new { Ids = ids }).ConfigureAwait(false);
         return list.Distinct().ToList();
     }
 
@@ -452,7 +515,7 @@ public class MediaRepository : IMediaRepository
     {
         using var conn = _factory.CreateConnection();
         return await conn.QueryFirstOrDefaultAsync<string>(
-            "SELECT Value FROM AppSetting WHERE Key=@Key;", new { Key = key });
+            "SELECT Value FROM AppSetting WHERE Key=@Key;", new { Key = key }).ConfigureAwait(false);
     }
 
     public async Task SetSettingAsync(string key, string? value)
@@ -460,7 +523,7 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         await conn.ExecuteAsync(@"
             INSERT INTO AppSetting(Key, Value) VALUES(@Key, @Value)
-            ON CONFLICT(Key) DO UPDATE SET Value=@Value;", new { Key = key, Value = value });
+            ON CONFLICT(Key) DO UPDATE SET Value=@Value;", new { Key = key, Value = value }).ConfigureAwait(false);
     }
 
     // ---------- FTS ----------
@@ -480,13 +543,13 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         using var tx = conn.BeginTransaction();
 
-        await conn.ExecuteAsync("INSERT INTO MediaFts(MediaFts) VALUES('delete-all');", transaction: tx);
+        await conn.ExecuteAsync("INSERT INTO MediaFts(MediaFts) VALUES('delete-all');", transaction: tx).ConfigureAwait(false);
         await conn.ExecuteAsync(@"
             INSERT INTO MediaFts(rowid, FileName, Path, Tags, Categories)
             SELECT m.Id, m.FileName, m.Path,
               (SELECT group_concat(t.Name, ' ') FROM MediaTag mt JOIN Tag t ON t.Id=mt.TagId WHERE mt.MediaId=m.Id),
               (SELECT group_concat(c.Name, ' ') FROM MediaCategory mc JOIN Category c ON c.Id=mc.CategoryId WHERE mc.MediaId=m.Id)
-            FROM MediaItem m;", transaction: tx);
+            FROM MediaItem m;", transaction: tx).ConfigureAwait(false);
 
         tx.Commit();
     }
@@ -499,7 +562,7 @@ public class MediaRepository : IMediaRepository
             VALUES('delete', @Id, @FileName, @Path, @Tags, @Categories);
             INSERT INTO MediaFts(rowid, FileName, Path, Tags, Categories)
             VALUES(@Id, @FileName, @Path, @Tags, @Categories);",
-            new { item.Id, item.FileName, item.Path, Tags = tags, Categories = categories });
+            new { item.Id, item.FileName, item.Path, Tags = tags, Categories = categories }).ConfigureAwait(false);
     }
 
     public async Task RemoveFtsAsync(long mediaId)
@@ -507,13 +570,13 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         await conn.ExecuteAsync(@"
             INSERT INTO MediaFts(MediaFts, rowid, FileName, Path, Tags, Categories)
-            VALUES('delete', @Id, '', '', '', '');", new { Id = mediaId });
+            VALUES('delete', @Id, '', '', '', '');", new { Id = mediaId }).ConfigureAwait(false);
     }
 
     public async Task<long> GetTotalCountAsync()
     {
         using var conn = _factory.CreateConnection();
-        return await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM MediaItem WHERE IsMissing=0;");
+        return await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM MediaItem WHERE IsMissing=0;").ConfigureAwait(false);
     }
 
     // ---------- Discovery（发现页随机推荐） ----------
@@ -555,7 +618,7 @@ public class MediaRepository : IMediaRepository
         param.Add("Limit", limit);
         var where = " WHERE " + string.Join(" AND ", clauses);
         var list = await conn.QueryAsync<MediaItem>(
-            $"SELECT m.* FROM MediaItem m{where} ORDER BY RANDOM() LIMIT @Limit;", param);
+            $"SELECT m.* FROM MediaItem m{where} ORDER BY RANDOM() LIMIT @Limit;", param).ConfigureAwait(false);
         return list.ToList();
     }
 
@@ -584,7 +647,7 @@ public class MediaRepository : IMediaRepository
 
         var where = " WHERE " + string.Join(" AND ", clauses);
         return await conn.ExecuteScalarAsync<long>(
-            $"SELECT COUNT(*) FROM MediaItem{where};", param);
+            $"SELECT COUNT(*) FROM MediaItem{where};", param).ConfigureAwait(false);
     }
 
     /// <summary>按媒体类型集合追加 IN 条件（兼容历史数字写法）。</summary>
@@ -604,14 +667,14 @@ public class MediaRepository : IMediaRepository
         await conn.ExecuteAsync(@"
             INSERT INTO DailyDiscovery(Date, MediaIds, PoolType, PoolId, TypeFilter) VALUES(@Date, @MediaIds, @PoolType, @PoolId, @TypeFilter)
             ON CONFLICT(Date) DO UPDATE SET MediaIds=@MediaIds, PoolType=@PoolType, PoolId=@PoolId, TypeFilter=@TypeFilter;",
-            new { Date = date, MediaIds = json, PoolType = poolType.ToString(), PoolId = poolId, TypeFilter = typeFilter });
+            new { Date = date, MediaIds = json, PoolType = poolType.ToString(), PoolId = poolId, TypeFilter = typeFilter }).ConfigureAwait(false);
     }
 
     public async Task<DiscoveryBatch?> GetDiscoveryBatchAsync(string date)
     {
         using var conn = _factory.CreateConnection();
         var row = await conn.QueryFirstOrDefaultAsync<(string Date, string MediaIds, string PoolType, long? PoolId, string? TypeFilter)>(
-            "SELECT Date, MediaIds, PoolType, PoolId, TypeFilter FROM DailyDiscovery WHERE Date=@Date;", new { Date = date });
+            "SELECT Date, MediaIds, PoolType, PoolId, TypeFilter FROM DailyDiscovery WHERE Date=@Date;", new { Date = date }).ConfigureAwait(false);
         if (row.Date == null) return null;
         var ids = string.IsNullOrEmpty(row.MediaIds)
             ? new List<long>()
@@ -633,7 +696,7 @@ public class MediaRepository : IMediaRepository
         var now = DateTime.UtcNow.ToString("O");
         var rows = mediaIds.Select(id => new { MediaId = id, PushedAtUtc = now });
         await conn.ExecuteAsync(
-            "INSERT OR IGNORE INTO DiscoveryHistory(MediaId, PushedAtUtc) VALUES(@MediaId, @PushedAtUtc);", rows);
+            "INSERT OR IGNORE INTO DiscoveryHistory(MediaId, PushedAtUtc) VALUES(@MediaId, @PushedAtUtc);", rows).ConfigureAwait(false);
     }
 
     public async Task<List<long>> GetDiscoveryHistoryIdsAsync(int days)
@@ -641,7 +704,7 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
         var since = DateTime.UtcNow.AddDays(-days).ToString("O");
         var list = await conn.QueryAsync<long>(
-            "SELECT DISTINCT MediaId FROM DiscoveryHistory WHERE PushedAtUtc >= @Since;", new { Since = since });
+            "SELECT DISTINCT MediaId FROM DiscoveryHistory WHERE PushedAtUtc >= @Since;", new { Since = since }).ConfigureAwait(false);
         return list.ToList();
     }
 
@@ -653,11 +716,11 @@ public class MediaRepository : IMediaRepository
         await conn.ExecuteAsync(@"
             INSERT INTO RecentView(MediaId, ViewedAtUtc) VALUES(@MediaId, @ViewedAtUtc)
             ON CONFLICT(MediaId) DO UPDATE SET ViewedAtUtc=@ViewedAtUtc;",
-            new { MediaId = mediaId, ViewedAtUtc = DateTime.UtcNow.ToString("O") });
+            new { MediaId = mediaId, ViewedAtUtc = DateTime.UtcNow.ToString("O") }).ConfigureAwait(false);
         // 只保留最近 100 条
         await conn.ExecuteAsync(@"
             DELETE FROM RecentView WHERE MediaId NOT IN (
-              SELECT MediaId FROM RecentView ORDER BY ViewedAtUtc DESC LIMIT 100);");
+              SELECT MediaId FROM RecentView ORDER BY ViewedAtUtc DESC LIMIT 100);").ConfigureAwait(false);
     }
 
     public async Task<List<MediaItem>> GetRecentViewAsync(int limit)
@@ -668,7 +731,7 @@ public class MediaRepository : IMediaRepository
             JOIN RecentView rv ON rv.MediaId = m.Id
             WHERE m.IsMissing = 0
             ORDER BY rv.ViewedAtUtc DESC
-            LIMIT @Limit;", new { Limit = limit });
+            LIMIT @Limit;", new { Limit = limit }).ConfigureAwait(false);
         return list.ToList();
     }
 
@@ -680,7 +743,7 @@ public class MediaRepository : IMediaRepository
         using var tx = conn.BeginTransaction();
         foreach (var (id, sortOrder) in orders)
             await conn.ExecuteAsync("UPDATE Tag SET SortOrder=@SortOrder WHERE Id=@Id;",
-                new { SortOrder = sortOrder, Id = id }, tx);
+                new { SortOrder = sortOrder, Id = id }, tx).ConfigureAwait(false);
         tx.Commit();
     }
 
@@ -690,7 +753,7 @@ public class MediaRepository : IMediaRepository
         using var tx = conn.BeginTransaction();
         foreach (var (id, sortOrder) in orders)
             await conn.ExecuteAsync("UPDATE Category SET SortOrder=@SortOrder WHERE Id=@Id;",
-                new { SortOrder = sortOrder, Id = id }, tx);
+                new { SortOrder = sortOrder, Id = id }, tx).ConfigureAwait(false);
         tx.Commit();
     }
 
@@ -703,7 +766,7 @@ public class MediaRepository : IMediaRepository
 
         using var conn = _factory.CreateConnection();
         var list = await conn.QueryAsync<MediaItem>(
-            "SELECT * FROM MediaItem WHERE Id IN @Ids AND IsMissing=0;", new { Ids = idList });
+            "SELECT * FROM MediaItem WHERE Id IN @Ids AND IsMissing=0;", new { Ids = idList }).ConfigureAwait(false);
 
         // 保持传入顺序
         var map = list.ToDictionary(m => m.Id);
@@ -716,19 +779,19 @@ public class MediaRepository : IMediaRepository
     {
         using var conn = _factory.CreateConnection();
         return await conn.ExecuteScalarAsync<long>(
-            "SELECT COUNT(*) FROM MediaItem WHERE Favorite=1 AND IsMissing=0;");
+            "SELECT COUNT(*) FROM MediaItem WHERE Favorite=1 AND IsMissing=0;").ConfigureAwait(false);
     }
 
     public async Task<long> GetTagCountAsync()
     {
         using var conn = _factory.CreateConnection();
-        return await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM Tag;");
+        return await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM Tag;").ConfigureAwait(false);
     }
 
     public async Task<long> GetCategoryCountAsync()
     {
         using var conn = _factory.CreateConnection();
-        return await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM Category;");
+        return await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM Category;").ConfigureAwait(false);
     }
 
     // ---------- 构建查询 ----------
@@ -857,7 +920,7 @@ public class MediaRepository : IMediaRepository
             VALUES(@OriginalMediaId, @RootFolderId, @Path, @FileName, @MediaType, @SizeBytes,
                 @ThumbnailPath, @DeletedAtUtc, @BatchId, @SnapshotJson, @TagIdsJson, @CategoryIdsJson,
                 @CollectionIdsJson, 0);
-            SELECT last_insert_rowid();", item);
+            SELECT last_insert_rowid();", item).ConfigureAwait(false);
         item.Id = id;
         return id;
     }
@@ -869,32 +932,32 @@ public class MediaRepository : IMediaRepository
             SELECT * FROM DeletedItem
             WHERE IsRestored = 0
             ORDER BY DeletedAtUtc DESC
-            LIMIT @Limit;", new { Limit = limit });
+            LIMIT @Limit;", new { Limit = limit }).ConfigureAwait(false);
         return list.ToList();
     }
 
     public async Task MarkDeletedRestoredAsync(long id)
     {
         using var conn = _factory.CreateConnection();
-        await conn.ExecuteAsync("UPDATE DeletedItem SET IsRestored = 1 WHERE Id = @Id;", new { Id = id });
+        await conn.ExecuteAsync("UPDATE DeletedItem SET IsRestored = 1 WHERE Id = @Id;", new { Id = id }).ConfigureAwait(false);
     }
 
     public async Task RemoveDeletedAsync(long id)
     {
         using var conn = _factory.CreateConnection();
-        await conn.ExecuteAsync("DELETE FROM DeletedItem WHERE Id = @Id;", new { Id = id });
+        await conn.ExecuteAsync("DELETE FROM DeletedItem WHERE Id = @Id;", new { Id = id }).ConfigureAwait(false);
     }
 
     public async Task ClearDeletedAsync()
     {
         using var conn = _factory.CreateConnection();
-        await conn.ExecuteAsync("DELETE FROM DeletedItem;");
+        await conn.ExecuteAsync("DELETE FROM DeletedItem;").ConfigureAwait(false);
     }
 
     public async Task ClearThumbnailPathsAsync()
     {
         using var conn = _factory.CreateConnection();
-        await conn.ExecuteAsync("UPDATE MediaItem SET ThumbnailPath = NULL;");
+        await conn.ExecuteAsync("UPDATE MediaItem SET ThumbnailPath = NULL;").ConfigureAwait(false);
     }
 
     public async Task InvalidateThumbnailAsync(long mediaId)
@@ -904,7 +967,7 @@ public class MediaRepository : IMediaRepository
         // 只清 ThumbnailPath 会让 EnsureThumbnails 又算回同一个旧文件名，结果还是旧图。
         await conn.ExecuteAsync(
             "UPDATE MediaItem SET ThumbnailPath = NULL, QuickHash = NULL WHERE Id = @mediaId;",
-            new { mediaId });
+            new { mediaId }).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -917,10 +980,10 @@ public class MediaRepository : IMediaRepository
         using var conn = _factory.CreateConnection();
 
         var byPath = await conn.ExecuteScalarAsync<long?>(
-            "SELECT Id FROM MediaItem WHERE Path = @Path;", new { item.Path });
+            "SELECT Id FROM MediaItem WHERE Path = @Path;", new { item.Path }).ConfigureAwait(false);
         if (byPath.HasValue)
         {
-            await ApplyLinksAsync(conn, byPath.Value, tagIds, categoryIds);
+            await ApplyLinksAsync(conn, byPath.Value, tagIds, categoryIds).ConfigureAwait(false);
             return byPath.Value;
         }
 
@@ -957,12 +1020,12 @@ public class MediaRepository : IMediaRepository
 
         long newId;
         var idInUse = item.Id > 0
-            ? await conn.ExecuteScalarAsync<long?>("SELECT Id FROM MediaItem WHERE Id = @Id;", new { item.Id })
+            ? await conn.ExecuteScalarAsync<long?>("SELECT Id FROM MediaItem WHERE Id = @Id;", new { item.Id }).ConfigureAwait(false)
             : null;
 
         if (item.Id > 0 && !idInUse.HasValue)
         {
-            await conn.ExecuteAsync(insertWithId, param);
+            await conn.ExecuteAsync(insertWithId, param).ConfigureAwait(false);
             newId = item.Id;
         }
         else
@@ -974,10 +1037,10 @@ public class MediaRepository : IMediaRepository
                 VALUES(@RootFolderId, @Path, @FileName, @Extension, @MediaType, @SizeBytes,
                     @CreatedAtUtc, @ModifiedAtUtc, @Width, @Height, @DurationMs, @Favorite, @Rating, @Note,
                     @ThumbnailPath, @QuickHash, 0, @DateAddedUtc, @LastScanUtc);
-                SELECT last_insert_rowid();", param);
+                SELECT last_insert_rowid();", param).ConfigureAwait(false);
         }
 
-        await ApplyLinksAsync(conn, newId, tagIds, categoryIds);
+        await ApplyLinksAsync(conn, newId, tagIds, categoryIds).ConfigureAwait(false);
         return newId;
     }
 
@@ -987,10 +1050,10 @@ public class MediaRepository : IMediaRepository
         foreach (var tagId in tagIds.Distinct())
             await conn.ExecuteAsync(
                 "INSERT OR IGNORE INTO MediaTag(MediaId, TagId) VALUES(@MediaId, @TagId);",
-                new { MediaId = mediaId, TagId = tagId });
+                new { MediaId = mediaId, TagId = tagId }).ConfigureAwait(false);
         foreach (var categoryId in categoryIds.Distinct())
             await conn.ExecuteAsync(
                 "INSERT OR IGNORE INTO MediaCategory(MediaId, CategoryId) VALUES(@MediaId, @CategoryId);",
-                new { MediaId = mediaId, CategoryId = categoryId });
+                new { MediaId = mediaId, CategoryId = categoryId }).ConfigureAwait(false);
     }
 }

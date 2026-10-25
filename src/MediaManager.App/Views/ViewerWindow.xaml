@@ -292,27 +292,29 @@
                             <!-- 底图（已含裁剪/旋转/翻转/滤镜/调色） -->
                             <Image x:Name="PreviewImage" Stretch="Fill" />
 
+                            <!-- 层级：马赛克(10) < 图片水印(20) < 形状(30) < 文字(40) < 涂鸦(50) < 平铺水印(60)
+                                 马赛克与涂鸦谁在上由代码按「最近用过的工具」切换（见 ApplyOverlayZOrder） -->
                             <!-- 马赛克 / 模糊打码 -->
-                            <Canvas x:Name="MosaicLayer" IsHitTestVisible="False" />
+                            <Canvas x:Name="MosaicLayer" IsHitTestVisible="False" Panel.ZIndex="10" />
 
                             <!-- 图片水印 -->
-                            <Canvas x:Name="WatermarkLayer" />
+                            <Canvas x:Name="WatermarkLayer" Panel.ZIndex="20" />
 
                             <!-- 形状标注（矩形 / 箭头 / 椭圆） -->
-                            <Canvas x:Name="ShapeLayer" IsHitTestVisible="False" />
+                            <Canvas x:Name="ShapeLayer" IsHitTestVisible="False" Panel.ZIndex="30" />
 
                             <!-- 文字（非选中项显示为渲染结果，选中项为 TextBox） -->
-                            <Canvas x:Name="TextLayer" />
+                            <Canvas x:Name="TextLayer" Panel.ZIndex="40" />
 
                             <!-- 涂鸦 -->
-                            <InkCanvas x:Name="InkLayer" Background="Transparent" IsHitTestVisible="False"
+                            <InkCanvas x:Name="InkLayer" Background="Transparent" IsHitTestVisible="False" Panel.ZIndex="50"
                                        EditingMode="None" StrokeCollected="OnStrokeCollected" />
 
                             <!-- 平铺文字水印（盖在最上层） -->
-                            <Canvas x:Name="TileLayer" IsHitTestVisible="False" />
+                            <Canvas x:Name="TileLayer" IsHitTestVisible="False" Panel.ZIndex="60" />
 
                             <!-- 裁剪层 -->
-                            <Canvas x:Name="CropLayer" Visibility="Collapsed">
+                            <Canvas x:Name="CropLayer" Visibility="Collapsed" Panel.ZIndex="70">
                                 <Rectangle x:Name="MaskTop" Fill="#A6000000" />
                                 <Rectangle x:Name="MaskBottom" Fill="#A6000000" />
                                 <Rectangle x:Name="MaskLeft" Fill="#A6000000" />
@@ -964,7 +966,9 @@
                     <Button Content="＋" Click="OnZoomIn" Width="28" Style="{StaticResource ChipButton}"
                             Padding="0" Margin="0,0,10,0" ToolTip="放大（滚轮向上）" />
                     <Button Content="适应窗口" Click="OnFit" Style="{StaticResource ChipButton}" Margin="0,0,4,0"
-                            ToolTip="双击画面也可以回到适应窗口（Ctrl+0）" />
+                            ToolTip="回到适应窗口（Ctrl+0）" />
+                    <Button Content="1:1" Click="OnZoomActual" Style="{StaticResource ChipButton}" Margin="0,0,4,0"
+                            ToolTip="按实际像素显示，一个图片像素对一个屏幕像素（Ctrl+1）" />
                     <Button Content="全屏" Click="OnFullScreen" Style="{StaticResource ChipButton}" />
                 </StackPanel>
             </DockPanel>

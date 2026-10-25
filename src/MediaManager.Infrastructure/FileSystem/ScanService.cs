@@ -29,7 +29,7 @@ public class ScanService : IScanService
 
         if (!Directory.Exists(root.Path))
         {
-            if (!TryRestorePath(root))
+            if (!await TryRestorePathAsync(root).ConfigureAwait(false))
             {
                 _logger.LogWarning("根目录失联，无法恢复：{Path}", root.Path);
                 return;
@@ -60,6 +60,9 @@ public class ScanService : IScanService
                 // 文件可能在扫描途中被删除/移走（尤其是正在拷贝的盘）
                 if (!fi.Exists) continue;
 
+                // desktop.ini / Thumbs.db / .DS_Store 这类系统文件不算媒体
+                if (MediaFormat.IsSystemJunk(file, fi.Attributes)) continue;
+
                 item = new MediaItem
                 {
                     RootFolderId = rootFolderId,
@@ -85,6 +88,10 @@ public class ScanService : IScanService
 
             var isNew = !knownPaths.Contains(file);
 
+            // 计数在这里立刻累加。原来放在「攒够一批」的分支里，等于每 500 个文件只按
+            // 最后一个文件的 isNew 记一次，最后不足一批的尾巴完全不计，进度数字永远是错的。
+            if (isNew) added++; else updated++;
+
             // 新文件顺便把宽高读出来（只读文件头，成本极低）。
             // 之前完全没写这一列，导致界面上所有图片都显示「未知」。
             if (isNew && type.Value == MediaType.Image)
@@ -94,7 +101,6 @@ public class ScanService : IScanService
 
             if (scanned.Count >= BatchSize)
             {
-                if (isNew) added++; else updated++;
                 await FlushBatchAsync(scanned);
                 p.ScannedFiles = scannedCount;
                 p.Added = added;
@@ -163,6 +169,7 @@ public class ScanService : IScanService
             var rows = await _repo.GetMissingSizeAsync(batch, ct);
             if (rows.Count == 0) break;
 
+            var fixedInBatch = 0;
             foreach (var row in rows)
             {
                 if (ct.IsCancellationRequested) break;
@@ -177,6 +184,7 @@ public class ScanService : IScanService
                 {
                     await _repo.UpdateMediaSizeAsync(row.Id, w, h);
                     fixedCount++;
+                    fixedInBatch++;
                 }
                 catch (Exception ex)
                 {
@@ -184,8 +192,10 @@ public class ScanService : IScanService
                 }
             }
 
-            // 这一批里一条都补不上（比如整个盘都离线）就直接收工，避免死循环
-            if (rows.Count < batch && fixedCount == 0) break;
+            // 只要这一批一条都没补上就立刻收工：剩余文件当前都读不到（盘离线 / 文件损坏）。
+            // 原来只在「不足一批」时才退出，凑够 400 条读不到的记录会让这里反复查同一批行、
+            // 每轮 400 次 File.Exists，CPU 和磁盘一直空转。
+            if (fixedInBatch == 0) break;
             if (rows.Count < batch) break;
         }
 
@@ -219,6 +229,10 @@ public class ScanService : IScanService
             {
                 var fi = new FileInfo(file);
                 if (!fi.Exists) continue;
+
+                // 与全量扫描保持一致：系统目录说明文件不入库
+                if (MediaFormat.IsSystemJunk(file, fi.Attributes)) continue;
+
                 var item = new MediaItem
                 {
                     RootFolderId = rootFolderId,
@@ -240,8 +254,8 @@ public class ScanService : IScanService
             }
         }
 
-        foreach (var item in items)
-            await _repo.UpsertMediaAsync(item);
+        foreach (var chunk in items.Chunk(BatchSize))
+            await _repo.UpsertMediaBatchAsync(chunk).ConfigureAwait(false);
     }
 
     private async Task<HashSet<string>> LoadExistingPathsAsync(long rootFolderId)
@@ -269,8 +283,9 @@ public class ScanService : IScanService
 
     private async Task FlushBatchAsync(List<MediaItem> batch)
     {
-        foreach (var item in batch)
-            await _repo.UpsertMediaAsync(item);
+        // 一批一个连接 + 一个事务：原来逐条 Upsert 是「每条开一次连接 + 一次 SELECT + 一次写」，
+        // 500 个文件就是 1000 多次数据库往返，整个扫描的耗时基本都耗在这里。
+        await _repo.UpsertMediaBatchAsync(batch).ConfigureAwait(false);
     }
 
     /// <summary>枚举过程的完成状态：有目录读不到时置为 false，用于决定是否可信地标记「缺失」。</summary>
@@ -323,7 +338,7 @@ public class ScanService : IScanService
     }
 
     /// <summary>盘符变化后尝试用卷序列号恢复路径。</summary>
-    private bool TryRestorePath(RootFolder root)
+    private async Task<bool> TryRestorePathAsync(RootFolder root)
     {
         if (string.IsNullOrWhiteSpace(root.VolumeSerial) || string.IsNullOrWhiteSpace(root.RelativePath))
             return false;
@@ -336,7 +351,9 @@ public class ScanService : IScanService
 
         var oldPath = root.Path;
         root.Path = newPath;
-        _repo.UpdateRootFolderAsync(root).GetAwaiter().GetResult();
+        // 调用方本来就是 async（扫描本身就在线程池上跑），直接 await：
+        // 不再用 Task.Run(...).GetResult() 同步阻塞，避免 UI 线程被数据库写卡住。
+        await _repo.UpdateRootFolderAsync(root).ConfigureAwait(false);
         _logger.LogInformation("已恢复路径：{Old} -> {New}", oldPath, newPath);
         return true;
     }

@@ -42,7 +42,8 @@ public class DatabaseBackupService : IDatabaseBackupService
     {
         try
         {
-            return _repo.GetSettingAsync("BackupDirectory").GetAwaiter().GetResult();
+            // 属性可能从 UI 线程读取：丢到线程池再同步等待，不依赖仓储层是否写了 ConfigureAwait
+            return Task.Run(() => _repo.GetSettingAsync("BackupDirectory")).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
@@ -208,9 +209,23 @@ public class DatabaseBackupService : IDatabaseBackupService
         if (!string.IsNullOrEmpty(dir))
             System.IO.Directory.CreateDirectory(dir);
 
-        using (var sourceConn = new Microsoft.Data.Sqlite.SqliteConnection(
-                   $"Data Source={source};Mode=ReadWrite;Cache=Shared"))
-        using (var targetConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={destinationPath}"))
+        // 两个连接都必须 Pooling=false：池化连接在方法返回后仍占着文件句柄，
+        // 导出的库在 U 盘里拔不掉；更糟的是 NormalizeSnapshot 切 journal_mode 时抢不到锁会
+        // 静默失败，只剩一个仍依赖 -wal 的 .db，用户单独拷走就会丢最新数据。
+        var sourceBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+        {
+            DataSource = source,
+            Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWrite,
+            Pooling = false,
+        };
+        var targetBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+        {
+            DataSource = destinationPath,
+            Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWriteCreate,
+            Pooling = false,
+        };
+        using (var sourceConn = new Microsoft.Data.Sqlite.SqliteConnection(sourceBuilder.ToString()))
+        using (var targetConn = new Microsoft.Data.Sqlite.SqliteConnection(targetBuilder.ToString()))
         {
             sourceConn.Open();
             targetConn.Open();
@@ -222,7 +237,8 @@ public class DatabaseBackupService : IDatabaseBackupService
         NormalizeSnapshot(destinationPath);
 
         _logger.LogInformation("数据库已导出到 {Path}", destinationPath);
-        return destinationPath;    }
+        return destinationPath;
+    }
 
     /// <summary>从备份文件恢复数据库（反向在线备份，覆盖当前数据）。恢复前先备份当前库兜底。</summary>
     public async Task ImportAsync(string sourcePath)
@@ -247,11 +263,22 @@ public class DatabaseBackupService : IDatabaseBackupService
 
         var target = _dbFactory.DatabasePath;
 
-        // 反向备份：把 source（备份文件）完整恢复到 target（当前库）
-        using (var sourceConn = new Microsoft.Data.Sqlite.SqliteConnection(
-                   $"Data Source={sourcePath};Mode=ReadOnly"))
-        using (var targetConn = new Microsoft.Data.Sqlite.SqliteConnection(
-                   $"Data Source={target};Mode=ReadWrite;Cache=Shared"))
+        // 反向备份：把 source（备份文件）完整恢复到 target（当前库）。
+        // 同样 Pooling=false：落盘后立即释放句柄，避免恢复完主库仍被池化连接占着。
+        var sourceBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+        {
+            DataSource = sourcePath,
+            Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly,
+            Pooling = false,
+        };
+        var targetBuilder = new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+        {
+            DataSource = target,
+            Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadWrite,
+            Pooling = false,
+        };
+        using (var sourceConn = new Microsoft.Data.Sqlite.SqliteConnection(sourceBuilder.ToString()))
+        using (var targetConn = new Microsoft.Data.Sqlite.SqliteConnection(targetBuilder.ToString()))
         {
             sourceConn.Open();
             targetConn.Open();

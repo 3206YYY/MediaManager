@@ -9,6 +9,9 @@ public class DatabaseInitializer
     /// <summary>v1.3.2「收藏夹并入分类」迁移在 SchemaMigration 里的名字。</summary>
     public const string CollectionMergeMigration = "v1.3.2_CollectionToCategory";
 
+    /// <summary>v1.3.3「清理误入库的系统垃圾文件」迁移在 SchemaMigration 里的名字。</summary>
+    public const string JunkMediaPurgeMigration = "v1.3.3_JunkMediaPurge";
+
     private readonly IDbConnectionFactory _factory;
     private readonly ILogger<DatabaseInitializer> _logger;
 
@@ -271,6 +274,9 @@ public class DatabaseInitializer
         // v1.3.2 一次性迁移：旧「收藏夹」→「分类」（必须在 FTS 表建好之后跑，尾部要同步搜索索引）
         MigrateCollectionsIntoCategories(conn);
 
+        // v1.3.3 一次性迁移：清掉历史扫描误收录的 desktop.ini / Thumbs.db 等系统文件
+        PurgeJunkMedia(conn);
+
         _logger.LogInformation("数据库初始化完成：{Path}", _factory.DatabasePath);
     }
 
@@ -440,6 +446,72 @@ public class DatabaseInitializer
             // 刻意不往上抛：迁移失败就保持原样（旧表一行没动，数据不会丢），
             // 只让用户暂时看不到旧收藏夹，也不该让程序打不开。下次启动会自动重试。
             _logger.LogError(ex, "收藏夹并入分类失败，已回滚；旧表数据完好，下次启动会重试");
+        }
+    }
+
+    /// <summary>
+    /// v1.3.3 一次性迁移：清掉历史版本误收录的系统垃圾文件。
+    /// <para>
+    /// 老版本的扫描器不过滤隐藏/系统属性，且把 <c>.ini</c> 当文本文档，于是每个目录里的
+    /// <c>desktop.ini</c>（以及 <c>Thumbs.db</c> / <c>.DS_Store</c>）都被扫进了图库。
+    /// 只按<b>垃圾文件名</b>删除，不按扩展名一刀切：用户自己导入的 .ini 记录保留
+    /// （文件在硬盘上，仍可查看），避免清理垃圾时误伤正常数据。
+    /// 这里只删数据库记录，<b>不动硬盘上的文件</b>；删记录会触发 FTS 的 AFTER DELETE 触发器，
+    /// 搜索索引自动同步，不需要额外 rebuild。
+    /// </para>
+    /// <para>幂等：跑过一次就在 SchemaMigration 记一笔，之后每次启动只多一次 COUNT。</para>
+    /// </summary>
+    private void PurgeJunkMedia(SqliteConnection conn)
+    {
+        using var check = conn.CreateCommand();
+        check.CommandText = "SELECT COUNT(*) FROM SchemaMigration WHERE Name = @Name;";
+        check.Parameters.AddWithValue("@Name", JunkMediaPurgeMigration);
+        if (Convert.ToInt64(check.ExecuteScalar() ?? 0L) > 0) return;
+
+        // 与 MediaFormat.SystemJunkNames 保持一致（这里不引用 Infrastructure.FileSystem，
+        // 数据库层不该依赖文件系统层；以后加名字记得两边都改）。
+        const string junkNames = """
+            'desktop.ini','thumbs.db','ehthumbs.db','ehthumbs_vista.db',
+            '.ds_store','.localized','.directory','albumthumbs.ini','.picasa.ini'
+            """;
+
+        try
+        {
+            using var tx = conn.BeginTransaction();
+
+            using var count = conn.CreateCommand();
+            count.Transaction = tx;
+            count.CommandText = $"""
+                SELECT COUNT(*) FROM MediaItem
+                WHERE lower(FileName) IN ({junkNames});
+                """;
+            var found = Convert.ToInt64(count.ExecuteScalar() ?? 0L);
+
+            if (found > 0)
+            {
+                using var del = conn.CreateCommand();
+                del.Transaction = tx;
+                del.CommandText = $"""
+                    DELETE FROM MediaItem
+                    WHERE lower(FileName) IN ({junkNames});
+                    """;
+                var deleted = del.ExecuteNonQuery();
+                _logger.LogInformation("已从图库移除 {Count} 条系统垃圾文件记录（desktop.ini 等）", deleted);
+            }
+
+            using var mark = conn.CreateCommand();
+            mark.Transaction = tx;
+            mark.CommandText = "INSERT OR REPLACE INTO SchemaMigration(Name, AppliedUtc) VALUES(@Name, @Now);";
+            mark.Parameters.AddWithValue("@Name", JunkMediaPurgeMigration);
+            mark.Parameters.AddWithValue("@Now", DateTime.UtcNow.ToString("O"));
+            mark.ExecuteNonQuery();
+
+            tx.Commit();
+        }
+        catch (Exception ex)
+        {
+            // 清理失败不影响启动：下次启动会重试，图库里最多多几条垃圾记录
+            _logger.LogWarning(ex, "清理系统垃圾文件记录失败，下次启动会重试");
         }
     }
 
