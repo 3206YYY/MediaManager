@@ -147,6 +147,56 @@ public class MediaRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task SearchTrigram_ShouldFindMiddleSubstring()
+    {
+        var rootId = await _repo.AddRootFolderAsync("C:\\Tri", null, null);
+        await _repo.UpsertMediaAsync(new MediaItem
+        {
+            RootFolderId = rootId,
+            Path = "C:\\Tri\\image_202610916_001.jpg",
+            FileName = "image_202610916_001.jpg",
+            Extension = "jpg",
+            MediaType = MediaType.Image,
+            SizeBytes = 1,
+        });
+
+        // 不在词首、含下划线：unicode61 分词命中不了，靠 trigram 子串索引（不支持时退回 instr）
+        var results = await _repo.QueryAsync(new MediaFilter { SearchText = "2610916", Limit = 100 });
+        Assert.Single(results);
+    }
+
+    [Fact]
+    public async Task SearchShortQuery_ShouldFallbackToSubstring()
+    {
+        var rootId = await _repo.AddRootFolderAsync("C:\\Tri2", null, null);
+        await _repo.UpsertMediaAsync(new MediaItem
+        {
+            RootFolderId = rootId,
+            Path = "C:\\Tri2\\abc01.jpg",
+            FileName = "abc01.jpg",
+            Extension = "jpg",
+            MediaType = MediaType.Image,
+            SizeBytes = 1,
+        });
+
+        // 2 个字：trigram 不覆盖，走 instr 兜底
+        var results = await _repo.QueryAsync(new MediaFilter { SearchText = "01", Limit = 100 });
+        Assert.Single(results);
+    }
+
+    [Fact]
+    public void TrigramFts_TableShouldMatchCapability()
+    {
+        // 表存在 <=> 引擎支持 trigram（创建成功才会置位 SqliteFeatures.TrigramFts）
+        var factory = _provider.GetRequiredService<IDbConnectionFactory>();
+        using var conn = factory.CreateConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='MediaFtsTrigram';";
+        var exists = Convert.ToInt64(cmd.ExecuteScalar() ?? 0L) > 0;
+        Assert.Equal(SqliteFeatures.TrigramFts, exists);
+    }
+
+    [Fact]
     public async Task MarkMissing_ShouldFlagRemovedFiles()
     {
         var rootId = await _repo.AddRootFolderAsync("C:\\Photos", null, null);

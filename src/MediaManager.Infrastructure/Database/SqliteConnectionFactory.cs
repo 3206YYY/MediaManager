@@ -26,7 +26,10 @@ public class SqliteConnectionFactory : IDbConnectionFactory
         {
             DataSource = DatabasePath,
             Mode = SqliteOpenMode.ReadWriteCreate,
-            Cache = SqliteCacheMode.Shared,
+            // 私有页缓存：本项目每次操作新开连接，又已启用 WAL。
+            // 共享缓存（Shared）会让多个连接在表级互相加锁，容易出现 SQLITE_LOCKED，
+            // 并不能带来实际收益；SQLite 官方也建议优先用私有缓存 + WAL。
+            Cache = SqliteCacheMode.Private,
             ForeignKeys = true,
         }.ToString();
         _logger.LogInformation("数据库路径：{Path}", DatabasePath);

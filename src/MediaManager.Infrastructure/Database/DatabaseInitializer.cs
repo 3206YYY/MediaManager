@@ -12,6 +12,9 @@ public class DatabaseInitializer
     /// <summary>v1.3.3「清理误入库的系统垃圾文件」迁移在 SchemaMigration 里的名字。</summary>
     public const string JunkMediaPurgeMigration = "v1.3.3_JunkMediaPurge";
 
+    /// <summary>v1.3.3「构建文件名/路径 trigram 搜索索引」迁移在 SchemaMigration 里的名字。</summary>
+    public const string TrigramFtsMigration = "v1.3.3_TrigramFts";
+
     private readonly IDbConnectionFactory _factory;
     private readonly ILogger<DatabaseInitializer> _logger;
 
@@ -271,11 +274,51 @@ public class DatabaseInitializer
             END;
             """);
 
+        // FTS5 trigram：文件名/路径的「子串」搜索走索引（需要 SQLite 3.34+）。
+        // 不支持时（老引擎 / 精简构建）整段跳过，BuildWhere 会自动退回 instr 全表扫描，功能不受影响。
+        try
+        {
+            Execute(cmd, """
+                CREATE VIRTUAL TABLE IF NOT EXISTS MediaFtsTrigram USING fts5(
+                  FileName, Path,
+                  content='MediaItem', content_rowid='Id',
+                  tokenize='trigram'
+                );
+                """);
+            Execute(cmd, """
+                CREATE TRIGGER IF NOT EXISTS MediaItem_AI_Tri AFTER INSERT ON MediaItem BEGIN
+                  INSERT INTO MediaFtsTrigram(rowid, FileName, Path) VALUES (new.Id, new.FileName, new.Path);
+                END;
+                """);
+            Execute(cmd, """
+                CREATE TRIGGER IF NOT EXISTS MediaItem_AD_Tri AFTER DELETE ON MediaItem BEGIN
+                  INSERT INTO MediaFtsTrigram(MediaFtsTrigram, rowid, FileName, Path) VALUES ('delete', old.Id, old.FileName, old.Path);
+                END;
+                """);
+            Execute(cmd, """
+                CREATE TRIGGER IF NOT EXISTS MediaItem_AU_Tri AFTER UPDATE ON MediaItem
+                WHEN old.FileName <> new.FileName OR old.Path <> new.Path
+                BEGIN
+                  INSERT INTO MediaFtsTrigram(MediaFtsTrigram, rowid, FileName, Path) VALUES ('delete', old.Id, old.FileName, old.Path);
+                  INSERT INTO MediaFtsTrigram(rowid, FileName, Path) VALUES (new.Id, new.FileName, new.Path);
+                END;
+                """);
+            SqliteFeatures.TrigramFts = true;
+        }
+        catch (Exception ex)
+        {
+            SqliteFeatures.TrigramFts = false;
+            _logger.LogWarning(ex, "FTS5 trigram 不可用，子串搜索将退回全表扫描");
+        }
+
         // v1.3.2 一次性迁移：旧「收藏夹」→「分类」（必须在 FTS 表建好之后跑，尾部要同步搜索索引）
         MigrateCollectionsIntoCategories(conn);
 
         // v1.3.3 一次性迁移：清掉历史扫描误收录的 desktop.ini / Thumbs.db 等系统文件
         PurgeJunkMedia(conn);
+
+        // v1.3.3 一次性迁移：把已有媒体灌进 trigram 搜索索引
+        BuildTrigramFts(conn);
 
         _logger.LogInformation("数据库初始化完成：{Path}", _factory.DatabasePath);
     }
@@ -512,6 +555,49 @@ public class DatabaseInitializer
         {
             // 清理失败不影响启动：下次启动会重试，图库里最多多几条垃圾记录
             _logger.LogWarning(ex, "清理系统垃圾文件记录失败，下次启动会重试");
+        }
+    }
+
+    /// <summary>
+    /// v1.3.3 一次性迁移：把已有媒体灌进 trigram 索引。
+    /// 新库为空，只记台账；旧库首次升级时批量补索引（一个事务）。
+    /// </summary>
+    private void BuildTrigramFts(SqliteConnection conn)
+    {
+        if (!SqliteFeatures.TrigramFts) return;
+
+        using var check = conn.CreateCommand();
+        check.CommandText = "SELECT COUNT(*) FROM SchemaMigration WHERE Name = @Name;";
+        check.Parameters.AddWithValue("@Name", TrigramFtsMigration);
+        if (Convert.ToInt64(check.ExecuteScalar() ?? 0L) > 0) return;
+
+        try
+        {
+            using var tx = conn.BeginTransaction();
+
+            // external content 表的 delete-all 只清索引，不动 MediaItem
+            using var clear = conn.CreateCommand();
+            clear.Transaction = tx;
+            clear.CommandText = "INSERT INTO MediaFtsTrigram(MediaFtsTrigram) VALUES('delete-all');";
+            clear.ExecuteNonQuery();
+
+            using var bulk = conn.CreateCommand();
+            bulk.Transaction = tx;
+            bulk.CommandText = "INSERT INTO MediaFtsTrigram(rowid, FileName, Path) SELECT Id, FileName, Path FROM MediaItem;";
+            bulk.ExecuteNonQuery();
+
+            using var mark = conn.CreateCommand();
+            mark.Transaction = tx;
+            mark.CommandText = "INSERT OR REPLACE INTO SchemaMigration(Name, AppliedUtc) VALUES(@Name, @Now);";
+            mark.Parameters.AddWithValue("@Name", TrigramFtsMigration);
+            mark.Parameters.AddWithValue("@Now", DateTime.UtcNow.ToString("O"));
+            mark.ExecuteNonQuery();
+
+            tx.Commit();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "构建 trigram 搜索索引失败，下次启动会重试");
         }
     }
 

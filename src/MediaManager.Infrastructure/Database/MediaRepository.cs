@@ -551,6 +551,16 @@ public class MediaRepository : IMediaRepository
               (SELECT group_concat(c.Name, ' ') FROM MediaCategory mc JOIN Category c ON c.Id=mc.CategoryId WHERE mc.MediaId=m.Id)
             FROM MediaItem m;", transaction: tx).ConfigureAwait(false);
 
+        if (SqliteFeatures.TrigramFts)
+        {
+            await conn.ExecuteAsync(
+                "INSERT INTO MediaFtsTrigram(MediaFtsTrigram) VALUES('delete-all');",
+                transaction: tx).ConfigureAwait(false);
+            await conn.ExecuteAsync(
+                "INSERT INTO MediaFtsTrigram(rowid, FileName, Path) SELECT Id, FileName, Path FROM MediaItem;",
+                transaction: tx).ConfigureAwait(false);
+        }
+
         tx.Commit();
     }
 
@@ -803,14 +813,23 @@ public class MediaRepository : IMediaRepository
 
         if (!string.IsNullOrWhiteSpace(f.SearchText))
         {
-            // FTS 全文匹配（标签/分类/文件名分词）+ 文件名/路径子串匹配（instr，大小写不敏感）。
-            // 子串匹配兜底：用户直接搜文件名片段（如 image_202610916、001 (1)）也能精确命中，
-            // 不受 FTS 分词和特殊字符（下划线/括号/连字符）影响。
-            clauses.Add("(m.Id IN (SELECT rowid FROM MediaFts WHERE MediaFts MATCH @Search) " +
-                        "OR instr(lower(m.FileName), lower(@RawSearch)) > 0 " +
-                        "OR instr(lower(m.Path), lower(@RawSearch)) > 0)");
-            param.Add("Search", FtsEscape(f.SearchText!));
-            param.Add("RawSearch", f.SearchText!);
+            var raw = f.SearchText!;
+            if (SqliteFeatures.TrigramFts && raw.Trim().Length >= 3)
+            {
+                // 3 字及以上：FTS5 trigram 走索引做子串匹配（大小写不敏感），
+                // 不再对整张 MediaItem 做 instr 全表扫描。
+                clauses.Add("(m.Id IN (SELECT rowid FROM MediaFts WHERE MediaFts MATCH @Search) " +
+                            "OR m.Id IN (SELECT rowid FROM MediaFtsTrigram WHERE MediaFtsTrigram MATCH @Search))");
+            }
+            else
+            {
+                // 1~2 字或引擎不支持 trigram：退回 instr（查询很短，全表扫描成本可接受）
+                clauses.Add("(m.Id IN (SELECT rowid FROM MediaFts WHERE MediaFts MATCH @Search) " +
+                            "OR instr(lower(m.FileName), lower(@RawSearch)) > 0 " +
+                            "OR instr(lower(m.Path), lower(@RawSearch)) > 0)");
+                param.Add("RawSearch", raw);
+            }
+            param.Add("Search", FtsEscape(raw));
         }
         if (f.MediaType.HasValue)
         {
