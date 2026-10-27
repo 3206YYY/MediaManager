@@ -80,5 +80,7 @@ build/og_preview_check.png
 # 封面重刷脚本的预览产物（patch_cover_version.py --dry-run）
 build/_cover_preview.png
 build/_cover_cmp.png
+# 重新截图前临时备份的库（uia_shot_theme.py 前置清理用）
+build/_db_backup*.db
 TestResults/
 代码评审*.md
