@@ -20,8 +20,8 @@ public sealed class VaultService : IVaultService
     /// <summary>自动锁定分钟数（0 = 不自动锁）的设置键。</summary>
     public const string AutoLockMinutesSettingKey = "Vault.AutoLockMinutes";
 
-    /// <summary>密码最短长度。本地软件，别把门槛定得让人烦。</summary>
-    public const int MinPasswordLength = 4;
+    /// <summary>密码最短长度。界面提示和服务层校验读同一个常量。</summary>
+    public const int MinPasswordLength = VaultPasswordPolicy.MinLength;
 
     private const int DefaultIterations = 150_000;
     private const int SaltBytes = 16;
@@ -59,14 +59,21 @@ public sealed class VaultService : IVaultService
     /// <summary>
     /// 打开私密空间。
     ///
-    /// 当前版本不设密码（就是一层隐藏，防尴尬不防取证），所以这里不校验任何东西，
-    /// 只保证保险箱目录存在。密码校验代码（<see cref="SetupAsync"/> / <see cref="UnlockAsync"/>）
-    /// 原样保留：将来想给用户加一道锁，把这里换成「先 Verify 再放行」即可，
-    /// 存储格式和搬移逻辑都不用动。
+    /// 三种情况：
+    /// <list type="number">
+    /// <item>没设密码 → 只保证保险箱目录存在，直接放行（默认形态，绝大多数用户就是这样）；</item>
+    /// <item>设了密码且本次已解锁 → 放行；</item>
+    /// <item>设了密码但锁着 → 返回 false，由界面弹解锁窗，<b>不是</b>失败。</item>
+    /// </list>
+    /// 注意这里只会「往上加一道门」，不会因为返回 false 就锁住任何东西 —— 密码忘了解不开，
+    /// 文件照样在 <see cref="VaultDirectory"/> 里可以直接拷走，不存在丢失。
     /// </summary>
     public Task<bool> OpenAsync()
     {
         EnsureVaultDirectory();
+
+        if (IsConfigured && !IsUnlocked) return Task.FromResult(false);
+
         IsUnlocked = true;
         return Task.FromResult(true);
     }
@@ -111,6 +118,24 @@ public sealed class VaultService : IVaultService
         var credential = CreateCredential(newPassword.Trim(), DefaultIterations);
         await _repo.SetSettingAsync(CredentialSettingKey, credential).ConfigureAwait(false);
         _credential = credential;
+        return true;
+    }
+
+    /// <summary>
+    /// 取消密码，回到「无密码隐藏」。
+    ///
+    /// 写空串而不是删设置项：<c>AppSetting</c> 表的一次「删了又重建」毫无意义，
+    /// 而 <see cref="IsConfigured"/> 判断的是「非空」，空串天然等于「没设过」。
+    /// 当前这次会话保持已解锁状态 —— 用户刚验证过身份，没必要立刻把他关在外面。
+    /// </summary>
+    public async Task<bool> RemovePasswordAsync(string currentPassword)
+    {
+        if (!IsConfigured) return false;
+        if (!Verify(currentPassword?.Trim() ?? string.Empty, _credential!)) return false;
+
+        await _repo.SetSettingAsync(CredentialSettingKey, string.Empty).ConfigureAwait(false);
+        _credential = null;
+        IsUnlocked = true;
         return true;
     }
 

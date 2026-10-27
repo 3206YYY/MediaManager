@@ -13,9 +13,13 @@ namespace MediaManager.Core.Services;
 /// 打开保险箱里的图片/视频不需要解密，直接读原文件，性能没有代价。
 ///
 /// <para>
-/// v1.5 调整：默认**不设密码**，就是一层「不想被随手翻到」的隐藏（类似 Steam 的隐藏游戏）。
-/// 进入不需要任何校验，<see cref="OpenAsync"/> 直接放行；密码相关的接口保留，
-/// 将来要给用户加一道锁时，把入口改回「先 <see cref="UnlockAsync"/> 再进去」即可，不用重写存储层。
+/// v1.5 调整：**密码由用户自己决定设不设**，默认不设。
+/// <list type="bullet">
+/// <item>没设密码：一层「不想被随手翻到」的隐藏，类似 Steam 的隐藏游戏，点一下就进；</item>
+/// <item>设了密码：进门前要输密码，关窗即重新上锁。</item>
+/// </list>
+/// 代码不会主动催用户设密码 —— 入口只在私密空间窗口的顶栏，用户自己去找、自己去点。
+/// 密码忘了不会丢数据（文件没加密，去 Vault 目录直接拷）。
 /// </para>
 /// </summary>
 public interface IVaultService
@@ -23,7 +27,7 @@ public interface IVaultService
     /// <summary>保险箱目录的绝对路径。</summary>
     string VaultDirectory { get; }
 
-    /// <summary>是否已经设置过密码（当前版本默认 false，表示走「无密码隐藏」模式）。</summary>
+    /// <summary>是否已经设置过密码（false = 走「无密码隐藏」模式，默认如此）。</summary>
     bool IsConfigured { get; }
 
     /// <summary>当前是否处于打开状态（仅内存，重启即关）。</summary>
@@ -33,11 +37,13 @@ public interface IVaultService
     event EventHandler? Locked;
 
     /// <summary>
-    /// 打开私密空间。
-    /// <para>
-    /// 当前版本不设密码：确保保险箱目录存在后直接返回 true。
-    /// 将来若启用密码，这里应先校验再放行（未解锁则返回 false）。
-    /// </para>
+    /// 打开私密空间，返回是否**已经**可以进去。
+    /// <list type="bullet">
+    /// <item>没设密码 → 确保目录存在，直接返回 true（默认形态）；</item>
+    /// <item>设了密码且已解锁 → 返回 true；</item>
+    /// <item>设了密码但锁着 → 返回 false，由界面弹解锁窗（这不是失败，只是「先解锁再进」）。</item>
+    /// </list>
+    /// 只是「先解锁再进」。
     /// </summary>
     Task<bool> OpenAsync();
 
@@ -56,6 +62,12 @@ public interface IVaultService
 
     /// <summary>修改密码；旧密码不正确返回 false。</summary>
     Task<bool> ChangePasswordAsync(string oldPassword, string newPassword);
+
+    /// <summary>
+    /// 取消密码（回到「无密码隐藏」）：需验证当前密码，验证不过返回 false。
+    /// 只删掉凭据设置项，不碰任何文件 —— 私密内容仍在，仍然要密码之外的身份才能看到入口。
+    /// </summary>
+    Task<bool> RemovePasswordAsync(string currentPassword);
 
     /// <summary>
     /// 把文件挪进保险箱，返回新的绝对路径。

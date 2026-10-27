@@ -77,6 +77,11 @@
                 <Button DockPanel.Dock="Right" Content="＋ 导入文件" Style="{StaticResource GhostButton}"
                         Margin="10,0,0,0" Click="OnImportFilesClick"
                         ToolTip="把电脑上的文件移入私密空间（文件会被移动，原位置不再保留）" />
+                <!-- 密码是可选功能：入口就放在这儿，用户自己来找、自己来点，代码不主动催 -->
+                <Button x:Name="PasswordButton" DockPanel.Dock="Right"
+                        Content="{Binding PasswordButtonText}" Style="{StaticResource GhostButton}"
+                        Margin="10,0,0,0" Click="OnPasswordMenuClick"
+                        ToolTip="{Binding PasswordButtonTip}" />
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                     <TextBox x:Name="SearchBox" Width="170" Padding="6,4" VerticalContentAlignment="Center"

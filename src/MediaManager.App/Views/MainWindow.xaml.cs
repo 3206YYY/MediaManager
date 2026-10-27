@@ -118,6 +118,9 @@ public partial class MainWindow : Window
     /// 私密空间是「打开 — 用 — 关上」的一个场所：独立窗口、关掉就是关上。
     /// 主界面不承载「我正在看私密内容吗」的状态 —— 少一个状态位，就少一个把
     /// 私密内容漏进普通视图的口子。
+    ///
+    /// 密码是**可选**的：没设密码直接进（默认）；设了密码就在进门时问一次，
+    /// 用户点「取消」就当作没点过 —— 不弹提示、不反问「你确定不进了吗」。
     /// </summary>
     private void OpenVaultWindow()
     {
@@ -140,8 +143,10 @@ public partial class MainWindow : Window
         {
             if (_vaultWindow is { IsLoaded: true }) return;
 
-            // 记录「已打开」状态：VaultWindow 关闭时会 Lock()，Locked 事件才有意义
-            await _vault.OpenAsync();
+            // OpenAsync 返回 false 只代表「设了密码但还锁着」，不是失败：
+            // 弹解锁窗，用户取消就到此为止。没设过密码时这里一次就过，不会打扰人。
+            if (!await _vault.OpenAsync() && !VaultPasswordWindow.TryUnlock(_vault))
+                return;
 
             var window = new VaultWindow();
             window.Closed += (_, _) => _vaultWindow = null;
@@ -149,9 +154,10 @@ public partial class MainWindow : Window
 
             window.Show();
             window.Activate();
-        }), DispatcherPriority.Background);
 
-        _viewModel.StatusText = "🔒 私密空间已打开 · 关闭窗口或 5 分钟无操作自动退出";
+            // 状态栏只在真的开了之后才报，避免解锁取消后还显示「已打开」
+            _viewModel.StatusText = "🔒 私密空间已打开 · 关闭窗口或 5 分钟无操作自动退出";
+        }), DispatcherPriority.Background);
     }
 
     // ===================================================================

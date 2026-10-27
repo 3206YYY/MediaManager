@@ -46,6 +46,17 @@
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
     </Style>
 
+    <!-- PasswordBox 和 TextBox 是两个独立控件（不是继承关系），这条不能省，
+         否则密码框会退回系统默认样式，和周围主题对不上 -->
+    <Style TargetType="PasswordBox">
+        <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Padding" Value="6,4" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    </Style>
+
     <Style TargetType="Button">
         <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />

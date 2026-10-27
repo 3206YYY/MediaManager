@@ -267,6 +267,59 @@ public class VaultIsolationTests : IDisposable
         Assert.True(await _vault.UnlockAsync("new-pass"));
     }
 
+    /// <summary>
+    /// 设了密码之后，OpenAsync 必须先返回 false，让界面去弹解锁窗 ——
+    /// 如果这里放行了，密码就是一道假门：拦不住任何东西，却让用户以为自己被保护着。
+    /// </summary>
+    [Fact]
+    public async Task Open_WithPassword_IsRefusedUntilUnlocked()
+    {
+        await _vault.SetupAsync("1234");
+        _vault.Lock();
+
+        Assert.False(await _vault.OpenAsync());
+        Assert.False(_vault.IsUnlocked);
+
+        // 解锁之后（本次会话内）再进就不用重复输
+        Assert.True(await _vault.UnlockAsync("1234"));
+        Assert.True(await _vault.OpenAsync());
+        Assert.True(_vault.IsUnlocked);
+    }
+
+    /// <summary>重启（重新 Initialize）之后必须重新上锁，不能因为上次解锁过就一直开着。</summary>
+    [Fact]
+    public async Task Password_SurvivesRestart_AndComesBackLocked()
+    {
+        await _vault.SetupAsync("1234");
+        Assert.True(_vault.IsUnlocked);
+
+        await _vault.InitializeAsync();
+
+        Assert.True(_vault.IsConfigured);
+        Assert.False(_vault.IsUnlocked);
+        Assert.False(await _vault.OpenAsync());
+    }
+
+    [Fact]
+    public async Task RemovePassword_NeedsCurrentOne_ThenOpensFreelyAgain()
+    {
+        await _vault.SetupAsync("1234");
+
+        Assert.False(await _vault.RemovePasswordAsync("wrong"));
+        Assert.True(_vault.IsConfigured);
+
+        Assert.True(await _vault.RemovePasswordAsync("1234"));
+        Assert.False(_vault.IsConfigured);
+
+        // 回到「不设密码」的默认形态：锁一下再进，一次就过
+        _vault.Lock();
+        Assert.True(await _vault.OpenAsync());
+
+        // 数据库里也确实清掉了，不会重启后又冒出一道门
+        var stored = await _repo.GetSettingAsync(VaultService.CredentialSettingKey);
+        Assert.True(string.IsNullOrEmpty(stored));
+    }
+
     /// <summary>只用到 DataDirectory 的极简配置桩。</summary>
     private sealed class StubConfig : IAppConfigService
     {

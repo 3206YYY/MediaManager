@@ -136,6 +136,21 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
         }
     }
 
+    // ---------- 密码入口（可选功能）----------
+    // 顶栏按钮的文字直接反映当前状态，用户一眼就知道自己有没有设过密码。
+
+    public string PasswordButtonText => _vault.IsConfigured ? "🔑 密码已开启" : "🔑 设置密码";
+
+    public string PasswordButtonTip => _vault.IsConfigured
+        ? "已设密码：关闭私密空间后再次进入需要输入。点这里可以修改或取消密码"
+        : "给私密空间设一个密码（可选）。不设也照样能用，只是谁点都能打开";
+
+    private void UpdatePasswordUi()
+    {
+        Raise(nameof(PasswordButtonText));
+        Raise(nameof(PasswordButtonTip));
+    }
+
     private void Raise([CallerMemberName] string? name = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
@@ -471,6 +486,55 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
     private async void OnRefreshClick(object sender, RoutedEventArgs e) => await RefreshAfterChangeAsync();
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>
+    /// 密码入口。**用户不点就不会有任何弹窗** —— 这是刻意为之：
+    /// 密码对多数人只是麻烦，对少数人是个心安，该由用户自己判断，代码不替他做主。
+    ///
+    /// 没设过密码 → 直接进设置窗；设过了 → 弹出「修改 / 取消」两项。
+    /// </summary>
+    private void OnPasswordMenuClick(object sender, RoutedEventArgs e)
+    {
+        if (!_vault.IsConfigured)
+        {
+            if (!VaultPasswordWindow.TrySetup(_vault)) return;
+
+            UpdatePasswordUi();
+            StatusText.Text = "🔑 已设置密码 · 关掉这个窗口后再进来就要输密码了";
+            return;
+        }
+
+        var menu = new ContextMenu();
+
+        var change = new MenuItem { Header = "✏ 修改密码…" };
+        change.Click += (_, _) =>
+        {
+            if (!VaultPasswordWindow.TryChange(_vault)) return;
+
+            UpdatePasswordUi();
+            StatusText.Text = "🔑 密码已修改";
+        };
+
+        var remove = new MenuItem { Header = "🔓 取消密码…" };
+        remove.Click += (_, _) =>
+        {
+            if (!VaultPasswordWindow.TryRemove(_vault)) return;
+
+            UpdatePasswordUi();
+            StatusText.Text = "🔓 已取消密码 · 以后进私密空间不再需要密码（文件仍然藏着）";
+        };
+
+        menu.Items.Add(change);
+        menu.Items.Add(remove);
+
+        if (sender is FrameworkElement fe)
+        {
+            menu.PlacementTarget = fe;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        }
+
+        menu.IsOpen = true;
+    }
 
     private void OnOpenVaultFolderClick(object sender, RoutedEventArgs e)
     {
