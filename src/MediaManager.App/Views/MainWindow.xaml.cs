@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using MediaManager.App.Services;
 using MediaManager.App.ViewModels;
 using MediaManager.App.Views.Dialogs;
+using MediaManager.Core.Media;
 using MediaManager.Core.Services;
 using MediaManager.Infrastructure.FileSystem;
 using Microsoft.Extensions.DependencyInjection;
@@ -899,17 +900,12 @@ public partial class MainWindow : Window
         // 记录最近查看
         _ = _viewModel.RecordViewAsync(item.Id);
 
-        switch (item.Media.MediaType)
+        // 音频 / 文档 / 压缩包不再内置预览，直接交给系统默认程序。
+        // 判断统一走 MediaOpenStrategy（图片视频必须内置，见那里的注释）。
+        if (MediaOpenStrategy.UseExternalApp(item.Media.MediaType))
         {
-            case Core.Enums.MediaType.Audio:
-                OpenAudio(item.Path);
-                return;
-            case Core.Enums.MediaType.Text:
-                OpenText(item.Path);
-                return;
-            case Core.Enums.MediaType.Archive:
-                OpenArchive(item.Path);
-                return;
+            OpenWithExternalApp(item.Path);
+            return;
         }
 
         if (item.IsVideo)
@@ -945,34 +941,16 @@ public partial class MainWindow : Window
         WindowThemeHelper.ApplyTitleBarDarkMode(window, App.IsDarkTheme);
     }
 
-    // ---------- 扩展类型独立窗口 ----------
+    // ---------- 交给系统默认程序 ----------
 
-    private void OpenAudio(string path)
+    /// <summary>
+    /// 用系统默认关联程序打开（右键菜单 / Ctrl+O / 音频文档压缩包的默认双击）。
+    /// 失败弹提示而不是静默 —— 拔盘、没关联程序都很常见，静默会让人以为点了没反应。
+    /// </summary>
+    private void OpenWithExternalApp(string? path)
     {
-        // 不设 Owner：主窗口最小化时音频窗口要能继续播 / 继续看
-        var w = new AudioPlayerWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-        w.Play(path);
-        w.Show();
-        w.Activate();
-        WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
-    }
-
-    private void OpenText(string path)
-    {
-        var w = new TextPreviewWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-        w.Load(path);
-        w.Show();
-        w.Activate();
-        WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
-    }
-
-    private void OpenArchive(string path)
-    {
-        var w = new ArchiveInfoWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-        w.Load(path);
-        w.Show();
-        w.Activate();
-        WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
+        if (ShellHelper.TryOpenWithDefaultApp(path, out var error)) return;
+        CustomMessageBox.Warn(error ?? "打开失败。", "用系统默认程序打开");
     }
 
     /// <summary>
@@ -1108,9 +1086,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (audios.Count > 0) { OpenAudio(audios[0]); return; }
-        if (texts.Count > 0) { OpenText(texts[0]); return; }
-        if (archives.Count > 0) { OpenArchive(archives[0]); return; }
+        if (audios.Count > 0) { OpenWithExternalApp(audios[0]); return; }
+        if (texts.Count > 0) { OpenWithExternalApp(texts[0]); return; }
+        if (archives.Count > 0) { OpenWithExternalApp(archives[0]); return; }
 
         if (firstImage != null) OpenImageStandalone(firstImage);
     }
@@ -1201,6 +1179,14 @@ public partial class MainWindow : Window
                 case Key.Enter:
                     _ = OpenSelectedLocationAsync();
                     e.Handled = true;
+                    break;
+                case Key.O:
+                    // Ctrl+O：用系统默认程序打开选中项（PS / PotPlayer 这类外部工具）
+                    if (ThumbList.SelectedItem is ThumbnailItemViewModel openItem)
+                    {
+                        OpenWithExternalApp(openItem.Path);
+                        e.Handled = true;
+                    }
                     break;
                 case Key.L:
                     // Ctrl+L：开 / 关私密空间窗口。有人在旁边时最顺手的「藏起来」组合键
@@ -1382,6 +1368,13 @@ public partial class MainWindow : Window
         _ = OpenSelectedLocationAsync();
     }
 
+    /// <summary>右键「用系统默认程序打开」/ Ctrl+O：交给 Photoshop、PotPlayer 这类专业软件。</summary>
+    private void OnOpenExternallyMenu(object sender, RoutedEventArgs e)
+    {
+        if (ThumbList.SelectedItem is ThumbnailItemViewModel item)
+            OpenWithExternalApp(item.Path);
+    }
+
     /// <summary>在资源管理器中定位到选中文件（多选时定位第一个）。</summary>
     private async Task OpenSelectedLocationAsync()
     {
@@ -1521,6 +1514,16 @@ public partial class MainWindow : Window
     private void OnContextMenuOpened(object sender, RoutedEventArgs e)
     {
         if (sender is not ContextMenu cm) return;
+
+        // 右键点在「没被选中」的那一项上：先把它选中。
+        // 不这么做的话，菜单里的「用系统默认程序打开」「打开所在位置」会作用在上一次选中的项上 ——
+        // 用户右键 A、结果打开了 B，这比菜单项失灵还难排查。点在空白处则不动选中。
+        var hit = VisualTreeHelper.HitTest(ThumbList, Mouse.GetPosition(ThumbList))?.VisualHit;
+        if (FindAncestor<ListBoxItem>(hit)?.DataContext is ThumbnailItemViewModel rightClicked
+            && !ThumbList.SelectedItems.Contains(rightClicked))
+        {
+            ThumbList.SelectedItem = rightClicked;
+        }
 
         var selected = GetSelectedItems();
         var single = selected.Count == 1 ? selected[0] : null;

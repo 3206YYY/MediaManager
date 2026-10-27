@@ -23,7 +23,7 @@ C 盘、D 盘、移动硬盘里的图片、视频、音频、文档、压缩包�
 ### 🎛 不止图片视频
 
 图片和视频之外，**音频（mp3/flac/…）、文档（txt/md/…）、压缩包（zip/rar/7z/…）** 也能一起入库，
-按类型多选筛选、只读预览；**共支持 79 个常见扩展名**。
+按类型多选筛选；**共支持 79 个常见扩展名**，双击即用系统里装好的专业软件打开。
 
 ### ✨ 让照片主动来找你
 
@@ -57,7 +57,7 @@ C 盘、D 盘、移动硬盘里的图片、视频、音频、文档、压缩包�
 - 🕒 **时光机**：自动备份保留最近 7 个时间节点，列表里能看到每个节点的备份时间与大小，选一个就能把整个整理库退回去；恢复前会先存一份当前状态，坏节点一律拒绝。
 - ⌨️ **快捷键顺手**：主界面单键就能干活（`R` 换一批、`F` 收藏、`1`~`5` 打星），**中文输入法下也照常生效**，不会弹候选框；全局热键可自定义（默认 `Ctrl+Alt+Shift+M` 唤起窗口）。
 - 🎲 **不想挑就随机**：查看器按 `R` 随机跳一张，范围可选当前列表 / 当前文件夹 / 全部库 / 仅收藏。
-- 🗂 **多格式扩展（共 79 个扩展名）**：图片、视频之外，**音频（mp3 等）、文档（txt/md 等）、压缩包（zip/rar/7z 等）** 也能一起入库、按类型筛选、只读预览（音频播放 / 文本预览 / 压缩包条目）。可在 设置 → 插件扩展 里开关。
+- 🗂 **多格式扩展（共 79 个扩展名）**：图片、视频之外，**音频（mp3 等）、文档（txt/md 等）、压缩包（zip/rar/7z 等）** 也能一起入库、按类型筛选。双击时不另开半成品窗口，直接交给系统默认程序（你的 Foobar / VS Code / WinRAR），右键还有「用系统默认程序打开（Ctrl+O）」。可在 设置 → 插件扩展 里开关。
 - 🧩 **可扩展**：官方没做的小功能，可以用插件接口自己加（见 [插件接口](docs/plugin-api.md)）。
 - 📦 **极致轻量**：安装包仅 97MB，免装 .NET 运行库，傻瓜式一键安装。
 
@@ -73,7 +73,7 @@ C 盘、D 盘、移动硬盘里的图片、视频、音频、文档、压缩包�
 | 文档 | 24 | `.txt .md .log .json .csv .xml .yaml .yml .htm .html .srt .ass .ssa .toml` + 代码 `.py .js .css .cs .java .go .rs .sql .bat .ps1` |
 | 压缩包 | 10 | `.zip .rar .7z .tar .gz .bz2 .xz .tgz .tbz2 .txz` |
 
-> 除图片/视频外，均为**只读预览**；`rar / 7z / bz2 / xz` 读取依赖 SharpCompress。
+> 图片和视频用**内置查看器**（随机跳转、快捷键、编辑器只在这里）；音频、文档、压缩包双击交给**系统默认关联程序**，不自带播放器 / 阅读器。
 > 完整行为见 [v1.4.0 更新说明](docs/changelog/v1.4.0.md)。
 
 ---
@@ -118,9 +118,8 @@ C 盘、D 盘、移动硬盘里的图片、视频、音频、文档、压缩包�
 | Microsoft.Data.Sqlite + Dapper | 数据库（**不用 EF Core**） |
 | SixLabors.ImageSharp | 图片缩略图与编辑 |
 | MetadataExtractor | EXIF 读取 |
-| LibVLCSharp.WPF | 视频播放 / 音频播放 |
+| LibVLCSharp.WPF | 视频播放 |
 | FFmpeg | 视频抽帧 / 特殊格式解码 |
-| SharpCompress | rar / 7z / bz2 / xz 等压缩包读取 |
 | Serilog | 文件日志 |
 | VirtualizingWrapPanel | 缩略图虚拟化 |
 | Inno Setup | 打包 |
@@ -129,10 +128,10 @@ C 盘、D 盘、移动硬盘里的图片、视频、音频、文档、压缩包�
 
 ```
 MediaManager.sln
-├─ src/MediaManager.App/               WPF UI（主窗口 / 查看器 / 视频·音频播放器 / 文本预览 / 压缩包查看 / 私密空间 / 日记 / 设置 / 插件宿主）
+├─ src/MediaManager.App/               WPF UI（主窗口 / 图片查看器+编辑器 / 视频播放器 / 私密空间 / 日记 / 设置 / 插件宿主）
 ├─ src/MediaManager.Core/              领域模型、接口、纯逻辑（编辑/媒体/插件契约）
 ├─ src/MediaManager.Infrastructure/    SQLite、文件系统、缩略图、便携模式
-├─ tests/MediaManager.Tests/           单元测试（241 项）
+├─ tests/MediaManager.Tests/           单元测试（248 项）
 ├─ docs/plugin-template/               插件模板（可编译的最小示例）
 ├─ tools/ffmpeg/                       ffmpeg.exe（不进仓库；Release 安装包已内置）
 └─ build/installer.iss                 Inno Setup 安装脚本

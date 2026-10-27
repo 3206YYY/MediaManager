@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 
@@ -27,6 +28,60 @@ public static class ShellHelper
         {
             // 少数环境 UseShellExecute 打开目录失败，退回 explorer.exe
             Process.Start("explorer.exe", $"\"{path}\"");
+        }
+    }
+
+    /// <summary>
+    /// 用 Windows 默认关联程序打开文件（等价在资源管理器里双击）。
+    /// <para>
+    /// 音频 / 文档 / 压缩包走这条路：这些格式的「专业工具」用户自己机器上就有，
+    /// 内置一个半成品播放器 / 文本预览反而占体积、还要为每种编码和换行符踩坑。
+    /// </para>
+    /// <para>
+    /// 失败不抛异常，把原因写进 <paramref name="error"/> 交给调用方弹提示 —— 拔了盘、
+    /// 文件被移走、系统里没有这类文件的关联程序，都是很常见的情况。
+    /// </para>
+    /// </summary>
+    public static bool TryOpenWithDefaultApp(string? path, out string? error)
+    {
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            error = "文件路径为空。";
+            return false;
+        }
+
+        if (!File.Exists(path))
+        {
+            var root = Path.GetPathRoot(path);
+            error = !string.IsNullOrEmpty(root) && !Directory.Exists(root)
+                ? $"设备已断开（可能是移动硬盘 / U 盘被拔出）：\n{path}"
+                : $"文件不在原位，可能已被移动或删除：\n{path}";
+            return false;
+        }
+
+        try
+        {
+            // UseShellExecute=true 才会走 shell 关联（Windows 按扩展名找默认程序）。
+            // 返回的 Process 不需要等，Dispose 掉只是为了不留句柄。
+            using var _ = Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            return true;
+        }
+        catch (Win32Exception ex)
+        {
+            // 1155 = ERROR_NO_ASSOCIATION（没有关联程序），1223 = 用户在 UAC 弹窗点了取消
+            error = ex.NativeErrorCode == 1223
+                ? "已取消（系统权限弹窗被关闭）。"
+                : $"系统里没有为这类文件配置默认程序。\n可以右键「打开所在位置」，再选一个程序打开。\n\n（{path}）";
+            Serilog.Log.Information(ex, "外部打开失败（无关联程序）：{Path}", path);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            error = $"调用系统默认程序失败：{ex.Message}";
+            Serilog.Log.Warning(ex, "外部打开失败：{Path}", path);
+            return false;
         }
     }
 

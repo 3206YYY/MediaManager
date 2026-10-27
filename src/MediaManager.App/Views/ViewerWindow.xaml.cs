@@ -3830,6 +3830,14 @@ public partial class ViewerWindow : Window
             e.Handled = true;
             return;
         }
+        // Ctrl+O：把这当前这张丢给系统默认看图软件（PS / 别的看图工具）。
+        // 查看器本身仍然是内置的 —— 随机跳转、快捷键、编辑器、时光轴只有内置才有。
+        if (ctrl && e.Key == Key.O)
+        {
+            OpenCurrentExternally();
+            e.Handled = true;
+            return;
+        }
         // Ctrl+0 / Ctrl+小键盘0：回到适应窗口（与工具栏按钮一致，不在画面上做双击手势）
         // 文字编辑中不响应：否则正在输入的文本框会跟着缩放移动
         if (!IsTextEditing && ctrl && (e.Key == Key.D0 || e.Key == Key.NumPad0))
@@ -4307,6 +4315,16 @@ public partial class ViewerWindow : Window
             WindowState = _prevState;
             _isFullScreen = false;
         }
+    }
+
+    /// <summary>Ctrl+O：用系统默认程序打开当前这张（不影响内置查看器继续留在屏幕上）。</summary>
+    private void OpenCurrentExternally()
+    {
+        var item = _viewModel.CurrentItem;
+        if (item == null || string.IsNullOrWhiteSpace(item.Path)) return;
+
+        if (ShellHelper.TryOpenWithDefaultApp(item.Path, out var error)) return;
+        CustomMessageBox.Warn(error ?? "打开失败。", "用系统默认程序打开");
     }
 
     private void OpenCurrentLocation()

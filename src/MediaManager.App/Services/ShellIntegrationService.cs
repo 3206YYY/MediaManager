@@ -6,6 +6,21 @@ namespace MediaManager.App.Services;
 /// <summary>
 /// 资源管理器右键集成：在 HKCU 下注册「用媒体管理器打开」，无需管理员权限。
 /// 只写当前用户，卸载/关闭开关时干净删除，不污染系统。
+/// <para>
+/// <b>三条红线（改这个文件前先读，改完跑 build/check_shell_integration.py）：</b>
+/// </para>
+/// <list type="number">
+/// <item>只写 <c>HKEY_CURRENT_USER</c>。绝不碰 HKLM / HKCR —— 装个软件不该动全机器。</item>
+/// <item><b>绝不修改文件的默认关联</b>。这里只往 <c>shell\MediaManagerOpen</c> 下加一个并列的
+///   动词，不碰 <c>shell\open</c>，也不碰 Win10 之后的 <c>UserChoice</c>。
+///   用户双击 jpg 打开的仍然是系统原来的看图软件（不是我们）——这是刻意的。</item>
+/// <item>只加注册表项，<b>不改文件本身的任何属性</b>（不写只读、不挪位置、不打标记）。</item>
+/// </list>
+/// <para>
+/// 用 <c>SystemFileAssociations\&lt;ext&gt;\shell\...</c> 而不是 <c>Classes\*\shell\...</c>：
+/// 后者会在 exe / dll / 快捷方式上统统冒出一项「用媒体管理器打开」，右键菜单被搞脏；
+/// 前者只对注册过的那几十个媒体扩展名生效，同样是用户级、同样不用管理员。
+/// </para>
 /// </summary>
 public static class ShellIntegrationService
 {

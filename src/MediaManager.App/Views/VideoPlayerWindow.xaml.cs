@@ -1371,8 +1371,17 @@ public partial class VideoPlayerWindow : Window
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         var modifiers = Keyboard.Modifiers;
 
-        // Ctrl 组合键留给系统 / 其它功能，不抢
-        if ((modifiers & ModifierKeys.Control) != 0) return false;
+        // Ctrl 组合键交给系统 / 其它功能，只有 Ctrl+O 例外：
+        // 把当前视频丢给系统默认播放器（PotPlayer / MPC 这类更专业的）
+        if ((modifiers & ModifierKeys.Control) != 0)
+        {
+            if (key == Key.O)
+            {
+                OpenCurrentExternally();
+                return true;
+            }
+            return false;
+        }
 
         if (key == Key.Enter && modifiers == ModifierKeys.Alt)
         {
@@ -1426,6 +1435,17 @@ public partial class VideoPlayerWindow : Window
         }
 
         return false;
+    }
+
+    /// <summary>Ctrl+O：用系统默认播放器打开当前这个视频（内置播放器继续留着，不关）。</summary>
+    private void OpenCurrentExternally()
+    {
+        if (_playlistIndex < 0 || _playlistIndex >= _playlist.Count) return;
+        var path = _playlist[_playlistIndex];
+
+        if (ShellHelper.TryOpenWithDefaultApp(path, out var error)) return;
+        MessageBox.Show(this, error ?? "打开失败。", "用系统默认程序打开",
+            MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void PlayPrevious()

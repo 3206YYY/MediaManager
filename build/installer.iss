@@ -151,6 +151,8 @@ begin
         'Software\Classes\SystemFileAssociations\' + Names[I] + '\shell\MediaManagerOpen');
   end;
   RegDeleteKeyIfEmpty(HKCU, 'Software\MediaManager\ShellExtensions');
+  // 把开关标记值也去掉，否则 'Software\MediaManager' 因非空永远删不掉，留个空壳键
+  RegDeleteKeyValue(HKCU, 'Software\MediaManager', 'ShellIntegration');
   RegDeleteKeyIfEmpty(HKCU, 'Software\MediaManager');
 end;
 

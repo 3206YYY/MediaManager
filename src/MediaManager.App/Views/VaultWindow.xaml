@@ -185,6 +185,7 @@
                     <ListBox.ContextMenu>
                         <ContextMenu x:Name="ItemMenu">
                             <MenuItem Header="打开" Click="OnOpenMenu" />
+                            <MenuItem Header="📂 用系统默认程序打开" Click="OnOpenExternallyMenu" />
                             <MenuItem Header="📂 打开所在位置" Click="OnOpenLocationMenu" />
                             <Separator />
                             <MenuItem x:Name="MoveToSectionMenu" Header="📁 放进分区" />

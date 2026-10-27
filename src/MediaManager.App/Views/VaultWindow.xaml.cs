@@ -11,6 +11,7 @@ using MediaManager.App.ViewModels;
 using MediaManager.App.Views.Dialogs;
 using MediaManager.Core.Diagnostics;
 using MediaManager.Core.Enums;
+using MediaManager.Core.Media;
 using MediaManager.Core.Models;
 using MediaManager.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -662,8 +663,19 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
     }
 
     /// <summary>按类型开对应的独立窗口。窗口都不挂 Owner：最小化互不牵连。</summary>
+    /// <remarks>
+    /// 图片 / 视频用内置查看器（随机跳转、快捷键、编辑器这些卖点只在内置窗口里成立）；
+    /// 音频 / 文档 / 压缩包一律交给系统默认程序，返回 null 表示「没有需要跟着一起关的窗口」。
+    /// </remarks>
     private Window? OpenInWindow(MediaItem media)
     {
+        // 音频 / 文档 / 压缩包：交给系统默认程序，返回 null（没有需要跟着一起关的窗口）
+        if (MediaOpenStrategy.UseExternalApp(media.MediaType))
+        {
+            OpenWithExternalApp(media.Path);
+            return null;
+        }
+
         switch (media.MediaType)
         {
             case MediaType.Image:
@@ -693,32 +705,22 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
                 return player;
             }
             case MediaType.Audio:
-            {
-                var w = new AudioPlayerWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-                w.Play(media.Path);
-                w.Show();
-                WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
-                return w;
-            }
             case MediaType.Text:
-            {
-                var w = new TextPreviewWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-                w.Load(media.Path);
-                w.Show();
-                WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
-                return w;
-            }
             case MediaType.Archive:
-            {
-                var w = new ArchiveInfoWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-                w.Load(media.Path);
-                w.Show();
-                WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
-                return w;
-            }
+                OpenWithExternalApp(media.Path);
+                return null;
             default:
+                // 正常走不到（前面已按 MediaOpenStrategy 分流）：宁可交给系统，也别点了没反应
+                OpenWithExternalApp(media.Path);
                 return null;
         }
+    }
+
+    /// <summary>用系统默认关联程序打开（音频 / 文档 / 压缩包，以及右键菜单与 Ctrl+O）。</summary>
+    private void OpenWithExternalApp(string? path)
+    {
+        if (ShellHelper.TryOpenWithDefaultApp(path, out var error)) return;
+        CustomMessageBox.Warn(error ?? "打开失败。", "用系统默认程序打开");
     }
 
     // ---------- 右键菜单 ----------
@@ -821,6 +823,13 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
     {
         var item = GetSelected();
         if (item != null && OpenInWindow(item.Media) is { } w) _childWindows.Add(w);
+    }
+
+    /// <summary>右键「用系统默认程序打开」：私密文件也能丢给外部软件看，不经过内置窗口。</summary>
+    private void OnOpenExternallyMenu(object sender, RoutedEventArgs e)
+    {
+        var item = GetSelected();
+        if (item != null) OpenWithExternalApp(item.Media.Path);
     }
 
     private void OnOpenLocationMenu(object sender, RoutedEventArgs e)
@@ -1004,6 +1013,14 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
         if (e.Key == Key.Escape)
         {
             Close();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+O：用系统默认程序打开选中项（与主界面同一个键位）
+        if (e.Key == Key.O && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            OnOpenExternallyMenu(sender, e);
             e.Handled = true;
         }
     }

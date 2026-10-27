@@ -443,6 +443,7 @@
                             <Separator />
                             <MenuItem x:Name="CategoryMenu" Header="📁 分类" />
                             <Separator />
+                            <MenuItem Header="📂 用系统默认程序打开 (Ctrl+O)" Click="OnOpenExternallyMenu" />
                             <MenuItem Header="📂 打开所在位置 (Ctrl+Enter)" Click="OnOpenLocationMenu" />
                             <MenuItem Header="重命名 (F2)" Click="OnRenameMenu" />
                             <MenuItem x:Name="BatchRenameMenu" Header="✏ 批量重命名…" Click="OnBatchRenameMenu" />

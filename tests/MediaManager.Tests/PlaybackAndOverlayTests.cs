@@ -64,7 +64,7 @@ public class SeekRequestCoalescerTests
     }
 
     [Fact]
-    public void ConcurrentBurst_ShouldNeverRunSeeksInParallel()
+    public async Task ConcurrentBurst_ShouldNeverRunSeeksInParallel()
     {
         var c = new SeekRequestCoalescer();
         var executed = new List<long>();
@@ -72,7 +72,14 @@ public class SeekRequestCoalescerTests
         var maxParallel = 0;
         var gate = new object();
 
-        void Worker(long first)
+        // 用信号控制「底层 Seek 正在执行」这件事，而不是靠 Thread.Sleep 比拼速度。
+        // 原先的写法是「每 1ms 提交一个、每次执行 Sleep(5)」，靠相对快慢保证「执行期间又来了请求」；
+        // 但 Windows 上 Sleep(1) 实际可能睡 15ms，全量跑测试时机器一忙，每个请求都能赶上一次新执行，
+        // executed.Count 就变成 100，断言 `< 100` 假失败（v1.4.0 发版时就偶发过一次）。
+        using var firstStarted = new ManualResetEventSlim(false);
+        using var releaseFirst = new ManualResetEventSlim(false);
+
+        void Worker(long first, bool isFirst)
         {
             var target = first;
             while (true)
@@ -84,7 +91,17 @@ public class SeekRequestCoalescerTests
                     executed.Add(target);
                 }
 
-                Thread.Sleep(5); // 模拟底层 Seek 的耗时
+                if (isFirst)
+                {
+                    // 第一次执行故意卡住：主线程趁这段时间把剩下的请求全提交完，
+                    // 于是「执行期间来了新请求」成了必然事件，不再依赖调度运气。
+                    firstStarted.Set();
+                    Assert.True(releaseFirst.Wait(TimeSpan.FromSeconds(10)), "第一次执行没被放行");
+                }
+                else
+                {
+                    Thread.Sleep(5); // 模拟底层 Seek 的耗时
+                }
 
                 lock (gate) running--;
 
@@ -92,23 +109,30 @@ public class SeekRequestCoalescerTests
             }
         }
 
-        // 每 1ms 提交一个，底层每次要 5ms → 必然出现「执行期间又来了新请求」
-        for (var i = 1; i <= 100; i++)
-        {
-            if (c.TryBegin(i * 10, out var first))
-                _ = Task.Run(() => Worker(first));
+        // 第一枪：先让它真正进入执行
+        Assert.True(c.TryBegin(10, out var firstTarget));
+        var firstWorker = Task.Run(() => Worker(firstTarget, isFirst: true));
+        Assert.True(firstStarted.Wait(TimeSpan.FromSeconds(10)), "第一次执行没启动");
 
+        // 执行期间连打 99 个：全部应该被合并（TryBegin 返回 false）
+        for (var i = 2; i <= 100; i++)
+        {
+            Assert.False(c.TryBegin(i * 10, out _), $"第 {i} 个请求不该开新执行");
             Thread.Sleep(1);
         }
+
+        releaseFirst.Set();
+        await firstWorker.WaitAsync(TimeSpan.FromSeconds(10));
 
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (c.IsRunning && DateTime.UtcNow < deadline)
             Thread.Sleep(5);
 
         Assert.False(c.IsRunning);
-        Assert.Equal(1, maxParallel);              // 永远不会并发执行
-        Assert.Equal(1000, executed[^1]);          // 最终一定落到最后一个目标
-        Assert.True(executed.Count < 100);         // 中间请求被合并
+        Assert.Equal(1, maxParallel);                 // 永远不会并发执行
+        Assert.Equal(1000, executed[^1]);             // 最终一定落到最后一个目标
+        Assert.Equal(2, executed.Count);              // 首枪 + 补跑最新一次，其余全被合并
+        Assert.Equal(99, c.DroppedCount);             // 合并掉的正是那 99 个
     }
 
     [Fact]
