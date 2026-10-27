@@ -77,5 +77,8 @@ build/diag_*.py
 build/acceptance.py
 # 社交预览校验的临时抓图（check_social_preview.py 产物）
 build/og_preview_check.png
+# 封面重刷脚本的预览产物（patch_cover_version.py --dry-run）
+build/_cover_preview.png
+build/_cover_cmp.png
 TestResults/
 代码评审*.md
