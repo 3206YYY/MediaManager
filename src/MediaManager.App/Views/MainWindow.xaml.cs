@@ -8,6 +8,7 @@ using System.Windows.Threading;
 using MediaManager.App.Services;
 using MediaManager.App.ViewModels;
 using MediaManager.App.Views.Dialogs;
+using MediaManager.Core.Services;
 using MediaManager.Infrastructure.FileSystem;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -80,8 +81,180 @@ public partial class MainWindow : Window
         UpdateThemeGlyph();
         // 设置页里也可能改主题：回到主窗口时对齐图标，不要出现「明明是浅色却显示月亮」
         Activated += (_, _) => UpdateThemeGlyph();
+
+        AttachVault();
     }
 
+    // ===================================================================
+    //  私密空间（独立窗口）
+    // ===================================================================
+
+    private IVaultService? _vault;
+    private VaultWindow? _vaultWindow;
+
+    private void AttachVault()
+    {
+        try
+        {
+            _vault = App.Services.GetRequiredService<IVaultService>();
+            Serilog.Log.Debug("AttachVault: IVaultService 已就绪");
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "AttachVault: IVaultService 解析失败");
+            return;
+        }
+
+        // 保险箱被关上（窗口关闭 / 空闲自动关闭）→ 只需要给主界面一句反馈。
+        // 内容切换都在 VaultWindow 里完成，主界面自始至终没展示过私密内容。
+        _vault.Locked += (_, _) => Dispatcher.BeginInvoke(new Action(() =>
+            _viewModel.StatusText = "🔒 私密空间已关闭"));
+    }
+
+    /// <summary>
+    /// 打开私密空间窗口（单实例）。
+    ///
+    /// 私密空间是「打开 — 用 — 关上」的一个场所：独立窗口、关掉就是关上。
+    /// 主界面不承载「我正在看私密内容吗」的状态 —— 少一个状态位，就少一个把
+    /// 私密内容漏进普通视图的口子。
+    /// </summary>
+    private void OpenVaultWindow()
+    {
+        Serilog.Log.Debug("OpenVaultWindow: 入口，vault={Has}, window={HasWindow}", _vault != null, _vaultWindow != null);
+        if (_vault == null) return;
+
+        if (_vaultWindow is { IsLoaded: true })
+        {
+            if (_vaultWindow.WindowState == WindowState.Minimized)
+                _vaultWindow.WindowState = WindowState.Normal;
+            _vaultWindow.Activate();
+            return;
+        }
+
+        // 这里可能从 PreviewMouseLeftButtonDown 进来，和日记同理：等点击处理完再开窗。
+        // ⚠ 必须显式包成 Action：BeginInvoke(async lambda, priority) 会把 priority 当成
+        // 委托的实参（匹配到 BeginInvoke(Delegate, params object[])），调度时参数数量
+        // 对不上直接抛异常，窗口永远开不出来。
+        Dispatcher.BeginInvoke(new Action(async () =>
+        {
+            if (_vaultWindow is { IsLoaded: true }) return;
+
+            // 记录「已打开」状态：VaultWindow 关闭时会 Lock()，Locked 事件才有意义
+            await _vault.OpenAsync();
+
+            var window = new VaultWindow();
+            window.Closed += (_, _) => _vaultWindow = null;
+            _vaultWindow = window;
+
+            window.Show();
+            window.Activate();
+        }), DispatcherPriority.Background);
+
+        _viewModel.StatusText = "🔒 私密空间已打开 · 关闭窗口或 5 分钟无操作自动退出";
+    }
+
+    // ===================================================================
+    //  日记
+    // ===================================================================
+
+    /// <summary>日记窗口（独立、非模态；关掉主窗口时一起关）。</summary>
+    private DiaryWindow? _diaryWindow;
+
+    /// <summary>
+    /// 打开日记窗口。
+    ///
+    /// 刻意**不设 Owner、不用 ShowDialog**：
+    /// <list type="bullet">
+    /// <item>设了 Owner 之后两个窗口的最小化会被系统绑在一起 —— 点日记的最小化，
+    /// 主界面跟着一起收进任务栏；</item>
+    /// <item>ShowDialog 会把主界面整个禁用，用户写着日记想回主界面挑几张图都做不到，
+    /// 只能先关掉日记再重开。</item>
+    /// </list>
+    /// 改成独立窗口 + 单实例：主界面照常可用，再点「写进日记」就复用已有的日记窗口。
+    /// </summary>
+    private void OpenDiary(IEnumerable<Core.Models.MediaItem>? presetMedia = null)
+    {
+        var media = presetMedia?.ToList();
+
+        if (_diaryWindow is { IsLoaded: true })
+        {
+            if (_diaryWindow.WindowState == WindowState.Minimized)
+                _diaryWindow.WindowState = WindowState.Normal;
+
+            _diaryWindow.Activate();
+            _diaryWindow.Focus();
+
+            if (media is { Count: > 0 })
+                _diaryWindow.AddMediaAsNewEntry(media);
+            return;
+        }
+
+        // 这里是从 PreviewMouseLeftButtonDown 里调进来的：点击事件还没走完，
+        // ListBoxItem 还握着鼠标捕获，此刻 Show 出来的窗口刚被激活就被主窗口抢回焦点，
+        // 结果就是「点了日记，窗口开在后面，看着像没反应」。
+        // 丢到 Background 优先级，等这次点击彻底处理完再开窗。
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_diaryWindow is { IsLoaded: true }) return;
+
+            var window = new DiaryWindow(media);
+            window.Closed += (_, _) => _diaryWindow = null;
+            _diaryWindow = window;
+
+            window.Show();
+            window.Activate();
+            window.Focus();
+        }), DispatcherPriority.Background);
+    }
+
+    /// <summary>右键「写进日记」：把当前选中的照片/视频带进新的一篇。</summary>
+    private void OnAddToDiaryMenu(object sender, RoutedEventArgs e)
+    {
+        var items = GetSelectedItems();
+        if (items.Count == 0) return;
+
+        OpenDiary(items.Select(i => i.Media));
+    }
+
+    /// <summary>右键「移入私密空间」。</summary>
+    private async void OnMoveIntoVaultMenu(object sender, RoutedEventArgs e)
+    {
+        if (_vault == null) return;
+
+        var items = GetSelectedItems();
+        if (items.Count == 0) return;
+        // 用普通确认框而不是 ConfirmDanger：移入私密空间不是破坏性操作，
+        // 红色「删除」那种警示反而吓人（文件随时可以移回来）
+        var confirm = CustomMessageBox.Confirm(
+            $"把这 {items.Count} 项移入私密空间？\n\n"
+            + "· 文件会被移动到数据目录下的 Vault 文件夹（隐藏）\n"
+            + "· 主界面、搜索、文件夹视图里都不会再出现\n"
+            + "· 不加密，只是「藏起来」：懂电脑的人翻到 Vault 目录还是能打开\n"
+            + "· 想拿回来随时右键「移出私密空间」，文件不会丢",
+            "移入私密空间",
+            confirmText: "移入");
+        if (!confirm) return;
+
+        var result = await VaultOperations.MoveIntoVaultAsync(items.Select(i => i.Media).ToList());
+
+        await _viewModel.RefreshPrivateCountAsync();
+        await _viewModel.RefreshCommand.ExecuteAsync(null);
+
+        if (result.Failures.Count == 0)
+        {
+            _viewModel.StatusText = $"已移入私密空间：{result.Moved} 项";
+        }
+        else
+        {
+            _viewModel.StatusText = $"移入完成 {result.Moved} 项，{result.Failures.Count} 项失败（文件仍在原处）";
+            CustomMessageBox.Warn(
+                "下面这些没移成功（文件都还在原处，没有丢）：\n\n" + string.Join("\n", result.Failures.Take(10)),
+                "部分文件未移动");
+        }
+    }
+
+    /// <summary>右键「移出私密空间」：挪回原路径，原目录不在就留在保险箱里。
+    /// 主网格里本来就是普通内容，这个菜单项保留给「保险箱窗口拖内容过来」之外的兜底场景。</summary>
     // ===================================================================
     //  主题快捷开关（最常用，所以放主界面）
     // ===================================================================
@@ -223,6 +396,22 @@ public partial class MainWindow : Window
         {
             item.IsSelected = false;
             OpenRecentlyDeleted();
+            return;
+        }
+
+        // 「私密空间」是独立窗口（关掉窗口就是关上保险箱），不是主界面的一个视图
+        if (key == "vault")
+        {
+            item.IsSelected = false;
+            OpenVaultWindow();
+            return;
+        }
+
+        // 「日记」是独立窗口（左边日历右边回忆），不是网格视图
+        if (key == "diary")
+        {
+            item.IsSelected = false;
+            OpenDiary();
             return;
         }
 
@@ -746,13 +935,13 @@ public partial class MainWindow : Window
         var index = items.IndexOf(item);
 
         var viewerVm = new ViewerViewModel(App.Services.GetRequiredService<Core.Services.IMediaRepository>());
-        var window = new ViewerWindow(viewerVm)
-        {
-            Owner = this,
-        };
+        // 不设 Owner：设了的话主窗口最小化会把查看器一起收进任务栏（系统把两者的
+        // 显示状态绑在一起）。查看器必须是独立的顶层窗口，自己收自己。
+        var window = new ViewerWindow(viewerVm) { WindowStartupLocation = WindowStartupLocation.CenterScreen };
         window.CopySaved += OnViewerCopySaved;
         window.SetItems(items, index);
         window.Show();
+        window.Activate();
         WindowThemeHelper.ApplyTitleBarDarkMode(window, App.IsDarkTheme);
     }
 
@@ -760,25 +949,29 @@ public partial class MainWindow : Window
 
     private void OpenAudio(string path)
     {
-        var w = new AudioPlayerWindow { Owner = this };
+        // 不设 Owner：主窗口最小化时音频窗口要能继续播 / 继续看
+        var w = new AudioPlayerWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
         w.Play(path);
         w.Show();
+        w.Activate();
         WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
     }
 
     private void OpenText(string path)
     {
-        var w = new TextPreviewWindow { Owner = this };
+        var w = new TextPreviewWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
         w.Load(path);
         w.Show();
+        w.Activate();
         WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
     }
 
     private void OpenArchive(string path)
     {
-        var w = new ArchiveInfoWindow { Owner = this };
+        var w = new ArchiveInfoWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
         w.Load(path);
         w.Show();
+        w.Activate();
         WindowThemeHelper.ApplyTitleBarDarkMode(w, App.IsDarkTheme);
     }
 
@@ -928,10 +1121,12 @@ public partial class MainWindow : Window
 
         var item = CreateStandaloneItem(path);
         var viewerVm = new ViewerViewModel(App.Services.GetRequiredService<Core.Services.IMediaRepository>());
-        var window = new ViewerWindow(viewerVm) { Owner = this };
+        // 不设 Owner：理由同上，查看器要能独立最小化 / 独立存在
+        var window = new ViewerWindow(viewerVm) { WindowStartupLocation = WindowStartupLocation.CenterScreen };
         window.CopySaved += OnViewerCopySaved;
         window.SetItems(new List<ThumbnailItemViewModel> { item }, 0);
         window.Show();
+        window.Activate();
         WindowThemeHelper.ApplyTitleBarDarkMode(window, App.IsDarkTheme);
     }
 
@@ -1006,6 +1201,17 @@ public partial class MainWindow : Window
                 case Key.Enter:
                     _ = OpenSelectedLocationAsync();
                     e.Handled = true;
+                    break;
+                case Key.L:
+                    // Ctrl+L：开 / 关私密空间窗口。有人在旁边时最顺手的「藏起来」组合键
+                    if (_vault != null)
+                    {
+                        if (_vaultWindow is { IsLoaded: true })
+                            _vaultWindow.Close();
+                        else
+                            OpenVaultWindow();
+                        e.Handled = true;
+                    }
                     break;
             }
             return;
@@ -1274,7 +1480,8 @@ public partial class MainWindow : Window
     private void OnOpenFolderMenu(object sender, RoutedEventArgs e)
     {
         if (GetContextListSelectedItem(sender) is not NavigationItemViewModel folder) return;
-        var path = folder.Title;
+        // Title 现在只是末级目录名（显示用），完整路径在 ToolTipText 里
+        var path = folder.ToolTipText ?? folder.Title;
         if (string.IsNullOrWhiteSpace(path)) return;
 
         if (!System.IO.Directory.Exists(path))
@@ -1317,6 +1524,11 @@ public partial class MainWindow : Window
 
         var selected = GetSelectedItems();
         var single = selected.Count == 1 ? selected[0] : null;
+
+        // 主网格里永远只有普通内容（私密项被查询层过滤），菜单项恒为「移入」；
+        // 「移出」只在私密空间窗口里提供
+        MoveIntoVaultMenu.Visibility = Visibility.Visible;
+        AddToDiaryMenu.Visibility = Visibility.Visible;
 
         // 批量菜单：把选中数量写进标题，避免"到底会处理几张"的疑惑
         var n = selected.Count;
@@ -1681,6 +1893,11 @@ public partial class MainWindow : Window
 
         // 真正退出
         _isReallyClosing = true;
+
+        // 这些窗口都没有 Owner，不会跟着主窗口自动关闭；不主动收掉的话，
+        // 进程会因为还有窗口活着而卡在后台（托盘已退、用户以为关了）
+        try { _diaryWindow?.Close(); } catch { /* 编辑框还开着等极端情况，忽略 */ }
+        try { _vaultWindow?.Close(); } catch { /* 私密窗口自己会收尾 */ }
     }
 
     private CloseBehavior ReadCloseBehavior()

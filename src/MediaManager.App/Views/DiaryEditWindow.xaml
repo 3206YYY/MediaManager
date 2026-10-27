@@ -1,0 +1,137 @@
+<Window x:Class="MediaManager.App.Views.DiaryEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctl="clr-namespace:MediaManager.App.Controls"
+        Title="写一篇"
+        Width="640" Height="660"
+        MinWidth="520" MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        AllowDrop="True"
+        DragOver="OnWindowDragOver"
+        DragLeave="OnWindowDragLeave"
+        Drop="OnWindowDrop"
+        Background="{DynamicResource BgBrush}">
+
+    <Window.Resources>
+        <Style x:Key="MoodButton" TargetType="Button">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" CornerRadius="6" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 日期 + 心情 -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,14">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="心情" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12.5"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <StackPanel x:Name="MoodPanel" Orientation="Horizontal" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="日期" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12.5"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <DatePicker x:Name="DateBox" Width="150" />
+            </StackPanel>
+        </DockPanel>
+
+        <TextBox x:Name="TitleBox" Grid.Row="1" MinHeight="34" Padding="8,5"
+                 FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10"
+                 ToolTip="给这篇回忆起个标题（可留空）" />
+
+        <TextBox x:Name="ContentBox" Grid.Row="2" Height="140" Padding="8,6"
+                 TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                 Margin="0,0,0,12"
+                 ToolTip="写点什么…（Ctrl+Enter 直接保存）" />
+
+        <!-- 媒体 -->
+        <DockPanel Grid.Row="3">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="＋ 从媒体库" Padding="10,4" Click="OnPickFromLibrary"
+                            ToolTip="从媒体库里挑照片 / 视频" />
+                    <Button Content="📁 从电脑" Padding="10,4" Margin="6,0,0,0" Click="OnPickFromDisk"
+                            ToolTip="从磁盘选照片 / 视频（会自动加入媒体库）" />
+                </StackPanel>
+                <TextBlock x:Name="MediaHeader" Text="照片 / 视频" FontSize="12.5"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </DockPanel>
+
+            <Grid>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="MediaItems">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Width="120" Height="92" Margin="0,0,8,8">
+                                    <Border CornerRadius="6" ClipToBounds="True"
+                                            Background="{DynamicResource SkeletonBrush}">
+                                        <Image ctl:AsyncThumbnail.SourcePath="{Binding ThumbnailPath}"
+                                               Stretch="UniformToFill"
+                                               RenderOptions.BitmapScalingMode="LowQuality" />
+                                    </Border>
+                                    <Button Content="✕" Width="20" Height="20"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                                            Margin="0,-4,-4,0" Padding="0" FontSize="10"
+                                            Tag="{Binding}" Click="OnRemoveMediaClick"
+                                            ToolTip="从这篇里移除（不会删文件）" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- 拖拽提示：只有真的在拖图片/视频时才盖上来，平时完全不占地方 -->
+                <Border x:Name="DropOverlay" Visibility="Collapsed" Margin="0,34,0,0"
+                        CornerRadius="8" Background="{DynamicResource SelectedBrush}"
+                        BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="2">
+                    <TextBlock Text="松开，加进这篇日记"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource PrimaryBrush}" />
+                </Border>
+            </Grid>
+        </DockPanel>
+
+        <TextBlock x:Name="HintText" Grid.Row="4" Margin="0,8,0,0" TextWrapping="Wrap"
+                   FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                   Text="也可以直接把照片 / 视频拖到这里；从电脑拖进来的文件会先加入媒体库。" />
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="保存" MinWidth="90" Padding="16,6" IsDefault="True" Click="OnSave" />
+            <Button Content="取消" MinWidth="90" Padding="16,6" Margin="8,0,0,0" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

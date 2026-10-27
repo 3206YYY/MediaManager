@@ -16,6 +16,8 @@
             <conv:BoolToArrowConverter x:Key="BoolToArrow" />
             <conv:StringToVisibilityConverter x:Key="StringToVis" />
             <conv:DiscoveryPoolVisConverter x:Key="DiscoveryPoolVis" />
+            <conv:MultiplyConverter x:Key="Multiply" />
+            <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

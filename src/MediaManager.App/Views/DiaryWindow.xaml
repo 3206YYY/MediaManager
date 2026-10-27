@@ -1,0 +1,178 @@
+<Window x:Class="MediaManager.App.Views.DiaryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctl="clr-namespace:MediaManager.App.Controls"
+        Title="日记"
+        Width="1040" Height="720"
+        MinWidth="820" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        AllowDrop="True"
+        DragOver="OnWindowDragOver"
+        DragLeave="OnWindowDragLeave"
+        Drop="OnWindowDrop"
+        Background="{DynamicResource BgBrush}">
+
+    <Window.Resources>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
+
+        <Style x:Key="GhostButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部 -->
+        <Border Grid.Row="0" Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="14,10">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="＋ 写一篇" Padding="14,6" Click="OnNewEntry" />
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="📔 日记" FontSize="18" FontWeight="Bold"
+                               Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="TotalText" Margin="10,0,0,0" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="330" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左：日历 -->
+            <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+                <StackPanel Margin="14,12,14,12">
+                    <DockPanel Margin="0,0,0,10">
+                        <Button DockPanel.Dock="Right" Content="今天" Style="{StaticResource GhostButton}"
+                                Click="OnTodayClick" />
+                        <Button DockPanel.Dock="Right" Content="▶" Style="{StaticResource GhostButton}"
+                                Click="OnNextMonth" />
+                        <Button DockPanel.Dock="Left" Content="◀" Style="{StaticResource GhostButton}"
+                                Click="OnPrevMonth" />
+                        <TextBlock x:Name="MonthTitle" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextBrush}" />
+                    </DockPanel>
+
+                    <UniformGrid x:Name="WeekHeader" Columns="7" Margin="0,0,0,4" />
+                    <UniformGrid x:Name="DayGrid" Columns="7" Rows="6" />
+
+                    <TextBlock Text="有内容的日期会亮起来，点一下看那天的回忆。"
+                               TextWrapping="Wrap" FontSize="11.5" Margin="2,14,2,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- 右：当天回忆 -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <TextBlock x:Name="DayTitle" Grid.Row="0" Margin="18,16,18,8"
+                           FontSize="16" FontWeight="Bold"
+                           Foreground="{DynamicResource TextBrush}" />
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="18,0,18,18">
+                    <StackPanel>
+                        <ItemsControl x:Name="EntryItems">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource Card}">
+                                        <StackPanel>
+                                            <DockPanel>
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                    <Button Content="编辑" Style="{StaticResource GhostButton}"
+                                                            Tag="{Binding}" Click="OnEditEntryClick" />
+                                                    <Button Content="删除" Style="{StaticResource GhostButton}"
+                                                            Tag="{Binding}" Click="OnDeleteEntryClick" />
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding Mood}" FontSize="16"
+                                                               VerticalAlignment="Center" Margin="0,0,6,0" />
+                                                    <TextBlock Text="{Binding Title}" FontSize="14.5" FontWeight="SemiBold"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource TextBrush}" />
+                                                </StackPanel>
+                                            </DockPanel>
+
+                                            <TextBlock Text="{Binding Content}" TextWrapping="Wrap"
+                                                       Margin="0,6,0,0" LineHeight="21"
+                                                       Foreground="{DynamicResource TextBrush}" />
+
+                                            <ItemsControl ItemsSource="{Binding Media}" Margin="0,10,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Width="132" Height="100" Margin="0,0,8,8"
+                                                                CornerRadius="6" ClipToBounds="True"
+                                                                Background="{DynamicResource SkeletonBrush}"
+                                                                ToolTip="{Binding FileName}">
+                                                            <Image ctl:AsyncThumbnail.SourcePath="{Binding ThumbnailPath}"
+                                                                   Stretch="UniformToFill"
+                                                                   RenderOptions.BitmapScalingMode="LowQuality" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 空状态 -->
+                        <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" Margin="0,60,0,0"
+                                    Visibility="Collapsed">
+                            <TextBlock Text="这一天还没有回忆" FontSize="15" HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="点右上角「写一篇」，或者把照片 / 视频直接拖进这个窗口。"
+                                       FontSize="12" Margin="0,8,0,0" HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

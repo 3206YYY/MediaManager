@@ -56,6 +56,7 @@ build/capture_main_window.py
 build/publish_release.py
 build/*_log.txt
 build/verify_shots/
+build/verify_shots_diary/
 build/testmedia/
 build/skel_*.jpg
 build/screen_now.jpg
@@ -76,3 +77,5 @@ build/diag_*.py
 build/acceptance.py
 # 社交预览校验的临时抓图（check_social_preview.py 产物）
 build/og_preview_check.png
+TestResults/
+代码评审*.md

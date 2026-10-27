@@ -142,7 +142,7 @@
                         <ListBoxItem Content="🧷  系统集成" Tag="integration" />
                         <ListBoxItem Content="⌨  快捷键" Tag="hotkeys" />
                         <ListBoxItem Content="💾  备份与迁移" Tag="storage" />
-                        <ListBoxItem Content="🧩  插件扩展" Tag="plugins" />
+                        <ListBoxItem x:Name="PluginsNavItem" Content="🧩  插件扩展" Tag="plugins" />
                         <ListBoxItem Content="ℹ️  关于与更新" Tag="about" />
                     </ListBox>
                 </DockPanel>
@@ -171,6 +171,16 @@
                                     <ComboBoxItem Content="浅色" Tag="Light" />
                                     <ComboBoxItem Content="深色" Tag="Dark" />
                                 </ComboBox>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="极简模式" Style="{StaticResource SectionTitle}" />
+                                <CheckBox x:Name="SimpleModeBox" FontWeight="SemiBold" Margin="0,2,0,0"
+                                          Content="只保留基础功能（发现 / 全部媒体 / 收藏 / 文件夹 / 标签）" />
+                                <TextBlock Text="开启后会隐藏左侧的「未分类」「最近查看 / 添加 / 删除」等入口，以及分类、插件等高级功能；以后再加入的时光轴、私密空间也会跟着藏起来。文件本身一个都不会动，随时可以关回来。"
+                                           Style="{StaticResource Hint}" Margin="0,6,0,0" />
                             </StackPanel>
                         </Border>
 
@@ -264,6 +274,27 @@
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="外部文件导入" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
+                                           Text="拖一个还不在媒体库里的文件进日记 / 私密空间时，怎么处理它的归属。选「每次询问」时可以勾选记住选择，之后不再打扰。" />
+                                <ComboBox x:Name="ImportPolicyBox" Style="{StaticResource FieldCombo}">
+                                    <ComboBoxItem Content="每次询问（默认）" Tag="Ask" />
+                                    <ComboBoxItem Content="直接加入它所在的文件夹" Tag="AddParentFolder" />
+                                    <ComboBoxItem Content="复制到导入文件夹" Tag="CopyToImportFolder" />
+                                </ComboBox>
+                                <TextBlock Text="导入文件夹位置（「复制到导入文件夹」模式的目标目录）："
+                                           Style="{StaticResource Hint}" Margin="0,10,0,6" />
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Content="📂 打开" Margin="8,0,0,0" Click="OnOpenImportFolder" />
+                                    <Button DockPanel.Dock="Right" Content="浏览…" Margin="8,0,0,0" Click="OnBrowseImportFolder" />
+                                    <TextBox x:Name="ImportFolderBox"
+                                             ToolTip="文件会被复制一份到这里再加入媒体库，原件不动" />
+                                </DockPanel>
                             </StackPanel>
                         </Border>
 
@@ -426,11 +457,11 @@
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="换电脑 / 手动备份" Style="{StaticResource SectionTitle}" />
-                                <TextBlock Text="把整理数据打包成一个文件拷到 U 盘；新电脑上导入即可恢复。"
-                                           Style="{StaticResource Hint}" Margin="0,0,0,10" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
+                                           Text="把整个数据打包成一个文件拷到 U 盘：整理库、日记、私密空间的文件全部包含，新电脑上导入即可原样恢复（私密路径会自动改写到新位置）。" />
                                 <StackPanel Orientation="Horizontal">
-                                    <Button Content="📤 导出数据…" Click="OnExportData" Width="130" Margin="0,0,8,0" />
-                                    <Button Content="📥 导入数据…" Click="OnImportData" Width="130" />
+                                    <Button Content="📤 导出完整备份…" Click="OnExportData" Width="150" Margin="0,0,8,0" />
+                                    <Button Content="📥 导入完整备份…" Click="OnImportData" Width="150" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

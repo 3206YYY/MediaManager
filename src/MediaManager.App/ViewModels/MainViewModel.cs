@@ -35,6 +35,15 @@ public partial class MainViewModel : ObservableObject
     private long? _currentTagId;
     private long? _currentCategoryId;
 
+    /// <summary>
+    /// 当前是否在看私密空间。
+    /// 刻意从 <c>_currentViewKey</c> 派生而不是单独存一个标志位 ——
+    /// 两个状态源很容易错位（视图已经切回「全部」，标志位还在 true），
+    /// 那意味着 BuildFilter 会继续查私密内容，是泄露级的 bug。
+    /// v1.4.0 起私密空间是独立窗口，主界面永远不在私密视图；保留此属性只为兼容旧引用。
+    /// </summary>
+    public bool IsVaultView => false;
+
     /// <summary>列表分页大小（「加载更多」一次追加的条数）。</summary>
     private const int PageSize = 2000;
 
@@ -110,6 +119,12 @@ public partial class MainViewModel : ObservableObject
             _logger.LogDebug("配置加载完成 {Ms} ms", sw.ElapsedMilliseconds);
 
             await LoadDiscoverySettingsAsync();
+
+            // 极简模式（只留基础入口）。放在列表加载之前，免得先按全量视图渲染一遍再切
+            var simpleMode = await DbAsync(() => _repo.GetSettingAsync(SimpleModeSettingKey));
+            IsSimpleMode = simpleMode == "1";
+
+            await RefreshPrivateCountAsync();
 
             // 扩展格式（音频/文档/压缩包）开关：默认开启，可在 设置 → 插件扩展 关闭
             var extSetting = await DbAsync(() => _repo.GetSettingAsync("EnableExtendedFormats"));
@@ -195,6 +210,32 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private int _thumbnailSize = 160;
+
+    /// <summary>极简模式：只留最常用的入口，其余高级导航隐藏（文件本身不受任何影响）。</summary>
+    [ObservableProperty]
+    private bool _isSimpleMode;
+
+    /// <summary>保险箱里的媒体数量（侧栏徽标）。</summary>
+    [ObservableProperty]
+    private long _privateCount;
+
+    /// <summary>极简模式的设置键。</summary>
+    public const string SimpleModeSettingKey = "Ui.SimpleMode";
+
+    /// <summary>
+    /// 极简模式藏起来的视图。注意「发现」不在里面 ——
+    /// 对轻度用户来说「打开就有照片看」比一堆整理概念更好懂，藏了反而是减分。
+    /// </summary>
+    private static readonly string[] SimpleModeHiddenViews =
+        { "unfiled", "recent-view", "recent", "trash" };
+
+    partial void OnIsSimpleModeChanged(bool value)
+    {
+        // 正停在被藏起来的视图上（比如刚在「最近添加」里）→ 退回「全部媒体」，
+        // 否则界面上一个高亮都没有，看着像卡死了
+        if (value && SimpleModeHiddenViews.Contains(_currentViewKey))
+            _ = SelectViewAsync("all");
+    }
 
     [ObservableProperty]
     private string _statusText = "就绪";
@@ -290,11 +331,29 @@ public partial class MainViewModel : ObservableObject
             CategoryCount: await _repo.GetCategoryCountAsync()));
 
         FolderItems.Clear();
+
+        // 保险箱锚点目录（路径 = 数据目录下的 Vault）只为满足外键存在，
+        // 不能出现在侧栏 —— 否则用户点进去看到一片空白，还暴露了保险箱目录位置
+        var vaultDir = System.IO.Path.Combine(_config.DataDirectory, "Vault")
+            .TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
+
         foreach (var f in data.Folders)
         {
+            if (string.Equals(
+                    f.Path?.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar),
+                    vaultDir, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var fullPath = f.Path ?? string.Empty;
+            var (title, subTitle) = SplitFolderPath(fullPath);
+
             FolderItems.Add(new NavigationItemViewModel
             {
-                Title = f.Path,
+                // 侧栏只放末级目录名：以前直接显示整条路径，宽度不够被截成
+                // 「C:\Users\xxx\Videos\Capt…」，两个目录看起来一模一样，选哪个全靠猜
+                Title = title,
+                SubTitle = subTitle,
+                ToolTipText = fullPath,
                 Icon = "📂",
                 Key = "folder",
                 RelatedId = f.Id,
@@ -332,9 +391,34 @@ public partial class MainViewModel : ObservableObject
     {
         foreach (var f in FolderItems)
         {
-            if (f.RelatedId.HasValue && System.IO.Directory.Exists(f.Title))
-                _watcher.Start(f.RelatedId.Value, f.Title);
+            if (f.RelatedId.HasValue && System.IO.Directory.Exists(f.ToolTipText))
+                _watcher.Start(f.RelatedId.Value, f.ToolTipText!);
         }
+    }
+
+    /// <summary>
+    /// 把一条文件夹路径拆成「侧栏标题 + 副标题」。
+    /// 例：<c>C:\Users\me\Pictures\Screenshots</c> → （<c>Screenshots</c>, <c>C:\…\Pictures</c>）。
+    /// 盘根本身（<c>D:\</c>）没有末级目录名，直接用路径当标题。
+    /// </summary>
+    private static (string Title, string SubTitle) SplitFolderPath(string path)
+    {
+        var trimmed = (path ?? string.Empty).TrimEnd('\\', '/');
+        var name = System.IO.Path.GetFileName(trimmed);
+        if (string.IsNullOrEmpty(name))
+            return (trimmed, "整个磁盘");
+
+        var parent = System.IO.Path.GetDirectoryName(trimmed) ?? string.Empty;
+        var parentName = System.IO.Path.GetFileName(parent.TrimEnd('\\', '/'));
+        var root = System.IO.Path.GetPathRoot(trimmed) ?? string.Empty;
+        root = root.TrimEnd('\\', '/');
+
+        // 副标题带盘符：不同盘上同名的两个目录（都有 Screenshots）靠它一眼分开
+        var subTitle = string.IsNullOrEmpty(parentName)
+            ? root
+            : $"{root}\\…\\{parentName}";
+
+        return (name, subTitle);
     }
 
     /// <summary>列表加载代次：并发刷新时只有最后一次的结果能落到界面，避免旧查询覆盖新结果。</summary>
@@ -846,6 +930,9 @@ public partial class MainViewModel : ObservableObject
             SortField = SortField.DateAdded,
             SortDirection = SortDirection.Descending,
             Limit = PageSize,
+            // 主界面所有视图（含搜索、类型筛选、文件夹、标签）一律查普通内容；
+            // 保险箱内容由独立的 VaultWindow 用 IncludePrivate=true 自行查询
+            IncludePrivate = false,
         };
 
         switch (_currentViewKey)
@@ -966,7 +1053,7 @@ public partial class MainViewModel : ObservableObject
 
         // 检测是否已添加过（AddRootFolderAsync 已幂等，这里提前提示更友好）
         var existing = FolderItems.FirstOrDefault(f => f.RelatedId.HasValue
-            && string.Equals(f.Title, path, StringComparison.OrdinalIgnoreCase));
+            && string.Equals(f.ToolTipText, path, StringComparison.OrdinalIgnoreCase));
         if (existing != null)
         {
             StatusText = $"文件夹已存在：{path}";
@@ -1016,7 +1103,7 @@ public partial class MainViewModel : ObservableObject
         if (!confirm) return;
 
         var rootId = folder.RelatedId.Value;
-        var path = folder.Title;
+        var path = folder.ToolTipText ?? folder.Title;
 
         // 停止对该目录的监控，避免删除过程中触发增量扫描
         _watcher.Stop(rootId);
@@ -1164,6 +1251,19 @@ public partial class MainViewModel : ObservableObject
 
         IsDiscoveryView = _currentViewKey == "discovery";
         await LoadMediaAsync();
+    }
+
+    /// <summary>
+    /// 只重读侧栏（文件夹 / 标签 / 分类 / 数量），不动当前网格、不清缩略图内存缓存。
+    /// 用于「导入了一张图，侧栏里凭空多了个文件夹」这种小变化 ——
+    /// 走整表刷新会把已解码的缩略图全部丢掉，代价太大。
+    /// </summary>
+    public Task ReloadNavigationAsync() => LoadNavigationAsync();
+
+    /// <summary>重新统计保险箱里的媒体数量（移入 / 移出 / 删除后调用）。</summary>
+    public async Task RefreshPrivateCountAsync()
+    {
+        PrivateCount = await DbAsync(() => _repo.GetPrivateCountAsync());
     }
 
     [RelayCommand]
@@ -1696,7 +1796,7 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            await _scanService.ScanIncrementalAsync(rootFolderId, root.Title);
+            await _scanService.ScanIncrementalAsync(rootFolderId, root.ToolTipText ?? root.Title);
             await LoadMediaAsync();
         }
         catch (Exception ex)

@@ -14,6 +14,7 @@ public class ThumbnailService : IThumbnailService, IDisposable
 {
     private readonly IMediaRepository _repo;
     private readonly IAppConfigService _config;
+    private readonly IVaultService _vault;
     private readonly ILogger<ThumbnailService> _logger;
     private readonly Channel<MediaItem> _channel;
     private readonly CancellationTokenSource _cts = new();
@@ -22,10 +23,12 @@ public class ThumbnailService : IThumbnailService, IDisposable
     private const int MaxLongEdge = 320;
     private const int MaxLockRetries = 2;
 
-    public ThumbnailService(IMediaRepository repo, IAppConfigService config, ILogger<ThumbnailService> logger)
+    public ThumbnailService(IMediaRepository repo, IAppConfigService config,
+        IVaultService vault, ILogger<ThumbnailService> logger)
     {
         _repo = repo;
         _config = config;
+        _vault = vault;
         _logger = logger;
         _channel = Channel.CreateBounded<MediaItem>(new BoundedChannelOptions(2000)
         {
@@ -68,8 +71,18 @@ public class ThumbnailService : IThumbnailService, IDisposable
     private string BuildCachePath(MediaItem item)
     {
         var signature = GetFileSignature(item.Path);
-        return Path.Combine(_config.ThumbnailDirectory, $"{item.Id}_{signature}.jpg");
+        return Path.Combine(CacheDirectoryFor(item), $"{item.Id}_{signature}.jpg");
     }
+
+    /// <summary>
+    /// 私密项的缩略图画在保险箱里，不进公共缓存目录。
+    ///
+    /// 这点很容易漏：文件挪进 Vault 了，但 <c>Data/Thumbnails/</c> 下还留着明文预览图，
+    /// 等于把保险箱里的东西贴在门口。所以私密项单独一个目录，跟文件一起被隐藏。
+    /// </summary>
+    private string CacheDirectoryFor(MediaItem item) => item.IsPrivate
+        ? Path.Combine(_vault.VaultDirectory, "Thumbs")
+        : _config.ThumbnailDirectory;
 
     private static string GetFileSignature(string path)
     {
@@ -84,16 +97,23 @@ public class ThumbnailService : IThumbnailService, IDisposable
         }
     }
 
-    /// <summary>删除某个媒体项的所有缩略图缓存文件（原地覆盖 / 重建前调用）。</summary>
+    /// <summary>删除某个媒体项的所有缩略图缓存文件（原地覆盖 / 重建 / 进出保险箱前调用）。</summary>
     public IReadOnlyList<string> Invalidate(long mediaId)
     {
         var removed = new List<string>();
         try
         {
-            foreach (var file in Directory.EnumerateFiles(_config.ThumbnailDirectory, $"{mediaId}_*.jpg"))
+            // 两个目录都要扫：进出保险箱时调用方拿到的还是旧状态，
+            // 只清公共目录会在 Vault/Thumbs 里留下孤儿预览图（反之亦然）。
+            foreach (var dir in new[] { _config.ThumbnailDirectory, Path.Combine(_vault.VaultDirectory, "Thumbs") })
             {
-                removed.Add(file);
-                try { File.Delete(file); } catch { /* 被占用就留给下次生成 */ }
+                if (!Directory.Exists(dir)) continue;
+
+                foreach (var file in Directory.EnumerateFiles(dir, $"{mediaId}_*.jpg"))
+                {
+                    removed.Add(file);
+                    try { File.Delete(file); } catch { /* 被占用就留给下次生成 */ }
+                }
             }
         }
         catch (Exception ex)
@@ -158,6 +178,10 @@ public class ThumbnailService : IThumbnailService, IDisposable
             return;
 
         var output = BuildCachePath(item);
+
+        // 保险箱的 Thumbs 子目录可能还没建（第一次生成私密项的缩略图时才需要）
+        var outputDir = Path.GetDirectoryName(output);
+        if (!string.IsNullOrEmpty(outputDir)) Directory.CreateDirectory(outputDir);
 
         // 缓存文件早就在盘上、只是内存/数据库里的路径丢了（清过缓存标记、
         // 备份恢复、老库升级…）：以前直接 return，这一格就永远是空白灰块。

@@ -1,0 +1,133 @@
+<Window x:Class="MediaManager.App.Views.Dialogs.MediaPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ctl="clr-namespace:MediaManager.App.Controls"
+        Title="从媒体库选择"
+        Width="980" Height="680"
+        MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BgBrush}">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部：搜索 -->
+        <DockPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock x:Name="CountText" DockPanel.Dock="Right" VerticalAlignment="Center"
+                       Margin="12,0,0,0" FontSize="12"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
+            <Grid MaxWidth="420" HorizontalAlignment="Left">
+                <TextBox x:Name="SearchBox" MinHeight="30" Padding="8,4"
+                         TextChanged="OnSearchTextChanged"
+                         ToolTip="按文件名搜索；留空 = 最近添加的照片和视频" />
+                <!-- 占位提示：TextBox 没有原生 placeholder，用一条只在空文本时可见的文本顶上 -->
+                <TextBlock Text="搜索文件名…" IsHitTestVisible="False" Margin="11,0,0,0"
+                           VerticalAlignment="Center" FontSize="12.5"
+                           Foreground="{DynamicResource TextSecondaryBrush}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Text.Length, ElementName=SearchBox}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+        </DockPanel>
+
+        <!-- 缩略图网格：SelectionMode=Multiple 时点一下即切换选中，不用按 Ctrl -->
+        <Border Grid.Row="1" Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="8">
+            <Grid>
+                <ListBox x:Name="Items"
+                         Background="Transparent" BorderThickness="0"
+                         Padding="8"
+                         SelectionMode="Multiple"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         SelectionChanged="OnSelectionChanged">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Margin" Value="4" />
+                            <Setter Property="Cursor" Value="Hand" />
+                            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="bd" CornerRadius="6" BorderThickness="2"
+                                                BorderBrush="Transparent" Background="Transparent">
+                                            <Grid Width="120" Height="120" ClipToBounds="True">
+                                                <Border CornerRadius="5" Background="{DynamicResource SkeletonBrush}">
+                                                    <Image ctl:AsyncThumbnail.SourcePath="{Binding ThumbnailPath}"
+                                                           Stretch="UniformToFill"
+                                                           RenderOptions.BitmapScalingMode="LowQuality" />
+                                                </Border>
+                                                <!-- 视频角标 -->
+                                                <Border Background="#B0000000" CornerRadius="4"
+                                                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                        Margin="4" Padding="4,0"
+                                                        Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
+                                                    <TextBlock Text="▶" FontSize="10" Foreground="White" />
+                                                </Border>
+                                                <!-- 选中勾选角标 -->
+                                                <Border x:Name="tick" Width="20" Height="20" CornerRadius="10"
+                                                        Background="{DynamicResource PrimaryBrush}"
+                                                        HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                        Margin="4" Visibility="Collapsed">
+                                                    <TextBlock Text="✓" FontSize="11" Foreground="White"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush"
+                                                        Value="{DynamicResource HoverBrush}" />
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush"
+                                                        Value="{DynamicResource PrimaryBrush}" />
+                                                <Setter TargetName="tick" Property="Visibility" Value="Visible" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+
+                <TextBlock x:Name="EmptyText" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           FontSize="13" IsHitTestVisible="False"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="没有找到照片或视频" Visibility="Collapsed" />
+            </Grid>
+        </Border>
+
+        <!-- 底部：选完不关窗，想加几批加几批，用完自己关 -->
+        <DockPanel Grid.Row="2" Margin="0,14,0,0">
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="关闭窗口" MinWidth="88" Padding="16,6" Click="OnCancel"
+                        ToolTip="选完关掉就行，加过的内容已经在日记里了" />
+                <Button Content="＋ 加入日记" MinWidth="104" Padding="16,6" Margin="8,0,0,0"
+                        IsDefault="True" Click="OnConfirm" />
+            </StackPanel>
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="12"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+        </DockPanel>
+    </Grid>
+</Window>

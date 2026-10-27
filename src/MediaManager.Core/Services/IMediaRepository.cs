@@ -127,4 +127,50 @@ public interface IMediaRepository
     /// 编辑副本被原地覆盖后必须调用：缓存文件名带 QuickHash，不清就会一直显示旧画面。
     /// </summary>
     Task InvalidateThumbnailAsync(long mediaId);
+
+    // ---------- 私密空间（保险箱） ----------
+
+    /// <summary>
+    /// 把一条媒体标记为私密 / 取消私密，并同步它移动后的新路径。
+    /// <para>
+    /// 只改数据库，不碰文件 —— 文件移动由 <c>IVaultService</c> 负责，
+    /// 挪成功之后再调这里。顺序不能反：先改库后挪文件，一旦挪失败，
+    /// 库里就记着一个不存在的路径，用户看到的是「文件丢失」。
+    /// </para>
+    /// </summary>
+    /// <param name="id">媒体 id。</param>
+    /// <param name="isPrivate">true = 移入保险箱。</param>
+    /// <param name="newPath">移动后的绝对路径。</param>
+    /// <param name="originalPath">移入前的原路径；移出时传 null 清空。</param>
+    Task SetPrivateAsync(long id, bool isPrivate, string newPath, string? originalPath);
+
+    /// <summary>
+    /// 只改媒体文件的路径（连带 FileName / Extension）。
+    /// 用于完整备份恢复：保险箱文件放回新数据目录后，把库里记的旧绝对路径改到新位置，
+    /// 不能动 IsPrivate / OriginalPath（那是「从哪儿搬来的」的历史，要原样保留）。
+    /// </summary>
+    Task UpdateMediaPathAsync(long id, string newPath);
+
+    /// <summary>保险箱内的媒体数量（侧栏徽标用）。</summary>
+    Task<long> GetPrivateCountAsync();
+
+    // ---------- 私密空间分区 ----------
+
+    /// <summary>列出所有分区（按 SortOrder、Id 排序），并填好每个分区的文件数。</summary>
+    Task<List<VaultSection>> GetVaultSectionsAsync();
+
+    /// <summary>新建分区，返回新 id。名字重复时自动加「 (2)」后缀。</summary>
+    Task<long> CreateVaultSectionAsync(string name);
+
+    /// <summary>重命名分区。</summary>
+    Task RenameVaultSectionAsync(long id, string name);
+
+    /// <summary>删除分区：分区里的文件只变回「未分区」，不删文件。</summary>
+    Task DeleteVaultSectionAsync(long id);
+
+    /// <summary>把一批媒体放进分区（<paramref name="sectionId"/> 为 null = 移出分区）。</summary>
+    Task MoveToVaultSectionAsync(IReadOnlyList<long> mediaIds, long? sectionId);
+
+    /// <summary>未分区的私密文件数量。</summary>
+    Task<long> GetVaultUnsectionedCountAsync();
 }

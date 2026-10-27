@@ -69,7 +69,11 @@ public class DatabaseInitializer
               QuickHash     TEXT,
               IsMissing     INTEGER NOT NULL DEFAULT 0,
               DateAddedUtc  TEXT NOT NULL,
-              LastScanUtc   TEXT
+              LastScanUtc   TEXT,
+              -- v1.3.4 私密空间：1 = 已移入保险箱（文件在 Data/Vault 下），
+              -- OriginalPath 记录移入前的绝对路径，还原时原样挪回去
+              IsPrivate     INTEGER NOT NULL DEFAULT 0,
+              OriginalPath  TEXT
             );
             """);
 
@@ -162,6 +166,29 @@ public class DatabaseInitializer
 
         // 旧库迁移：给 MediaItem 补 Note 列
         MigrateColumn(cmd, "MediaItem", "Note", "TEXT");
+        // v1.3.4 私密空间：IsPrivate 标记 + 移入前的原路径（还原时用）
+        MigrateColumn(cmd, "MediaItem", "IsPrivate", "INTEGER NOT NULL DEFAULT 0");
+        MigrateColumn(cmd, "MediaItem", "OriginalPath", "TEXT");
+
+        // 索引必须建在 MigrateColumn **之后**：
+        // 老库的表早就存在，CREATE TABLE IF NOT EXISTS 不会补列，
+        // 紧跟建表语句建索引会在旧库上直接报 "no such column: IsPrivate"，
+        // 整个初始化随之失败（实测踩过）。
+        Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_Media_Private    ON MediaItem(IsPrivate);");
+
+        // 私密空间的分区（v1.4.0 二轮）：私密内容自己的一套分区，
+        // 故意不复用 Category —— 复用的话主界面侧栏会露出「私密分区」名字和数量，
+        // 等于在门口贴清单。分区被删时只把文件变回「未分区」，绝不碰文件本身。
+        Execute(cmd, """
+            CREATE TABLE IF NOT EXISTS VaultSection (
+              Id           INTEGER PRIMARY KEY AUTOINCREMENT,
+              Name         TEXT NOT NULL,
+              SortOrder    INTEGER NOT NULL DEFAULT 0,
+              CreatedAtUtc TEXT NOT NULL
+            );
+            """);
+        MigrateColumn(cmd, "MediaItem", "VaultSectionId", "INTEGER");
+        Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_Media_VaultSection ON MediaItem(VaultSectionId);");
         // 旧库迁移：给 Tag 补 SortOrder 列（拖动排序）
         MigrateColumn(cmd, "Tag", "SortOrder", "INTEGER NOT NULL DEFAULT 0");
 
@@ -242,6 +269,32 @@ public class DatabaseInitializer
             );
             """);
         Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_DeletedItem_DeletedAt ON DeletedItem(DeletedAtUtc DESC);");
+
+        // 日记（v1.3.4 从零加入，不是改造）：一天可以写多条，每条能挂多个图片/视频
+        Execute(cmd, """
+            CREATE TABLE IF NOT EXISTS DiaryEntry (
+              Id           INTEGER PRIMARY KEY AUTOINCREMENT,
+              -- 归属日期用 yyyy-MM-dd 字符串存，不做 UTC 换算：
+              -- 用户写的「3 月 5 日」就该永远显示成 3 月 5 日，跨时区/夏令时都不该漂移
+              EntryDate    TEXT    NOT NULL,
+              Title        TEXT,
+              Content      TEXT,
+              Mood         TEXT,
+              CreatedAtUtc TEXT    NOT NULL,
+              UpdatedAtUtc TEXT    NOT NULL
+            );
+            """);
+        Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_Diary_Date ON DiaryEntry(EntryDate);");
+
+        Execute(cmd, """
+            CREATE TABLE IF NOT EXISTS DiaryMedia (
+              DiaryId   INTEGER NOT NULL REFERENCES DiaryEntry(Id) ON DELETE CASCADE,
+              MediaId   INTEGER NOT NULL REFERENCES MediaItem(Id) ON DELETE CASCADE,
+              SortOrder INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY (DiaryId, MediaId)
+            );
+            """);
+        Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_DiaryMedia_Media ON DiaryMedia(MediaId);");
 
         // FTS5 表
         Execute(cmd, """

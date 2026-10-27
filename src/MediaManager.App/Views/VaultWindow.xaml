@@ -1,0 +1,338 @@
+<Window x:Class="MediaManager.App.Views.VaultWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vw="clr-namespace:WpfToolkit.Controls;assembly=VirtualizingWrapPanel"
+        xmlns:ctl="clr-namespace:MediaManager.App.Controls"
+        Title="🔒 私密空间"
+        Width="1240" Height="780"
+        MinWidth="900" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource BgBrush}"
+        Closed="OnWindowClosed"
+        AllowDrop="True"
+        DragOver="OnWindowDragOver"
+        DragLeave="OnWindowDragLeave"
+        Drop="OnWindowDrop"
+        PreviewKeyDown="OnWindowPreviewKeyDown">
+
+    <Window.Resources>
+        <Style x:Key="GhostButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+
+        <!-- 分区条目：和主界面侧栏同一套视觉语言 -->
+        <Style x:Key="SectionItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Margin" Value="6,1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="bd" Background="Transparent" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource PrimaryBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ============ 顶栏 ============ -->
+        <Border Grid.Row="0" Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,8">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="🔒 私密空间" FontSize="17" FontWeight="Bold"
+                               Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding CountText}" Margin="12,0,0,0" VerticalAlignment="Center"
+                               FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+
+                <Button DockPanel.Dock="Right" Content="🔒 关闭" Style="{StaticResource GhostButton}"
+                        Margin="10,0,0,0" Click="OnCloseClick"
+                        ToolTip="关闭并退出私密空间（内容不会丢，再点侧栏「私密空间」随时进来）" />
+                <Button DockPanel.Dock="Right" Content="🔄 刷新" Style="{StaticResource GhostButton}"
+                        Margin="10,0,0,0" Click="OnRefreshClick" />
+                <Button DockPanel.Dock="Right" Content="＋ 导入文件" Style="{StaticResource GhostButton}"
+                        Margin="10,0,0,0" Click="OnImportFilesClick"
+                        ToolTip="把电脑上的文件移入私密空间（文件会被移动，原位置不再保留）" />
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                    <TextBox x:Name="SearchBox" Width="170" Padding="6,4" VerticalContentAlignment="Center"
+                             TextChanged="OnSearchTextChanged"
+                             ToolTip="按文件名搜索（只在私密空间里搜）" />
+                    <ComboBox x:Name="TypeBox" Width="90" Margin="8,0,0,0" VerticalContentAlignment="Center"
+                              SelectionChanged="OnTypeChanged">
+                        <ComboBoxItem Content="全部" Tag="" IsSelected="True" />
+                        <ComboBoxItem Content="图片" Tag="Image" />
+                        <ComboBoxItem Content="视频" Tag="Video" />
+                        <ComboBoxItem Content="音频" Tag="Audio" />
+                        <ComboBoxItem Content="文档" Tag="Text" />
+                        <ComboBoxItem Content="压缩包" Tag="Archive" />
+                    </ComboBox>
+                    <ComboBox x:Name="SortBox" Width="112" Margin="8,0,0,0" VerticalContentAlignment="Center"
+                              SelectionChanged="OnSortChanged" ToolTip="排序方式">
+                        <ComboBoxItem Content="最新添加" Tag="DateAdded:Descending" IsSelected="True" />
+                        <ComboBoxItem Content="最早添加" Tag="DateAdded:Ascending" />
+                        <ComboBoxItem Content="文件名" Tag="Name:Ascending" />
+                        <ComboBoxItem Content="大文件在前" Tag="Size:Descending" />
+                        <ComboBoxItem Content="修改时间" Tag="ModifiedAt:Descending" />
+                    </ComboBox>
+                    <ToggleButton x:Name="FavoriteOnly" Content="⭐ 收藏" Margin="8,0,0,0" Padding="10,4"
+                                  VerticalAlignment="Center" Cursor="Hand"
+                                  Checked="OnFavoriteFilterChanged" Unchecked="OnFavoriteFilterChanged"
+                                  ToolTip="只看收藏" />
+                    <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="大小：" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                        <Slider x:Name="SizeSlider" Width="92" Minimum="80" Maximum="320" Value="170"
+                                VerticalAlignment="Center" ValueChanged="OnSizeChanged" />
+                    </StackPanel>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ============ 主体：分区栏 + 网格 ============ -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="196" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左：分区 -->
+            <Border Grid.Column="0" Background="{DynamicResource PanelBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+                <DockPanel>
+                    <Button DockPanel.Dock="Bottom" Content="＋ 新建分区" Margin="8,6,8,8"
+                            Style="{StaticResource GhostButton}" Click="OnNewSectionClick"
+                            ToolTip="建一个分区，把东西分门别类放（分区只是盒子，不会动文件）" />
+
+                    <TextBlock DockPanel.Dock="Top" Text="分区" FontWeight="Bold" FontSize="12"
+                               Margin="14,12,10,6"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <ListBox x:Name="SectionList" BorderThickness="0" Background="Transparent"
+                             ItemsSource="{Binding Sections}"
+                             ItemContainerStyle="{StaticResource SectionItemStyle}"
+                             SelectionChanged="OnSectionChanged"
+                             AllowDrop="True"
+                             DragOver="OnSectionDragOver"
+                             Drop="OnSectionDrop">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding DisplayName}"
+                                               TextTrimming="CharacterEllipsis" FontSize="12.5"
+                                               ToolTip="{Binding ToolTipText}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding CountText}" FontSize="11"
+                                               Opacity="0.6" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                        <ListBox.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="重命名" Click="OnRenameSectionMenu" />
+                                <MenuItem Header="删除分区" Click="OnDeleteSectionMenu"
+                                          ToolTip="只删这个分区，里面的文件留在私密空间里（变回未分区）" />
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
+                    </ListBox>
+                </DockPanel>
+            </Border>
+
+            <!-- 右：网格 -->
+            <Grid Grid.Column="1">
+                <ListBox x:Name="VaultList"
+                         ItemsSource="{Binding Items}"
+                         Background="Transparent" BorderThickness="0"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         VirtualizingPanel.CacheLength="1"
+                         VirtualizingPanel.CacheLengthUnit="Page"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         ScrollViewer.CanContentScroll="True"
+                         SelectionMode="Extended"
+                         MouseDoubleClick="OnItemDoubleClick"
+                         KeyDown="OnListKeyDown"
+                         PreviewMouseLeftButtonDown="OnListMouseDown"
+                         PreviewMouseMove="OnListMouseMove">
+                    <ListBox.ContextMenu>
+                        <ContextMenu x:Name="ItemMenu">
+                            <MenuItem Header="打开" Click="OnOpenMenu" />
+                            <MenuItem Header="📂 打开所在位置" Click="OnOpenLocationMenu" />
+                            <Separator />
+                            <MenuItem x:Name="MoveToSectionMenu" Header="📁 放进分区" />
+                            <MenuItem Header="↩ 移出分区" Click="OnRemoveFromSectionMenu" />
+                            <MenuItem x:Name="FavoriteMenu" Header="⭐ 收藏" Click="OnFavoriteMenu" />
+                            <Separator />
+                            <MenuItem Header="✏ 重命名…" Click="OnRenameFileMenu" />
+                            <MenuItem Header="💾 另存副本…" Click="OnSaveCopyMenu"
+                                      ToolTip="把一个副本导出到别处，私密空间里的原件不受影响" />
+                            <Separator />
+                            <MenuItem Header="🔓 移出私密空间" Click="OnMoveOutMenu"
+                                      ToolTip="移回移入前的位置（原目录不在就留在保险箱里）" />
+                            <MenuItem Header="🗑 删除" Click="OnDeleteMenu" ToolTip="删除到回收站（默认）" />
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <vw:VirtualizingWrapPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="bd" Background="Transparent" CornerRadius="4"
+                                                BorderThickness="2" BorderBrush="Transparent" Margin="2">
+                                            <ContentPresenter />
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush"
+                                                        Value="{DynamicResource PrimaryBrush}" />
+                                            </Trigger>
+                                            <MultiTrigger>
+                                                <MultiTrigger.Conditions>
+                                                    <Condition Property="IsMouseOver" Value="True" />
+                                                    <Condition Property="IsSelected" Value="False" />
+                                                </MultiTrigger.Conditions>
+                                                <Setter TargetName="bd" Property="Background"
+                                                        Value="{DynamicResource HoverBrush}" />
+                                            </MultiTrigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Width="{Binding DataContext.ThumbnailSize, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                  Height="{Binding DataContext.ThumbnailSize, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                  Margin="4">
+                                <Grid.ToolTip>
+                                    <ToolTip>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding FileName}" FontWeight="Bold" />
+                                            <TextBlock Text="{Binding ResolutionDisplay}" Foreground="#BBBBBB" FontSize="11" />
+                                            <TextBlock Text="{Binding SizeDisplay}" Foreground="#BBBBBB" FontSize="11" />
+                                        </StackPanel>
+                                    </ToolTip>
+                                </Grid.ToolTip>
+                                <Border Background="{DynamicResource PanelBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="4">
+                                    <Grid ClipToBounds="True">
+                                        <Border Background="{DynamicResource SkeletonBrush}"
+                                                Visibility="{Binding IsVisual, Converter={StaticResource BoolToVis}}">
+                                            <Grid Width="32" Height="26" Opacity="0.2"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Border BorderBrush="{DynamicResource TextSecondaryBrush}"
+                                                        BorderThickness="1.2" CornerRadius="3" />
+                                                <Ellipse Width="4.2" Height="4.2"
+                                                         Fill="{DynamicResource TextSecondaryBrush}"
+                                                         HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                         Margin="5,4,0,0" />
+                                                <Path Data="M0,10 L6,2 L10.5,6.5 L13.5,3.5 L20,10 Z"
+                                                      Fill="{DynamicResource TextSecondaryBrush}"
+                                                      Stretch="Fill" Margin="6,11,6,4" />
+                                            </Grid>
+                                        </Border>
+                                        <Image ctl:AsyncThumbnail.SourcePath="{Binding ThumbnailPath}"
+                                               HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                               Stretch="UniformToFill"
+                                               Visibility="{Binding IsVisual, Converter={StaticResource BoolToVis}}"
+                                               RenderOptions.BitmapScalingMode="LowQuality" />
+                                        <Border Background="#22000000"
+                                                Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="▶" Foreground="White" FontSize="28"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <ctl:FileTypeIconView Icon="{Binding FileIcon}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              Visibility="{Binding IsNonVisual, Converter={StaticResource BoolToVis}}"
+                                                              ToolTip="{Binding FileIcon.Description}" />
+                                    </Grid>
+                                </Border>
+                                <Border HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0.6" EndPoint="0,1">
+                                            <GradientStop Color="#00000000" Offset="0" />
+                                            <GradientStop Color="#A6000000" Offset="1" />
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <TextBlock Text="{Binding FileName}" FontSize="11" Foreground="White"
+                                               HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                               Margin="4" TextTrimming="CharacterEllipsis" />
+                                </Border>
+                                <TextBlock Text="⭐" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                           Margin="0,4,6,0"
+                                           Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center"
+                            IsHitTestVisible="False" Visibility="Collapsed">
+                    <TextBlock x:Name="EmptyTitle" Text="🔒 这里是空的" FontSize="17" FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock x:Name="EmptyHint" Text="从主界面右键「移入私密空间」，或把文件直接拖进这个窗口。"
+                               FontSize="13" Margin="0,10,0,0" HorizontalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+
+                <Border x:Name="DropOverlay" Background="#802563EB" Visibility="Collapsed" IsHitTestVisible="False">
+                    <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Background="{DynamicResource PanelBrush}" CornerRadius="10"
+                            BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="2" Padding="26,16">
+                        <TextBlock Text="松开，移入私密空间" FontSize="16" FontWeight="Bold"
+                                   Foreground="{DynamicResource TextBrush}" />
+                    </Border>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- ============ 状态栏 ============ -->
+        <Border Grid.Row="2" Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,5">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="打开保险箱文件夹" Click="OnOpenVaultFolderClick"
+                        Style="{StaticResource GhostButton}" Padding="8,3" FontSize="11"
+                        ToolTip="用资源管理器打开数据目录下的 Vault（不加密，懂电脑的人翻到还是能打开）" />
+                <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="选中文件后拖到左侧分区即可归类；关闭窗口或 5 分钟无操作会自动退出" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

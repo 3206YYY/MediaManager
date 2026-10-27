@@ -1,0 +1,29 @@
+<UserControl x:Class="MediaManager.App.Controls.FileTypeIconView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             IsHitTestVisible="False">
+    <!-- 设计稿坐标固定 96×118，靠 Viewbox 缩放到宿主给的大小，任何 DPI 都清晰 -->
+    <Viewbox Stretch="Uniform">
+        <Grid Width="96" Height="118">
+            <Border x:Name="Card" CornerRadius="14" />
+
+            <!-- 顶部高光：一层很淡的白色渐变，让扁平方块有点体积感。
+                 刻意不用 DropShadowEffect —— 虚拟化列表里逐项离屏模糊会明显掉帧 -->
+            <Border CornerRadius="14" IsHitTestVisible="False">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="0.35,1">
+                        <GradientStop Color="#38FFFFFF" Offset="0" />
+                        <GradientStop Color="#00FFFFFF" Offset="0.62" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+
+            <!-- 右上折角 -->
+            <Path Data="M0,0 L34,0 L0,34 Z" Fill="#3DFFFFFF"
+                  HorizontalAlignment="Right" VerticalAlignment="Top" />
+
+            <TextBlock x:Name="Label" Foreground="White" FontSize="26" FontWeight="Bold"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Grid>
+    </Viewbox>
+</UserControl>

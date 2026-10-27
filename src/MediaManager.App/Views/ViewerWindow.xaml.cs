@@ -543,19 +543,21 @@ public partial class ViewerWindow : Window
 
         MosaicLayer.Children.Clear();
         _draftElements.Clear();
+        _draftHint = null;   // Children.Clear 已经把提示线一起清掉了，字段要跟着失效
+        _draftHintShown = false;
 
         var baseBmp = PrivacySampleSource;
         if (baseBmp == null) return;
 
         foreach (var mosaic in _doc.Mosaics)
         {
-            var img = EditorOverlayFactory.BuildMosaicRect(mosaic, baseBmp, w, h);
+            var img = EditorOverlayFactory.BuildMosaicRect(mosaic, baseBmp, w, h, showOutline: true);
             if (img != null) MosaicLayer.Children.Add(img);
         }
 
         foreach (var mode in new[] { PrivacyMode.Mosaic, PrivacyMode.Blur })
         {
-            var layer = EditorOverlayFactory.BuildPrivacyLayer(_doc.Privacies, mode, baseBmp, w, h);
+            var layer = EditorOverlayFactory.BuildPrivacyLayer(_doc.Privacies, mode, baseBmp, w, h, showOutline: true);
             if (layer != null) MosaicLayer.Children.Add(layer);
         }
 
@@ -2416,6 +2418,10 @@ public partial class ViewerWindow : Window
         InkTool.IsChecked = true;
         InkLayer.IsHitTestVisible = true;
         InkLayer.EditingMode = InkCanvasEditingMode.Ink;
+        // 拿起画笔，涂鸦立刻来到最上层：上一次用的是打码时 MosaicLayer 在 z=55，
+        // 会把 z=50 的 InkLayer 整层盖住 —— 正在画的笔迹看不见、松手才浮现，
+        // 用户会以为「软件卡了」（实测反馈过这个问题）。
+        Panel.SetZIndex(InkLayer, 56);
         ToolHint.Text = "涂鸦：按住鼠标画线；可换颜色/粗细，Ctrl+Z 撤销";
         RebuildInk(CanvasW, CanvasH);
     }
@@ -2426,6 +2432,9 @@ public partial class ViewerWindow : Window
         InkTool.IsChecked = false;
         InkLayer.IsHitTestVisible = false;
         InkLayer.EditingMode = InkCanvasEditingMode.None;
+        // 退出画笔：回到原来的层序（打码要盖住涂鸦时由 ApplyOverlayZOrder 决定）
+        Panel.SetZIndex(InkLayer, 50);
+        ApplyOverlayZOrder();
         ToolHint.Text = HintText;
     }
 
@@ -2667,6 +2676,7 @@ public partial class ViewerWindow : Window
     {
         if (_doc != null && _doc.IsEditing && _continuousName == "打码") _doc.CancelEdit();
         HideDraft();
+        RemoveDraftHint();
         _privacyDraft = null;
     }
 
@@ -2675,6 +2685,88 @@ public partial class ViewerWindow : Window
         foreach (var element in _draftElements)
             MosaicLayer.Children.Remove(element);
         _draftElements.Clear();
+    }
+
+    /// <summary>
+    /// 涂抹中的实时提示线：跟着鼠标走的一条细线。
+    ///
+    /// 马赛克图层重建有节流（大图上每次重建都要重新贴一张全屏位图），
+    /// 只靠它反馈的话笔刚落下那一瞬屏幕是「没反应」的。这条线每个采样点都刷新，
+    /// 元素只有一个、数据只是一条折线，开销可以忽略，但手感完全不同。
+    /// </summary>
+    private Path? _draftHint;
+    private bool _draftHintShown;
+
+    private void EnsureDraftHint()
+    {
+        if (_draftHint == null)
+        {
+            _draftHint = new Path
+            {
+                Stroke = TryFindResource("PrimaryBrush") as Brush ?? Brushes.DeepSkyBlue,
+                StrokeThickness = 1.6,
+                StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
+                IsHitTestVisible = false,
+                Opacity = 0.85,
+            };
+            Panel.SetZIndex(_draftHint, 200);
+            MosaicLayer.Children.Add(_draftHint);
+        }
+
+        if (!_draftHintShown)
+        {
+            _draftHintShown = true;
+            // 落笔第一次出现时轻轻淡入一下，避免「啪」地蹦出来
+            _draftHint.BeginAnimation(OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0.1, 0.85,
+                    TimeSpan.FromMilliseconds(140)));
+        }
+    }
+
+    private void UpdateDraftHint()
+    {
+        if (_draftHint == null || _privacyDraft == null) return;
+
+        var w = CanvasW;
+        var h = CanvasH;
+        if (w <= 1 || h <= 1) return;
+
+        var points = _privacyDraft.Points;
+        if (points.Count == 0) return;
+
+        if (points.Count == 1)
+        {
+            // 只有一个点：画个小圆点，让人立刻看见「落笔了」
+            _draftHint.Fill = _draftHint.Stroke;
+            _draftHint.Data = new EllipseGeometry(
+                new Point(points[0].X * w, points[0].Y * h), 3.5, 3.5);
+            return;
+        }
+
+        _draftHint.Fill = null;
+        var geometry = new StreamGeometry();
+        using (var ctx = geometry.Open())
+        {
+            var first = true;
+            foreach (var p in points)
+            {
+                var pt = new Point(p.X * w, p.Y * h);
+                if (first) { ctx.BeginFigure(pt, false, false); first = false; }
+                else ctx.LineTo(pt, true, false);
+            }
+        }
+        geometry.Freeze();
+        _draftHint.Data = geometry;
+    }
+
+    private void RemoveDraftHint()
+    {
+        if (_draftHint == null) return;
+        MosaicLayer.Children.Remove(_draftHint);
+        _draftHint = null;
+        _draftHintShown = false;
     }
 
     /// <summary>涂抹过程中实时显示 draft 的马赛克/模糊效果。</summary>
@@ -2691,11 +2783,12 @@ public partial class ViewerWindow : Window
         if (sample == null) return;
 
         var layer = EditorOverlayFactory.BuildPrivacyLayer(
-            new[] { _privacyDraft }, _privacyDraft.Mode, sample, w, h);
+            new[] { _privacyDraft }, _privacyDraft.Mode, sample, w, h, showOutline: true);
         if (layer == null) return;
 
         MosaicLayer.Children.Add(layer);
         _draftElements.Add(layer);
+        UpdateDraftHint();
     }
 
     private Point? _lastPrivacyPoint;
@@ -2724,6 +2817,7 @@ public partial class ViewerWindow : Window
         if (_doc != null && !_doc.IsEditing) _doc.BeginEdit();
 
         _draftSinceRefresh = 0;
+        EnsureDraftHint();
         RefreshPrivacyDraft();
     }
 
@@ -2745,6 +2839,9 @@ public partial class ViewerWindow : Window
         _privacyDraft.Points.Add(new Point(Math.Clamp(p.X / w, 0, 1), Math.Clamp(p.Y / h, 0, 1)));
         _lastPrivacyPoint = p;
 
+        // 提示线每个点都跟着走（只画一条折线，很便宜）：马赛克重建有节流，不能只靠它反馈
+        UpdateDraftHint();
+
         // 每 3 个点才重建一次几何：逐点重建是 O(n²)，拖快了会明显掉帧
         if (++_draftSinceRefresh >= 3)
         {
@@ -2761,6 +2858,7 @@ public partial class ViewerWindow : Window
         _privacyDraft = null;
         _lastPrivacyPoint = null;
         HideDraft();
+        RemoveDraftHint();
 
         if (draft.Points.Count == 0)
         {

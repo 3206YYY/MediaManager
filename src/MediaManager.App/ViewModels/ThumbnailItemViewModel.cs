@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using MediaManager.App.Services;
 using MediaManager.Core.Models;
 
 namespace MediaManager.App.ViewModels;
@@ -8,9 +9,18 @@ public partial class ThumbnailItemViewModel : ObservableObject
 {
     public MediaItem Media { get; }
 
+    /// <summary>非图片/视频的彩色类型图标（构造时算一次，绑定只读）。</summary>
+    public FileTypeIcon FileIcon { get; }
+
     public ThumbnailItemViewModel(MediaItem media)
     {
         Media = media;
+
+        // 老记录可能没有 Extension（早期版本没写），回落到文件名再兜一次
+        var ext = string.IsNullOrEmpty(media.Extension)
+            ? System.IO.Path.GetExtension(media.FileName)
+            : media.Extension;
+        FileIcon = FileTypeIcon.For(ext, media.MediaType);
     }
 
     [ObservableProperty]
@@ -58,22 +68,11 @@ public partial class ThumbnailItemViewModel : ObservableObject
     /// <summary>非视觉类型（音频/文档/压缩包）显示固定图标。</summary>
     public bool IsNonVisual => !IsVisual;
 
-    /// <summary>非视觉类型的固定图标（音频统一同一个图标）。</summary>
-    public string TypeGlyph => Media.MediaType switch
-    {
-        Core.Enums.MediaType.Audio => "🎵",
-        Core.Enums.MediaType.Text => "📄",
-        Core.Enums.MediaType.Archive => "🗜️",
-        _ => string.Empty,
-    };
-
-    public string TypeLabel => Media.MediaType switch
-    {
-        Core.Enums.MediaType.Audio => "音频",
-        Core.Enums.MediaType.Text => "文档",
-        Core.Enums.MediaType.Archive => "压缩包",
-        _ => string.Empty,
-    };
+    /// <summary>
+    /// 类型说明。以前只有「文档 / 音频 / 压缩包」三个大类，
+    /// 现在直接用图标自带的描述（"PDF 文档" / "压缩包"），状态栏信息量更足。
+    /// </summary>
+    public string TypeLabel => FileIcon.Description;
 
     public string SizeDisplay => FormatSize(Media.SizeBytes);
 
@@ -95,6 +94,19 @@ public partial class ThumbnailItemViewModel : ObservableObject
 public partial class NavigationItemViewModel : ObservableObject
 {
     public string Title { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 副标题（只有文件夹项用）：完整路径。
+    ///
+    /// 为什么要有它：文件夹以前直接拿完整路径当标题，侧栏宽度只够显示
+    /// 「C:\Users\xxx\Videos\Capt…」，两个不同目录看起来一模一样，用户挑哪个全靠猜。
+    /// 现在标题只放末级目录名，路径放副标题小字 + 完整路径进 ToolTip。
+    /// </summary>
+    public string? SubTitle { get; set; }
+
+    /// <summary>鼠标悬停时的完整路径说明。</summary>
+    public string? ToolTipText { get; set; }
+
     public string? Icon { get; set; }
     public string? Key { get; set; }
 
@@ -103,6 +115,12 @@ public partial class NavigationItemViewModel : ObservableObject
 
     /// <summary>关联的根文件夹/标签/分类 id（可空）。</summary>
     public long? RelatedId { get; set; }
+
+    /// <summary>
+    /// 列表项内容模板里放的是 StackPanel（两级文字），UI 自动化合成不出名字，
+    /// 会退化成「类名」；给个 ToString 让读屏软件和自动化测试都能读到正常文字。
+    /// </summary>
+    public override string ToString() => Title;
 }
 
 /// <summary>顶部「类型」多选筛选项。</summary>

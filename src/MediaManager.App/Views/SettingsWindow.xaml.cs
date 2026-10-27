@@ -9,6 +9,7 @@ using MediaManager.App.ViewModels;
 using MediaManager.App.Views.Dialogs;
 using MediaManager.Core.Diagnostics;
 using MediaManager.Core.Input;
+using MediaManager.Core.Models;
 using MediaManager.Core.Plugins;
 using MediaManager.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -99,6 +100,21 @@ public partial class SettingsWindow : Window
         if (key == "plugins") RefreshPluginPage();
     }
 
+    /// <summary>
+    /// 极简模式下把「插件扩展」从设置导航里藏掉。
+    /// 如果用户正停在这一页，同时退回「常规与外观」—— 否则会看到一个没有导航项的页面。
+    /// </summary>
+    private void ApplySimpleModeToNav(bool simpleMode)
+    {
+        PluginsNavItem.Visibility = simpleMode ? Visibility.Collapsed : Visibility.Visible;
+
+        if (simpleMode && PluginsNavItem.IsSelected)
+        {
+            PluginsNavItem.IsSelected = false;
+            NavList.SelectedIndex = 0;
+        }
+    }
+
     private async Task LoadSettingsAsync()
     {
         // 一次性把 5 个设置项从数据库取回（后台线程），避免 5 次同步阻塞
@@ -110,8 +126,18 @@ public partial class SettingsWindow : Window
             await _repo.GetSettingAsync(VideoPlayerWindow.RememberModeSettingKey),
             await _repo.GetSettingAsync("Theme")));
 
+        var (importPolicyStr, importFolderStr) = await Task.Run(async () => (
+            await _repo.GetSettingAsync(ImportPolicy.PolicySettingKey),
+            await _repo.GetSettingAsync(ImportPolicy.FolderSettingKey)));
+
         var extStr = await Task.Run(() => _repo.GetSettingAsync("EnableExtendedFormats"));
         ExtendedFormatsCheck.IsChecked = extStr != "0";
+
+        // 极简模式：只有明确存了 "1" 才算开启
+        var simpleStr = await Task.Run(
+            () => _repo.GetSettingAsync(MainViewModel.SimpleModeSettingKey));
+        SimpleModeBox.IsChecked = simpleStr == "1";
+        ApplySimpleModeToNav(simpleStr == "1");
 
         DataDirBox.Text = _config.DataDirectory;
         CacheDirBox.Text = _config.ThumbnailDirectory;
@@ -181,6 +207,17 @@ public partial class SettingsWindow : Window
 
         // 备份目录 + 自动备份间隔
         BackupDirBox.Text = backupDir ?? string.Empty;
+
+        // 外部文件导入策略 + 导入文件夹
+        ImportPolicyBox.SelectedIndex = importPolicyStr switch
+        {
+            "AddParentFolder" => 1,
+            "CopyToImportFolder" => 2,
+            _ => 0,
+        };
+        ImportFolderBox.Text = string.IsNullOrWhiteSpace(importFolderStr)
+            ? MediaImportOptions.DefaultImportFolder
+            : importFolderStr;
 
         AutoBackupBox.SelectedIndex = autoBackup switch
         {
@@ -939,6 +976,38 @@ public partial class SettingsWindow : Window
         BackupDirBox.Text = string.Empty;
     }
 
+    /// <summary>选择导入文件夹（外部文件「复制到导入文件夹」模式的目标位置）。</summary>
+    private void OnBrowseImportFolder(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "选择导入文件夹（外部文件的副本会放进这里）",
+        };
+        if (!string.IsNullOrWhiteSpace(ImportFolderBox.Text) && System.IO.Directory.Exists(ImportFolderBox.Text))
+            dlg.InitialDirectory = ImportFolderBox.Text;
+        else
+            dlg.InitialDirectory = MediaImportOptions.DefaultImportFolder;
+
+        if (dlg.ShowDialog() == true)
+            ImportFolderBox.Text = dlg.FolderName;
+    }
+
+    private void OnOpenImportFolder(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var folder = string.IsNullOrWhiteSpace(ImportFolderBox.Text)
+                ? MediaImportOptions.DefaultImportFolder
+                : ImportFolderBox.Text;
+            System.IO.Directory.CreateDirectory(folder);
+            ShellHelper.OpenFolder(folder);
+        }
+        catch (Exception ex)
+        {
+            CustomMessageBox.Warn(StorageErrors.WithAction(ex, "打开目录"), "无法打开目录");
+        }
+    }
+
     private void OnBrowseFfmpeg(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog { Title = "选择 ffmpeg.exe", Filter = "ffmpeg.exe|ffmpeg.exe|所有文件|*.*" };
@@ -946,25 +1015,39 @@ public partial class SettingsWindow : Window
             FfmpegBox.Text = dlg.FileName;
     }
 
-    /// <summary>导出数据到指定位置（如 U 盘），用于换机迁移。</summary>
+    /// <summary>导出完整备份（数据库 + 私密空间文件）到指定位置（如 U 盘），用于换机迁移。</summary>
     private async void OnExportData(object sender, RoutedEventArgs e)
     {
         var dlg = new SaveFileDialog
         {
-            Title = "导出数据到…",
-            Filter = "媒体管理器备份 (*.mmdb)|*.mmdb|所有文件 (*.*)|*.*",
-            FileName = $"MediaManager_backup_{DateTime.Now:yyyyMMdd_HHmmss}.mmdb",
+            Title = "导出完整备份到…",
+            Filter = "媒体管理器完整备份 (*.mmbak)|*.mmbak|所有文件 (*.*)|*.*",
+            FileName = $"MediaManager_full_{DateTime.Now:yyyyMMdd_HHmmss}.mmbak",
         };
         if (dlg.ShowDialog() != true) return;
 
         try
         {
-            var backup = App.Services.GetRequiredService<IDatabaseBackupService>();
-            await backup.ExportAsync(dlg.FileName);
+            SetStatus("正在导出完整备份…");
+
+            var progress = new Progress<string>(s => SetStatus("导出中：" + s));
+            var full = App.Services.GetRequiredService<IFullBackupService>();
+            var result = await full.ExportAsync(dlg.FileName, progress);
+
+            if (!result.Success)
+            {
+                CustomMessageBox.Error(StorageErrors.WithAction(
+                    new InvalidOperationException(result.Error ?? "未知错误"), "导出"), "导出失败");
+                return;
+            }
+
             CustomMessageBox.Success(
-                $"数据已导出到：\n{dlg.FileName}\n\n收藏、分类、标签、备注等全部数据都在里面。\n" +
-                "换新电脑后，在设置里点「导入数据」选择这个文件即可恢复。",
+                $"完整备份已导出到：\n{dlg.FileName}\n\n"
+                + $"· 整理库、日记、设置 —— 全部在包里\n"
+                + $"· 私密空间文件 —— {result.VaultFiles} 个\n\n"
+                + "换新电脑后，在设置里点「导入完整备份」选择这个文件即可恢复。",
                 "导出成功");
+            SetStatus("完整备份已导出");
         }
         catch (Exception ex)
         {
@@ -972,26 +1055,60 @@ public partial class SettingsWindow : Window
         }
     }
 
-    /// <summary>从备份文件导入数据（覆盖当前数据）。</summary>
+    /// <summary>从完整备份恢复（覆盖当前数据 + 还原私密空间文件）。</summary>
     private async void OnImportData(object sender, RoutedEventArgs e)
     {
         var dlg = new OpenFileDialog
         {
-            Title = "选择备份文件",
-            Filter = "媒体管理器备份 (*.mmdb;*.db)|*.mmdb;*.db|所有文件 (*.*)|*.*",
+            Title = "选择完整备份文件",
+            Filter = "媒体管理器完整备份 (*.mmbak)|*.mmbak|数据库备份 (*.mmdb;*.db)|*.mmdb;*.db|所有文件 (*.*)|*.*",
         };
         if (dlg.ShowDialog() != true) return;
 
+        var isMmbak = dlg.FileName.EndsWith(".mmbak", StringComparison.OrdinalIgnoreCase);
+
         var confirm = CustomMessageBox.Confirm(
-            "导入将用备份文件的内容覆盖当前所有数据（收藏、分类、标签、备注等）。\n\n确定继续吗？导入完成后请重启程序。",
+            "导入将用备份的内容覆盖当前所有数据（整理库、日记、私密空间）。\n\n"
+            + "恢复前会先把当前的数据自动备份一份，出问题可以退回来。\n\n确定继续吗？导入完成后请重启程序。",
             "确认导入", confirmText: "导入", danger: true);
         if (!confirm) return;
 
         try
         {
-            var backup = App.Services.GetRequiredService<IDatabaseBackupService>();
-            await backup.ImportAsync(dlg.FileName);
-            CustomMessageBox.Success("数据已导入。请重启程序以加载新数据。", "导入完成");
+            SetStatus("正在恢复…");
+            var progress = new Progress<string>(s => SetStatus("恢复中：" + s));
+
+            if (isMmbak)
+            {
+                var full = App.Services.GetRequiredService<IFullBackupService>();
+                var result = await full.ImportAsync(dlg.FileName, progress);
+
+                if (!result.Success)
+                {
+                    CustomMessageBox.Error(StorageErrors.WithAction(
+                        new InvalidOperationException(result.Error ?? "未知错误"), "导入"), "导入失败");
+                    return;
+                }
+
+                var missingNote = result.MissingFiles > 0
+                    ? $"\n\n注意：有 {result.MissingFiles} 个私密文件在备份包里就没有（导出前已丢失），无法还原。"
+                    : string.Empty;
+
+                CustomMessageBox.Success(
+                    $"数据已恢复：私密空间文件还原 {result.VaultFiles} 个。{missingNote}\n\n请重启程序以加载新数据。",
+                    "导入完成");
+            }
+            else
+            {
+                // 老格式的纯数据库备份（.mmdb / .db）：只恢复数据库
+                var backup = App.Services.GetRequiredService<IDatabaseBackupService>();
+                await backup.ImportAsync(dlg.FileName);
+                CustomMessageBox.Success(
+                    "数据库已恢复（这个文件是纯数据库备份，不包含私密空间的文件）。\n\n请重启程序以加载新数据。",
+                    "导入完成");
+            }
+
+            SetStatus("数据已恢复");
         }
         catch (Exception ex)
         {
@@ -1019,6 +1136,12 @@ public partial class SettingsWindow : Window
             await _repo.SetSettingAsync("DiscoveryCount", discoveryTag);
             await _repo.SetSettingAsync("CloseBehavior", closeTag);
 
+            // 极简模式：落库 + 立刻推给主视图模型（左侧导航马上跟着变，不用重启）
+            var simpleMode = SimpleModeBox.IsChecked == true;
+            await _repo.SetSettingAsync(MainViewModel.SimpleModeSettingKey, simpleMode ? "1" : "0");
+            _mainViewModel.IsSimpleMode = simpleMode;
+            ApplySimpleModeToNav(simpleMode);
+
             // 视频播放模式是否记忆（关掉后每次打开都是播完暂停）
             await _repo.SetSettingAsync(VideoPlayerWindow.RememberModeSettingKey,
                 RememberVideoModeBox.IsChecked == true ? "1" : "0");
@@ -1028,6 +1151,12 @@ public partial class SettingsWindow : Window
                 string.IsNullOrWhiteSpace(BackupDirBox.Text) ? null : BackupDirBox.Text.Trim());
             var autoBackupTag = (AutoBackupBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "0";
             await _repo.SetSettingAsync("AutoBackupIntervalMinutes", autoBackupTag);
+
+            // 外部文件导入策略 + 导入文件夹
+            var importPolicyTag = (ImportPolicyBox.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag?.ToString() ?? "Ask";
+            await _repo.SetSettingAsync(ImportPolicy.PolicySettingKey, importPolicyTag);
+            await _repo.SetSettingAsync(ImportPolicy.FolderSettingKey,
+                string.IsNullOrWhiteSpace(ImportFolderBox.Text) ? null : ImportFolderBox.Text.Trim());
 
             // 内存配置必须跟刚写入的值对齐。
             // 否则它还是启动时的快照：下次打开设置窗口显示旧值，

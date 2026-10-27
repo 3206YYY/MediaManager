@@ -1,4 +1,4 @@
-<Window x:Class="MediaManager.App.Views.MainWindow"
+﻿<Window x:Class="MediaManager.App.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -111,6 +111,7 @@
                                   ToolTip="只显示已编辑生成的副本" />
                 </StackPanel>
 
+                <!-- 私密空间是独立窗口（点侧栏「🔒 私密空间」打开），主界面不承载私密视图 -->
                 <Button DockPanel.Dock="Right" Content="⚙ 设置" Margin="10,0,0,0" Click="OnSettings" />
                 <!-- 最常用的设置直接放主界面：一键切深浅色（其余收进设置页侧边栏分类） -->
                 <!-- 用矢量图标而不是彩色 emoji：和旁边按钮的线条图标风格一致，
@@ -193,18 +194,93 @@
                                                VerticalAlignment="Center" Margin="4,0,0,0" />
                                 </StackPanel>
                             </ListBoxItem>
-                            <ListBoxItem Tag="unfiled" PreviewMouseLeftButtonDown="OnNavClick">
+                            <ListBoxItem Tag="unfiled" PreviewMouseLeftButtonDown="OnNavClick"
+                                         Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}">
                                 <TextBlock Text="📥 未分类" Style="{StaticResource SidebarText}" />
                             </ListBoxItem>
-                            <ListBoxItem Tag="recent-view" PreviewMouseLeftButtonDown="OnNavClick">
+                            <ListBoxItem Tag="recent-view" PreviewMouseLeftButtonDown="OnNavClick"
+                                         Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}">
                                 <TextBlock Text="🕒 最近查看" Style="{StaticResource SidebarText}" />
                             </ListBoxItem>
-                            <ListBoxItem Tag="recent" PreviewMouseLeftButtonDown="OnNavClick">
+                            <ListBoxItem Tag="recent" PreviewMouseLeftButtonDown="OnNavClick"
+                                         Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}">
                                 <TextBlock Text="🕘 最近添加" Style="{StaticResource SidebarText}" />
                             </ListBoxItem>
-                            <ListBoxItem Tag="trash" PreviewMouseLeftButtonDown="OnNavClick">
+                            <ListBoxItem Tag="diary" PreviewMouseLeftButtonDown="OnNavClick"
+                                         Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}">
+                                <TextBlock Text="📔 日记" Style="{StaticResource SidebarText}" />
+                            </ListBoxItem>
+                            <ListBoxItem Tag="trash" PreviewMouseLeftButtonDown="OnNavClick"
+                                         Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}">
                                 <TextBlock Text="🗑 最近删除" Style="{StaticResource SidebarText}" />
                             </ListBoxItem>
+                            <!-- 私密空间：点一下直接进去（当前不设密码，就是把它藏起来）；进来后就是保险箱视图 -->
+                            <ListBoxItem x:Name="VaultNavItem" Tag="vault" PreviewMouseLeftButtonDown="OnNavClick"
+                                         Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🔒 私密空间" Style="{StaticResource SidebarText}" />
+                                    <TextBlock Text="{Binding PrivateCount, StringFormat=( {0} )}"
+                                               Opacity="0.65" FontSize="11"
+                                               VerticalAlignment="Center" Margin="4,0,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource SidebarText}">
+                                                <Style.Triggers>
+                                                    <!-- 空保险箱不显示 ( 0 )，免得像「坏了」 -->
+                                                    <DataTrigger Binding="{Binding PrivateCount}" Value="0">
+                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </ListBoxItem>
+                        </ListBox>
+
+                        <!-- 分类：v1.3.2 起是唯一的归类维度（收藏夹已并入），也是拖拽归类的落点 -->
+                        <!-- 极简模式整组隐藏：分类对轻度用户是「多出来的一套概念」，藏掉不影响文件 -->
+                        <!-- 位置在「文件夹」之前：分类是用户自己划的「分区」，比系统路径更常点 -->
+                        <ToggleButton x:Name="CategoryToggle" IsChecked="True" Margin="8,16,8,4"
+                                      Click="OnToggleSection" Tag="Category"
+                                      Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}"
+                                      Style="{StaticResource SidebarSectionHeader}"
+                                      HorizontalAlignment="Left"
+                                      ToolTip="展开 / 收起分类分组">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="CategoryChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
+                                <TextBlock Text=" 分类" FontWeight="Bold" Style="{StaticResource SidebarText}" />
+                                <TextBlock Text="{Binding CategoryCount, StringFormat=( {0} )}" FontSize="11"
+                                           Style="{StaticResource SidebarText}" Opacity="0.65"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </StackPanel>
+                        </ToggleButton>
+                        <StackPanel x:Name="CategoryAddPanel" Orientation="Horizontal" Margin="8,0,8,4"
+                                    Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}">
+                            <Button Content="＋ 新建分类" Command="{Binding AddCategoryCommand}" />
+                        </StackPanel>
+                        <ListBox x:Name="CategoryListBox" BorderThickness="0" Background="Transparent"
+                                 Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}"
+                                 ItemsSource="{Binding CategoryItems}"
+                                 ItemContainerStyle="{StaticResource SidebarItemStyle}"
+                                 SelectionChanged="OnCategorySelectionChanged"
+                                 PreviewMouseLeftButtonDown="OnReorderMouseDown"
+                                 PreviewMouseMove="OnReorderMouseMove"
+                                 PreviewMouseLeftButtonUp="OnReorderMouseUp"
+                                 AllowDrop="True" DragOver="OnSidebarDragOver" Drop="OnSidebarDrop"
+                                 Tag="Category">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                               Style="{StaticResource SidebarText}" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="重命名" Click="OnRenameCategoryMenu" />
+                                    <Separator />
+                                    <MenuItem Header="删除" Click="OnDeleteCategoryMenu" />
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
                         </ListBox>
 
                         <ToggleButton x:Name="FolderToggle" IsChecked="True" Margin="8,16,8,4"
@@ -222,9 +298,17 @@
                                  ItemContainerStyle="{StaticResource SidebarItemStyle}"
                                  SelectionChanged="OnFolderSelectionChanged">
                             <ListBox.ItemTemplate>
+                                <!-- 两级显示：末级目录名 + 盘符/上级目录小字。
+                                     以前直接放整条路径，侧栏宽度不够被截成
+                                     「C:\Users\xxx\Videos\Capt…」，两个目录看着一模一样 -->
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
-                                               Style="{StaticResource SidebarText}" />
+                                    <StackPanel ToolTip="{Binding ToolTipText}">
+                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                                   Style="{StaticResource SidebarText}" />
+                                        <TextBlock Text="{Binding SubTitle}" TextTrimming="CharacterEllipsis"
+                                                   FontSize="10" Opacity="0.55" Margin="0,1,0,0"
+                                                   Style="{StaticResource SidebarText}" />
+                                    </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                             <ListBox.ContextMenu>
@@ -275,46 +359,6 @@
                             </ListBox.ContextMenu>
                         </ListBox>
 
-                        <!-- 分类：v1.3.2 起是唯一的归类维度（收藏夹已并入），也是拖拽归类的落点 -->
-                        <ToggleButton x:Name="CategoryToggle" IsChecked="True" Margin="8,16,8,4"
-                                      Click="OnToggleSection" Tag="Category"
-                                      Style="{StaticResource SidebarSectionHeader}"
-                                      HorizontalAlignment="Left"
-                                      ToolTip="展开 / 收起分类分组">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="CategoryChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
-                                <TextBlock Text=" 分类" FontWeight="Bold" Style="{StaticResource SidebarText}" />
-                                <TextBlock Text="{Binding CategoryCount, StringFormat=( {0} )}" FontSize="11"
-                                           Style="{StaticResource SidebarText}" Opacity="0.65"
-                                           VerticalAlignment="Center" Margin="4,0,0,0" />
-                            </StackPanel>
-                        </ToggleButton>
-                        <StackPanel x:Name="CategoryAddPanel" Orientation="Horizontal" Margin="8,0,8,4">
-                            <Button Content="＋ 新建分类" Command="{Binding AddCategoryCommand}" />
-                        </StackPanel>
-                        <ListBox x:Name="CategoryListBox" BorderThickness="0" Background="Transparent"
-                                 ItemsSource="{Binding CategoryItems}"
-                                 ItemContainerStyle="{StaticResource SidebarItemStyle}"
-                                 SelectionChanged="OnCategorySelectionChanged"
-                                 PreviewMouseLeftButtonDown="OnReorderMouseDown"
-                                 PreviewMouseMove="OnReorderMouseMove"
-                                 PreviewMouseLeftButtonUp="OnReorderMouseUp"
-                                 AllowDrop="True" DragOver="OnSidebarDragOver" Drop="OnSidebarDrop"
-                                 Tag="Category">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
-                                               Style="{StaticResource SidebarText}" />
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                            <ListBox.ContextMenu>
-                                <ContextMenu>
-                                    <MenuItem Header="重命名" Click="OnRenameCategoryMenu" />
-                                    <Separator />
-                                    <MenuItem Header="删除" Click="OnDeleteCategoryMenu" />
-                                </ContextMenu>
-                            </ListBox.ContextMenu>
-                        </ListBox>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
@@ -405,6 +449,9 @@
                             <MenuItem x:Name="BatchExportMenu" Header="📤 批量导出 / 统一尺寸…" Click="OnBatchExportMenu" />
                             <MenuItem Header="删除到回收站 (Delete)" Click="OnDeleteMenu" />
                             <Separator />
+                            <MenuItem x:Name="MoveIntoVaultMenu" Header="🔒 移入私密空间" Click="OnMoveIntoVaultMenu" />
+                            <MenuItem x:Name="AddToDiaryMenu" Header="📔 写进日记" Click="OnAddToDiaryMenu" />
+                            <Separator />
                             <MenuItem Header="打星">
                                 <MenuItem Header="⭐ 1" Click="OnRateMenu" Tag="1" />
                                 <MenuItem Header="⭐⭐ 2" Click="OnRateMenu" Tag="2" />
@@ -474,16 +521,18 @@
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                                        Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}" />
                                         </Border>
-                                        <!-- 非视觉类型（音频/文档/压缩包）：固定图标（音频统一同一个图标） -->
-                                        <StackPanel Visibility="{Binding IsNonVisual, Converter={StaticResource BoolToVis}}"
-                                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding TypeGlyph}" FontSize="88"
-                                                       HorizontalAlignment="Center" />
-                                            <TextBlock Text="{Binding TypeLabel}" FontSize="11"
-                                                       HorizontalAlignment="Center"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       Margin="0,4,0,0" />
-                                        </StackPanel>
+                                        <!-- 非视觉类型（文档/压缩包/音频）：彩色矢量类型图标。
+                                             以前这里是 emoji（📄 🗜️ 🎵），而 emoji 在 WPF 里能不能出彩色
+                                             完全看系统字体：很多机器回落到 Segoe UI Symbol 的单色字形，
+                                             看着就像「图标没加载出来」。现在改成纯矢量绘制，任何机器一致。
+                                             宽高跟着格子大小走（96:118 的稿，×0.46 / ×0.565 保持比例），
+                                             拖缩略图滑块时不会变形。 -->
+                                        <ctl:FileTypeIconView Icon="{Binding FileIcon}"
+                                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              Width="{Binding DataContext.ThumbnailSize, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource Multiply}, ConverterParameter=0.46}"
+                                                              Height="{Binding DataContext.ThumbnailSize, RelativeSource={RelativeSource AncestorType=ListBox}, Converter={StaticResource Multiply}, ConverterParameter=0.565}"
+                                                              Visibility="{Binding IsNonVisual, Converter={StaticResource BoolToVis}}"
+                                                              ToolTip="{Binding FileIcon.Description}" />
                                         <Border Background="#E6C627" HorizontalAlignment="Right"
                                                 VerticalAlignment="Top" CornerRadius="0,0,0,8"
                                                 Padding="5,1"

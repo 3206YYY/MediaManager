@@ -14,6 +14,7 @@ using MediaManager.Core.Diagnostics;
 using MediaManager.Core.Services;
 using MediaManager.Infrastructure;
 using MediaManager.Infrastructure.Database;
+using MediaManager.Infrastructure.FileSystem;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Serilog;
@@ -175,6 +176,14 @@ public partial class App : Application
 
             // 2) 主题校准：用户可能在设置里改过，缓存文件与数据库不一致时纠正
             await SyncThemeFromDatabaseAsync(provider);
+
+            // 2.5) 私密空间：把密码凭据读进内存（之后「有没有设过密码」是纯内存判断）
+            var vault = provider.GetRequiredService<IVaultService>();
+            await vault.InitializeAsync();
+
+            // 保险箱目录必须从扫描范围里排除：否则用户把数据目录加进库时，
+            // Vault 里的文件会被重新入库成普通项，等于在网格里公开
+            ScanService.SetExcludedDirectories(new[] { vault.VaultDirectory });
 
             // 3) 托盘图标（必须在 UI 线程创建）
             _tray = new TrayIconService(

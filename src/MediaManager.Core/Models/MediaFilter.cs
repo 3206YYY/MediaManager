@@ -28,8 +28,21 @@ public class MediaFilter
     /// <summary>仅显示编辑副本（文件名含 _edited）。</summary>
     public bool? EditedOnly { get; set; }
 
+    /// <summary>
+    /// 是否查询私密空间里的内容。
+    /// 默认 false = 只查普通媒体 —— 所有常规视图都必须走这个默认值，
+    /// 忘了过滤就是「私密文件出现在主网格里」，这是本功能最严重的事故。
+    /// </summary>
+    public bool IncludePrivate { get; set; }
+
     /// <summary>按文件夹（根目录）筛选。</summary>
     public long? RootFolderId { get; set; }
+
+    /// <summary>按私密空间的分区筛选（配合 <see cref="IncludePrivate"/> 使用）。</summary>
+    public long? VaultSectionId { get; set; }
+
+    /// <summary>只看私密空间里「未分区」的内容。</summary>
+    public bool VaultUnsectioned { get; set; }
 
     public DateTime? DateFrom { get; set; }
     public DateTime? DateTo { get; set; }

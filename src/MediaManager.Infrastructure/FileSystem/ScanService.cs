@@ -295,6 +295,38 @@ public class ScanService : IScanService
     }
 
     /// <summary>
+    /// 扫描时整体跳过的目录（目前只有保险箱）。
+    ///
+    /// 为什么需要：保险箱里的文件 <c>IsPrivate=1</c>，但扫描是按路径 upsert 的。
+    /// 用户如果把数据目录（或它的上级）也加成了媒体文件夹，Vault 里的文件会被
+    /// 当成新文件重新入库成普通项 —— 直接在主网格里泄露。
+    /// 这里从源头堵住：不枚举这个目录，一个文件都看不到。
+    /// </summary>
+    private static string[] _excludedDirectories = Array.Empty<string>();
+
+    /// <summary>设置要跳过的目录（由启动流程注入保险箱路径）。</summary>
+    public static void SetExcludedDirectories(IEnumerable<string> directories)
+    {
+        _excludedDirectories = directories
+            .Where(d => !string.IsNullOrWhiteSpace(d))
+            .Select(d => d.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            .ToArray();
+    }
+
+    private static bool IsExcludedDirectory(string directory)
+    {
+        if (_excludedDirectories.Length == 0) return false;
+
+        var normalized = directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        foreach (var excluded in _excludedDirectories)
+        {
+            if (string.Equals(normalized, excluded, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
     /// 安全递归枚举文件：逐个目录 try-catch。
     /// 系统目录无权限、设备中途拔出、目录被删，都只跳过该目录，不会让整次扫描崩掉。
     /// </summary>
@@ -306,6 +338,8 @@ public class ScanService : IScanService
         while (stack.Count > 0)
         {
             var dir = stack.Pop();
+
+            if (IsExcludedDirectory(dir)) continue;
 
             string[] files;
             try

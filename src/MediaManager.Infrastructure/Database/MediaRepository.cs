@@ -208,9 +208,11 @@ public class MediaRepository : IMediaRepository
     public async Task<int> MarkMissingAsync(long rootFolderId, ISet<string> existingPaths)
     {
         // 将该根目录下数据库中所有不在磁盘的项标记为 IsMissing=1
+        // 私密项必须排除：它们的文件已经被挪到 Data/Vault，按原根目录扫描当然「找不到」，
+        // 不排除的话用户一移入保险箱、下次扫描就全变成「文件丢失」。
         using var conn = _factory.CreateConnection();
         var all = await conn.QueryAsync<string>(
-            "SELECT Path FROM MediaItem WHERE RootFolderId=@RootFolderId AND IsMissing=0;",
+            "SELECT Path FROM MediaItem WHERE RootFolderId=@RootFolderId AND IsMissing=0 AND IsPrivate=0;",
             new { RootFolderId = rootFolderId }).ConfigureAwait(false);
         var toMark = all.Where(p => !existingPaths.Contains(p)).ToList();
         if (toMark.Count == 0) return 0;
@@ -586,7 +588,8 @@ public class MediaRepository : IMediaRepository
     public async Task<long> GetTotalCountAsync()
     {
         using var conn = _factory.CreateConnection();
-        return await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM MediaItem WHERE IsMissing=0;").ConfigureAwait(false);
+        return await conn.ExecuteScalarAsync<long>(
+            "SELECT COUNT(*) FROM MediaItem WHERE IsMissing=0 AND IsPrivate=0;").ConfigureAwait(false);
     }
 
     // ---------- Discovery（发现页随机推荐） ----------
@@ -594,7 +597,7 @@ public class MediaRepository : IMediaRepository
     public async Task<List<MediaItem>> QueryDiscoveryAsync(DiscoveryPoolType poolType, long? poolId, int limit, List<long>? excludeIds, IReadOnlyList<MediaType>? types = null)
     {
         using var conn = _factory.CreateConnection();
-        var clauses = new List<string> { "m.IsMissing = 0" };
+        var clauses = new List<string> { "m.IsMissing = 0", "m.IsPrivate = 0" };
 
         switch (poolType)
         {
@@ -635,7 +638,7 @@ public class MediaRepository : IMediaRepository
     public async Task<long> CountDiscoveryPoolAsync(DiscoveryPoolType poolType, long? poolId, IReadOnlyList<MediaType>? types = null)
     {
         using var conn = _factory.CreateConnection();
-        var clauses = new List<string> { "IsMissing = 0" };
+        var clauses = new List<string> { "IsMissing = 0", "IsPrivate = 0" };
         switch (poolType)
         {
             case DiscoveryPoolType.Favorite:
@@ -689,6 +692,16 @@ public class MediaRepository : IMediaRepository
         var ids = string.IsNullOrEmpty(row.MediaIds)
             ? new List<long>()
             : System.Text.Json.JsonSerializer.Deserialize<List<long>>(row.MediaIds) ?? new List<long>();
+
+        // 批次是历史数据，可能生成于「私密」功能之前；读出来再剔一次，
+        // 保证发现页永远不会把保险箱里的东西推到首页上
+        if (ids.Count > 0)
+        {
+            var visible = await conn.QueryAsync<long>(
+                "SELECT Id FROM MediaItem WHERE Id IN @Ids AND IsPrivate = 0;", new { Ids = ids }).ConfigureAwait(false);
+            var allowed = visible.ToHashSet();
+            ids = ids.Where(allowed.Contains).ToList();
+        }
         return new DiscoveryBatch
         {
             Date = row.Date,
@@ -739,7 +752,7 @@ public class MediaRepository : IMediaRepository
         var list = await conn.QueryAsync<MediaItem>(@"
             SELECT m.* FROM MediaItem m
             JOIN RecentView rv ON rv.MediaId = m.Id
-            WHERE m.IsMissing = 0
+            WHERE m.IsMissing = 0 AND m.IsPrivate = 0
             ORDER BY rv.ViewedAtUtc DESC
             LIMIT @Limit;", new { Limit = limit }).ConfigureAwait(false);
         return list.ToList();
@@ -776,7 +789,7 @@ public class MediaRepository : IMediaRepository
 
         using var conn = _factory.CreateConnection();
         var list = await conn.QueryAsync<MediaItem>(
-            "SELECT * FROM MediaItem WHERE Id IN @Ids AND IsMissing=0;", new { Ids = idList }).ConfigureAwait(false);
+            "SELECT * FROM MediaItem WHERE Id IN @Ids AND IsMissing=0 AND IsPrivate=0;", new { Ids = idList }).ConfigureAwait(false);
 
         // 保持传入顺序
         var map = list.ToDictionary(m => m.Id);
@@ -789,7 +802,7 @@ public class MediaRepository : IMediaRepository
     {
         using var conn = _factory.CreateConnection();
         return await conn.ExecuteScalarAsync<long>(
-            "SELECT COUNT(*) FROM MediaItem WHERE Favorite=1 AND IsMissing=0;").ConfigureAwait(false);
+            "SELECT COUNT(*) FROM MediaItem WHERE Favorite=1 AND IsMissing=0 AND IsPrivate=0;").ConfigureAwait(false);
     }
 
     public async Task<long> GetTagCountAsync()
@@ -810,6 +823,11 @@ public class MediaRepository : IMediaRepository
     {
         var param = new DynamicParameters();
         var clauses = new List<string> { "m.IsMissing = 0" };
+
+        // 私密隔离：主界面只看普通媒体，私密视图只看保险箱里的。
+        // 写死在统一的 WHERE 构建里，而不是靠每个视图自己记得加条件 ——
+        // 只要有一个视图漏了，私密文件就会出现在主网格里，这是最严重的事故。
+        clauses.Add(f.IncludePrivate ? "m.IsPrivate = 1" : "m.IsPrivate = 0");
 
         if (!string.IsNullOrWhiteSpace(f.SearchText))
         {
@@ -858,6 +876,15 @@ public class MediaRepository : IMediaRepository
         {
             clauses.Add("m.RootFolderId = @RootFolderId");
             param.Add("RootFolderId", f.RootFolderId.Value);
+        }
+        if (f.VaultSectionId.HasValue)
+        {
+            clauses.Add("m.VaultSectionId = @VaultSectionId");
+            param.Add("VaultSectionId", f.VaultSectionId.Value);
+        }
+        if (f.VaultUnsectioned)
+        {
+            clauses.Add("m.VaultSectionId IS NULL");
         }
         if (f.Unfiled.HasValue && f.Unfiled.Value)
         {
@@ -1074,5 +1101,155 @@ public class MediaRepository : IMediaRepository
             await conn.ExecuteAsync(
                 "INSERT OR IGNORE INTO MediaCategory(MediaId, CategoryId) VALUES(@MediaId, @CategoryId);",
                 new { MediaId = mediaId, CategoryId = categoryId }).ConfigureAwait(false);
+    }
+
+    // ---------- 私密空间（保险箱） ----------
+
+    public async Task SetPrivateAsync(long id, bool isPrivate, string newPath, string? originalPath)
+    {
+        using var conn = _factory.CreateConnection();
+
+        // FileName / Extension 跟着新路径走：保险箱里文件名可能因为重名被改过，
+        // 不同步的话界面显示的名字和磁盘上的对不上。
+        await conn.ExecuteAsync(@"
+            UPDATE MediaItem SET
+                IsPrivate    = @IsPrivate,
+                Path         = @Path,
+                FileName     = @FileName,
+                Extension    = @Extension,
+                OriginalPath = @OriginalPath,
+                -- 移出保险箱时一并清掉分区归属：文件都回到明面上了，
+                -- 再留着私密分区 id 只会让「下次移入自动进错分区」
+                VaultSectionId = CASE WHEN @IsPrivate = 1 THEN VaultSectionId ELSE NULL END,
+                IsMissing    = 0
+            WHERE Id = @Id;",
+            new
+            {
+                Id = id,
+                IsPrivate = isPrivate ? 1 : 0,
+                Path = newPath,
+                FileName = System.IO.Path.GetFileName(newPath),
+                Extension = System.IO.Path.GetExtension(newPath).TrimStart('.'),
+                OriginalPath = originalPath,
+            }).ConfigureAwait(false);
+    }
+
+    public async Task<long> GetPrivateCountAsync()
+    {
+        using var conn = _factory.CreateConnection();
+        return await conn.ExecuteScalarAsync<long>(
+            "SELECT COUNT(*) FROM MediaItem WHERE IsPrivate = 1;").ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task UpdateMediaPathAsync(long id, string newPath)
+    {
+        using var conn = _factory.CreateConnection();
+        await conn.ExecuteAsync(@"
+            UPDATE MediaItem SET
+                Path      = @Path,
+                FileName  = @FileName,
+                Extension = @Extension
+            WHERE Id = @Id;",
+            new
+            {
+                Id = id,
+                Path = newPath,
+                FileName = System.IO.Path.GetFileName(newPath),
+                Extension = System.IO.Path.GetExtension(newPath).TrimStart('.'),
+            }).ConfigureAwait(false);
+    }
+
+    // ---------- 私密空间分区 ----------
+
+    /// <inheritdoc />
+    public async Task<List<VaultSection>> GetVaultSectionsAsync()
+    {
+        using var conn = _factory.CreateConnection();
+
+        // 计数一次查齐：分区表一般就十几个，逐个 COUNT 反而更慢
+        var rows = await conn.QueryAsync<VaultSection>(@"
+            SELECT s.Id, s.Name, s.SortOrder,
+                   (SELECT COUNT(*) FROM MediaItem m
+                     WHERE m.VaultSectionId = s.Id AND m.IsPrivate = 1 AND m.IsMissing = 0) AS ItemCount
+              FROM VaultSection s
+             ORDER BY s.SortOrder, s.Id;").ConfigureAwait(false);
+
+        return rows.ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<long> CreateVaultSectionAsync(string name)
+    {
+        var trimmed = NormalizeSectionName(name);
+        using var conn = _factory.CreateConnection();
+
+        // 同名分区自动加后缀：用户连点两次「新建」不至于出现两个一模一样的名字
+        var existing = (await conn.QueryAsync<string>(
+            "SELECT Name FROM VaultSection;").ConfigureAwait(false)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var finalName = trimmed;
+        var suffix = 2;
+        while (existing.Contains(finalName))
+            finalName = $"{trimmed} ({suffix++})";
+
+        var sort = await conn.ExecuteScalarAsync<int>(
+            "SELECT COALESCE(MAX(SortOrder), 0) FROM VaultSection;").ConfigureAwait(false);
+
+        return await conn.ExecuteScalarAsync<long>(@"
+            INSERT INTO VaultSection (Name, SortOrder, CreatedAtUtc)
+            VALUES (@Name, @Sort, @Now);
+            SELECT last_insert_rowid();",
+            new { Name = finalName, Sort = sort + 1, Now = DateTime.UtcNow.ToString("O") })
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task RenameVaultSectionAsync(long id, string name)
+    {
+        using var conn = _factory.CreateConnection();
+        await conn.ExecuteAsync(
+            "UPDATE VaultSection SET Name = @Name WHERE Id = @Id;",
+            new { Id = id, Name = NormalizeSectionName(name) }).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task DeleteVaultSectionAsync(long id)
+    {
+        using var conn = _factory.CreateConnection();
+
+        // 只把文件变回未分区，绝不跟着删文件 —— 分区只是盒子，盒子扔了东西要留下
+        await conn.ExecuteAsync(
+            "UPDATE MediaItem SET VaultSectionId = NULL WHERE VaultSectionId = @Id;",
+            new { Id = id }).ConfigureAwait(false);
+        await conn.ExecuteAsync("DELETE FROM VaultSection WHERE Id = @Id;", new { Id = id })
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task MoveToVaultSectionAsync(IReadOnlyList<long> mediaIds, long? sectionId)
+    {
+        if (mediaIds.Count == 0) return;
+
+        using var conn = _factory.CreateConnection();
+        await conn.ExecuteAsync(
+            "UPDATE MediaItem SET VaultSectionId = @SectionId WHERE Id IN @Ids;",
+            new { SectionId = sectionId, Ids = mediaIds.ToList() }).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<long> GetVaultUnsectionedCountAsync()
+    {
+        using var conn = _factory.CreateConnection();
+        return await conn.ExecuteScalarAsync<long>(
+            "SELECT COUNT(*) FROM MediaItem WHERE IsPrivate = 1 AND IsMissing = 0 AND VaultSectionId IS NULL;")
+            .ConfigureAwait(false);
+    }
+
+    private static string NormalizeSectionName(string name)
+    {
+        var trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0) trimmed = "新分区";
+        return trimmed.Length > 40 ? trimmed[..40] : trimmed;
     }
 }

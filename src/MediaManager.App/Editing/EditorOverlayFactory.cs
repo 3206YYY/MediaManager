@@ -219,8 +219,42 @@ public static class EditorOverlayFactory
 
     // ---------- 矩形马赛克 ----------
 
-    public static Image? BuildMosaicRect(
-        MosaicOverlayItem mosaic, BitmapSource baseBitmap, double w, double h)
+    /// <summary>
+    /// 打码区域的淡边框颜色：外面一圈极淡的暗色、里面一圈极淡的亮色。
+    /// 单一颜色在深/浅两种底图上总会有一边看不见，双色描边才能保证「纯色背景上也看得出涂过」。
+    /// </summary>
+    private static readonly Brush OutlineDark = Frozen(new SolidColorBrush(Color.FromArgb(0x30, 0, 0, 0)));
+    private static readonly Brush OutlineLight = Frozen(new SolidColorBrush(Color.FromArgb(0x48, 0xFF, 0xFF, 0xFF)));
+
+    private static Brush Frozen(Brush brush)
+    {
+        brush.Freeze();
+        return brush;
+    }
+
+    /// <summary>沿打码区域轮廓描一圈淡边（只用于屏幕预览，导出时 <paramref name="showOutline"/> 为 false）。</summary>
+    private static void AddOutlineChildren(Canvas host, Geometry geometry, double w, double h)
+    {
+        host.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = geometry,
+            Stroke = OutlineDark,
+            StrokeThickness = 2.6,
+            Fill = null,
+            IsHitTestVisible = false,
+        });
+        host.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = geometry,
+            Stroke = OutlineLight,
+            StrokeThickness = 1.1,
+            Fill = null,
+            IsHitTestVisible = false,
+        });
+    }
+
+    public static FrameworkElement? BuildMosaicRect(
+        MosaicOverlayItem mosaic, BitmapSource baseBitmap, double w, double h, bool showOutline = false)
     {
         if (!OverlayGeometry.TryToPixelRect(mosaic.X, mosaic.Y, mosaic.W, mosaic.H,
                 (int)Math.Max(1, w), (int)Math.Max(1, h), out var dx, out var dy, out var dw, out var dh))
@@ -260,7 +294,39 @@ public static class EditorOverlayFactory
             RenderOptions.SetBitmapScalingMode(img, BitmapScalingMode.NearestNeighbor);
             Canvas.SetLeft(img, dx);
             Canvas.SetTop(img, dy);
-            return img;
+
+            if (!showOutline) return img;
+
+            // 预览：套一层淡边框，纯色背景上也能一眼看出「这块打过码」。
+            // 用 Canvas 承载（img 与描边都在 0,0），Canvas 自己负责定位。
+            var host = new Canvas { Width = dw, Height = dh, IsHitTestVisible = false };
+            Canvas.SetLeft(host, dx);
+            Canvas.SetTop(host, dy);
+            Canvas.SetLeft(img, 0);
+            Canvas.SetTop(img, 0);
+            host.Children.Add(img);
+
+            host.Children.Add(new System.Windows.Shapes.Rectangle
+            {
+                Width = dw,
+                Height = dh,
+                Fill = null,
+                Stroke = OutlineLight,
+                StrokeThickness = 1.1,
+                IsHitTestVisible = false,
+            });
+            host.Children.Add(new System.Windows.Shapes.Rectangle
+            {
+                Width = Math.Max(0, dw - 1.2),
+                Height = Math.Max(0, dh - 1.2),
+                Margin = new Thickness(0.6),
+                Fill = null,
+                Stroke = OutlineDark,
+                StrokeThickness = 2.4,
+                IsHitTestVisible = false,
+            });
+
+            return host;
         }
         catch
         {
@@ -317,10 +383,12 @@ public static class EditorOverlayFactory
     /// <remarks>
     /// 每条笔迹可以有自己的颗粒大小，按颗粒分组各画一层：
     /// 同一层内共用一张马赛克底图，既保证颗粒可调，又不会退化成「一笔一个元素」。
+    /// <para><paramref name="showOutline"/>：屏幕预览时沿涂抹轮廓描一圈淡边，
+    /// 纯色背景上也能看出打码范围；导出成品不画（默认 false）。</para>
     /// </remarks>
     public static FrameworkElement? BuildPrivacyLayer(
         IReadOnlyList<PrivacyOverlayItem> items, PrivacyMode mode,
-        BitmapSource baseBitmap, double w, double h)
+        BitmapSource baseBitmap, double w, double h, bool showOutline = false)
     {
         var groups = items
             .Where(i => i.Mode == mode && i.Points.Count > 0)
@@ -368,7 +436,19 @@ public static class EditorOverlayFactory
                 };
             }
 
-            layers.Add(img);
+            // 预览用的淡边框：沿涂抹轮廓描一圈，纯色背景上也能认出「这里涂过马赛克」。
+            // 导出（EditorRenderer）不传 showOutline，成品里不会有这层辅助线。
+            if (showOutline)
+            {
+                var host = new Canvas { Width = w, Height = h, IsHitTestVisible = false };
+                host.Children.Add(img);
+                AddOutlineChildren(host, geometry, w, h);
+                layers.Add(host);
+            }
+            else
+            {
+                layers.Add(img);
+            }
         }
 
         if (layers.Count == 0) return null;
