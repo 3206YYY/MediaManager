@@ -58,6 +58,7 @@ build/*_log.txt
 build/verify_shots/
 build/verify_shots_diary/
 build/shots_vault/
+build/shots_cal/
 build/testmedia/
 build/skel_*.jpg
 build/screen_now.jpg

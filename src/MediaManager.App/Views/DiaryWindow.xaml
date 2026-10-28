@@ -58,6 +58,10 @@
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="14,10">
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="＋ 写一篇" Padding="14,6" Click="OnNewEntry" />
+                <Button x:Name="YearToggleButton" DockPanel.Dock="Right" Content="📅 年视图"
+                        Style="{StaticResource GhostButton}" Padding="12,6" Margin="8,0,0,0"
+                        Click="OnToggleYearView"
+                        ToolTip="一次看完整年 12 个月：有回忆的月份会亮起来，点一下就跳过去" />
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="📔 日记" FontSize="18" FontWeight="Bold"
                                Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" />
@@ -73,7 +77,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- 左：日历 -->
+            <!-- 左：月历 / 年视图（共用一套翻页标题栏） -->
             <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
                 <StackPanel Margin="14,12,14,12">
@@ -89,12 +93,24 @@
                                    Foreground="{DynamicResource TextBrush}" />
                     </DockPanel>
 
-                    <UniformGrid x:Name="WeekHeader" Columns="7" Margin="0,0,0,4" />
-                    <UniformGrid x:Name="DayGrid" Columns="7" Rows="6" />
+                    <!-- 月视图 -->
+                    <StackPanel x:Name="MonthPanel">
+                        <UniformGrid x:Name="WeekHeader" Columns="7" Margin="0,0,0,4" />
+                        <UniformGrid x:Name="DayGrid" Columns="7" Rows="6" />
 
-                    <TextBlock Text="有内容的日期会亮起来，点一下看那天的回忆。"
-                               TextWrapping="Wrap" FontSize="11.5" Margin="2,14,2,0"
-                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="有内容的日期会亮起来，点一下看那天的回忆。"
+                                   TextWrapping="Wrap" FontSize="11.5" Margin="2,14,2,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+
+                    <!-- 年视图：12 个方块（3 列 × 4 行），子元素由代码生成 -->
+                    <StackPanel x:Name="YearPanel" Visibility="Collapsed">
+                        <UniformGrid x:Name="MonthGrid" Columns="3" Rows="4" />
+
+                        <TextBlock x:Name="YearHint" TextWrapping="Wrap" FontSize="11.5" Margin="2,14,2,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="亮起来的月份写过回忆，数字是当月篇数。点一下跳到那个月的日历。" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

@@ -8,8 +8,12 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <!-- 索引 0 必须是主题字典：App.SetThemeAsync 靠替换 [0] 切主题 -->
                 <ResourceDictionary Source="Resources/Themes/Light.xaml" />
                 <ResourceDictionary Source="Resources/Languages/zh-CN.xaml" />
+                <!-- 系统控件重绘（DatePicker / Calendar），只写模板、颜色走 DynamicResource，
+                     所以深浅两套主题共用这一份，放最后不影响主题替换 -->
+                <ResourceDictionary Source="Resources/Themes/Controls.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
             <conv:InverseBoolConverter x:Key="InverseBool" />

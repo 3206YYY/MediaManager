@@ -104,8 +104,11 @@
                         <ComboBoxItem Content="大文件在前" Tag="Size:Descending" />
                         <ComboBoxItem Content="修改时间" Tag="ModifiedAt:Descending" />
                     </ComboBox>
-                    <ToggleButton x:Name="FavoriteOnly" Content="⭐ 收藏" Margin="8,0,0,0" Padding="10,4"
-                                  VerticalAlignment="Center" Cursor="Hand"
+                    <!-- 和主界面「📝 已编辑」同一套胶囊开关：不套样式的话会退回系统默认的白底模板，
+                         深色模式下正好是一块白板，白字糊在上面完全看不见 -->
+                    <ToggleButton x:Name="FavoriteOnly" Content="⭐ 收藏" Margin="8,0,0,0"
+                                  Style="{StaticResource FilterToggleStyle}"
+                                  VerticalAlignment="Center"
                                   Checked="OnFavoriteFilterChanged" Unchecked="OnFavoriteFilterChanged"
                                   ToolTip="只看收藏" />
                     <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
