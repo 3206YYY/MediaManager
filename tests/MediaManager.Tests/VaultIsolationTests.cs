@@ -201,7 +201,7 @@ public class VaultIsolationTests : IDisposable
     [Fact]
     public async Task Open_WithoutPassword_NeedsNoCredential()
     {
-        // 当前版本就是「不设密码的隐藏」：点一下就能进，也不该顺手逼用户设密码
+        // 默认形态是「没设密码」：点一下就能进，代码也不该顺手逼用户设密码
         Assert.False(_vault.IsConfigured);
 
         Assert.True(await _vault.OpenAsync());

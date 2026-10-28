@@ -3,7 +3,7 @@
 
 #define MyAppName "媒体管理器"
 #define MyAppNameEn "MediaManager"
-#define MyAppVersion "1.4.0"
+#define MyAppVersion "1.4.1"
 #define MyAppPublisher "MediaManager"
 #define MyAppExeName "MediaManager.App.exe"
 
@@ -152,7 +152,7 @@ begin
   end;
   RegDeleteKeyIfEmpty(HKCU, 'Software\MediaManager\ShellExtensions');
   // 把开关标记值也去掉，否则 'Software\MediaManager' 因非空永远删不掉，留个空壳键
-  RegDeleteKeyValue(HKCU, 'Software\MediaManager', 'ShellIntegration');
+  RegDeleteValue(HKCU, 'Software\MediaManager', 'ShellIntegration');
   RegDeleteKeyIfEmpty(HKCU, 'Software\MediaManager');
 end;
 

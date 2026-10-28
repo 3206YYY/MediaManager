@@ -214,7 +214,7 @@
                                          Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}">
                                 <TextBlock Text="🗑 最近删除" Style="{StaticResource SidebarText}" />
                             </ListBoxItem>
-                            <!-- 私密空间：点一下直接进去（当前不设密码，就是把它藏起来）；进来后就是保险箱视图 -->
+                            <!-- 私密空间：默认点一下直接进（没设密码时就是一层隐藏）；设过密码则先弹解锁窗 -->
                             <ListBoxItem x:Name="VaultNavItem" Tag="vault" PreviewMouseLeftButtonDown="OnNavClick"
                                          Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}">
                                 <StackPanel Orientation="Horizontal">

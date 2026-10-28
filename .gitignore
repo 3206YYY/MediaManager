@@ -69,6 +69,8 @@ artifacts/
 # 比赛宣传图与版式（本机产物，仓库不需要）
 docs/promo/
 build/promo/
+build/_chk/
+build/knowledge/
 # 验收截图 / 验证日志 / 一次性诊断脚本
 build/v130/
 build/acceptance/
