@@ -25,6 +25,12 @@ UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 FOOT_BOX = (0.66, 0.88, 1.0, 1.0)
 TEXT_LEVEL = 70          # 亮度高于它算「文字像素」（背景最深只有 ~18）
 
+# 页脚字形差异阈值。**不能设 0.05**：v1.4.0 → v1.4.1 只改末位一位数字，
+# 实测差异只有 0.021，0.05 的阈值会把它判成「已生效」（2026-10-28 又踩了一次）。
+# 同一张图重复比对是 0.000（PNG 无损、无抖动），所以 0.01 既抓得住一位数字的改动，
+# 又不会被压缩噪声触发。
+GLYPH_LIMIT = 0.01
+
 
 def fetch(url, binary=False):
     req = urllib.request.Request(url, headers=UA)
@@ -79,11 +85,11 @@ def main():
     glyph = mask_diff(foot_mask(local), foot_mask(net))
 
     print(f"整图差异度 = {full:.4f}（>0.06 说明压根不是这张图）")
-    print(f"页脚字形差异 = {glyph:.3f}（>0.05 说明版本号那一行还没刷新）")
+    print(f"页脚字形差异 = {glyph:.3f}（>{GLYPH_LIMIT} 说明版本号那一行还没刷新）")
 
     if full > 0.06:
         print("结论：✗ 线上还是 GitHub 默认卡片，这张封面根本没上传")
-    elif glyph > 0.05:
+    elif glyph > GLYPH_LIMIT:
         print("结论：✗ 封面是同一张，但页脚版本号是旧的 —— 去 Settings → Social preview 重新上传 docs/social-preview.png")
     else:
         print("结论：✓ 社交预览已换成当前版本")
