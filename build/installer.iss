@@ -3,7 +3,7 @@
 
 #define MyAppName "媒体管理器"
 #define MyAppNameEn "MediaManager"
-#define MyAppVersion "1.4.3"
+#define MyAppVersion "1.4.4"
 #define MyAppPublisher "MediaManager"
 #define MyAppExeName "MediaManager.App.exe"
 

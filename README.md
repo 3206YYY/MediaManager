@@ -7,9 +7,9 @@
 
 **[📥 下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[🌐 官网](https://3206yyy.github.io/MediaManager/)** ｜ **[🇨🇳 Gitee 源码镜像](https://gitee.com/yyy3206/MediaManager)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
 
-> 当前版本 **v1.4.3** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
+> 当前版本 **v1.4.4** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
 >
-> 🆕 **v1.4.3**：修掉日记附件「看着能点、点上去没反应」；设置页新增「遇到问题」，一键复制诊断信息（路径里的用户名自动打码）；首次启动问一句「只看图 / 要整理」，侧栏密度由你定。详见 [更新说明](docs/changelog/v1.4.3.md)。
+> 🆕 **v1.4.4**：插件动作连续出错 3 次整组自动停用，不再反复弹同一个错误框；设置页插件状态三态（已加载 / 已停用 / 加载失败）；托盘图标句柄与读屏名称修复。详见 [更新说明](docs/changelog/v1.4.4.md)。
 
 ---
 
@@ -102,6 +102,7 @@ C 盘、D 盘、移动硬盘里的图片、视频、音频、文档、压缩包�
 
 - 插件放在 **`{数据目录}\plugins`**，设置页「插件扩展」里可直接打开目录、重新扫描。
 - 插件只拿到「当前选中的文件」+ 一个注册菜单的接口，**碰不到主程序内部** —— 插件崩了不会拖垮软件，主程序升级也不会把插件全废掉。
+- 插件动作**连续出错 3 次会自动熔断**：菜单整组收起、状态栏提示，不会每次点都弹同一个错误框；设置页能看到三态状态（已加载 / 已停用 / 加载失败）。
 - 模板：**[docs/plugin-template](docs/plugin-template)**（40 行就能跑起来）；接口说明：**[docs/plugin-api.md](docs/plugin-api.md)**。
 
 ---
@@ -131,8 +132,8 @@ MediaManager.sln
 ├─ src/MediaManager.App/               WPF UI（主窗口 / 图片查看器+编辑器 / 视频播放器 / 私密空间 / 日记 / 设置 / 插件宿主）
 ├─ src/MediaManager.Core/              领域模型、接口、纯逻辑（编辑/媒体/插件契约）
 ├─ src/MediaManager.Infrastructure/    SQLite、文件系统、缩略图、便携模式
-├─ tests/MediaManager.Tests/           Core / Infrastructure 单元测试（267 项）
-├─ tests/MediaManager.App.Tests/       App 层单元测试（14 项，net8.0-windows）
+├─ tests/MediaManager.Tests/           Core / Infrastructure 单元测试（275 项）
+├─ tests/MediaManager.App.Tests/       App 层单元测试（72 项，net8.0-windows）
 ├─ docs/plugin-template/               插件模板（可编译的最小示例）
 ├─ tools/ffmpeg/                       ffmpeg.exe（不进仓库；Release 安装包已内置）
 └─ build/installer.iss                 Inno Setup 安装脚本
