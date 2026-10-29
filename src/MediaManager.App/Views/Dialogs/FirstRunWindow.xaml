@@ -64,9 +64,11 @@
         </Style>
     </Window.Resources>
 
-    <!-- 外层留白给阴影用：AllowsTransparency 下 Effect 会被窗口边界裁掉 -->
+    <!-- 外层留白给阴影用：AllowsTransparency 下 Effect 会被窗口边界裁掉。
+         底色用 BgBrush 而不是 PanelBrush：卡片本身是 PanelBrush，浅色主题下
+         两者都是纯白，会变成「白卡片叠白背景」，只剩 1px 边框能看出来。 -->
     <Border Margin="14" CornerRadius="12"
-            Background="{DynamicResource PanelBrush}"
+            Background="{DynamicResource BgBrush}"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
         <Border.Effect>
             <DropShadowEffect BlurRadius="22" ShadowDepth="0" Opacity="0.26" Color="#000000" />
