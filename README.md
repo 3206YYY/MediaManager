@@ -7,9 +7,9 @@
 
 **[📥 下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[🌐 官网](https://3206yyy.github.io/MediaManager/)** ｜ **[🇨🇳 Gitee 源码镜像](https://gitee.com/yyy3206/MediaManager)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
 
-> 当前版本 **v1.4.2** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
+> 当前版本 **v1.4.3** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
 >
-> 🆕 **v1.4.2**：主列表查询加了复合索引，10 万条实测首页 **79ms → 0.4ms**、翻到第 5 万条 **2.4 秒 → 12ms**；新增可复跑的数据库基准与实机验收脚本；撤掉了此前没有依据的性能表述。详见 [更新说明](docs/changelog/v1.4.2.md)。
+> 🆕 **v1.4.3**：修掉日记附件「看着能点、点上去没反应」；设置页新增「遇到问题」，一键复制诊断信息（路径里的用户名自动打码）；首次启动问一句「只看图 / 要整理」，侧栏密度由你定。详见 [更新说明](docs/changelog/v1.4.3.md)。
 
 ---
 
@@ -74,7 +74,7 @@ C 盘、D 盘、移动硬盘里的图片、视频、音频、文档、压缩包�
 | 压缩包 | 10 | `.zip .rar .7z .tar .gz .bz2 .xz .tgz .tbz2 .txz` |
 
 > 图片和视频用**内置查看器**（随机跳转、快捷键、编辑器只在这里）；音频、文档、压缩包双击交给**系统默认关联程序**，不自带播放器 / 阅读器。
-> 完整行为见 [v1.4.2 更新说明](docs/changelog/v1.4.2.md)。
+> 完整行为见 [v1.4.3 更新说明](docs/changelog/v1.4.3.md)。
 
 ---
 
@@ -131,7 +131,7 @@ MediaManager.sln
 ├─ src/MediaManager.App/               WPF UI（主窗口 / 图片查看器+编辑器 / 视频播放器 / 私密空间 / 日记 / 设置 / 插件宿主）
 ├─ src/MediaManager.Core/              领域模型、接口、纯逻辑（编辑/媒体/插件契约）
 ├─ src/MediaManager.Infrastructure/    SQLite、文件系统、缩略图、便携模式
-├─ tests/MediaManager.Tests/           Core / Infrastructure 单元测试（260 项）
+├─ tests/MediaManager.Tests/           Core / Infrastructure 单元测试（267 项）
 ├─ tests/MediaManager.App.Tests/       App 层单元测试（14 项，net8.0-windows）
 ├─ docs/plugin-template/               插件模板（可编译的最小示例）
 ├─ tools/ffmpeg/                       ffmpeg.exe（不进仓库；Release 安装包已内置）

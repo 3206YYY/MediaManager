@@ -93,7 +93,9 @@ def check_installer():
     elif not re.search(r"CurUninstallStepChanged[\s\S]*?DeleteShellIntegrationKeys\(\)", src):
         problems.append("installer.iss 定义了清理过程，但卸载流程里没调用")
 
-    if "RegDeleteKeyValue(HKCU, 'Software\\MediaManager', 'ShellIntegration')" not in src:
+    # 删的是「值」不是「键」：Inno 里没有 RegDeleteKeyValue 这个函数（上一版写成它，
+    # [Code] 段根本编不过，等于卸载清理从没真正跑过）。正确函数是 RegDeleteValue。
+    if "RegDeleteValue(HKCU, 'Software\\MediaManager', 'ShellIntegration')" not in src:
         problems.append("installer.iss 卸载时没清掉 ShellIntegration 标记值（会留空壳键）")
 
     # 卸载要么按记录清单清（ShellExtensions），要么硬编码扩展名，二者至少有一个
