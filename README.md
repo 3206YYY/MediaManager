@@ -132,7 +132,7 @@ MediaManager.sln
 ├─ src/MediaManager.Core/              领域模型、接口、纯逻辑（编辑/媒体/插件契约）
 ├─ src/MediaManager.Infrastructure/    SQLite、文件系统、缩略图、便携模式
 ├─ tests/MediaManager.Tests/           Core / Infrastructure 单元测试（260 项）
-├─ tests/MediaManager.App.Tests/       App 层单元测试（6 项，net8.0-windows）
+├─ tests/MediaManager.App.Tests/       App 层单元测试（14 项，net8.0-windows）
 ├─ docs/plugin-template/               插件模板（可编译的最小示例）
 ├─ tools/ffmpeg/                       ffmpeg.exe（不进仓库；Release 安装包已内置）
 └─ build/installer.iss                 Inno Setup 安装脚本

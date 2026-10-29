@@ -39,6 +39,7 @@ public partial class SettingsWindow : Window
         Deactivated += (_, _) => EndCapture();
 
         InitializePages();
+        InitDiagnosticCard();
 
         // 不要在构造里同步等数据库：设置窗口打开时卡一下是最容易被感知的
         _ = LoadSettingsAsync();
@@ -1508,6 +1509,92 @@ public partial class SettingsWindow : Window
     }
 
     private void OnOpenRepository(object sender, RoutedEventArgs e) => OpenUrl(UpdateChecker.RepositoryUrl);
+
+    // ---------- 遇到问题：日志 + 诊断信息 ----------
+
+    /// <summary>在「关于与更新」里显示日志目录的真实路径（便携和安装模式落点不同，写死会误导人）。</summary>
+    private void InitDiagnosticCard()
+    {
+        try
+        {
+            LogPathText.Text = "日志目录：" + App.ResolveLogDirectory();
+        }
+        catch (Exception ex)
+        {
+            LogPathText.Text = "日志目录：读取失败（" + ex.Message + "）";
+        }
+    }
+
+    private void OnOpenLogFolder(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dir = App.ResolveLogDirectory();
+            System.IO.Directory.CreateDirectory(dir);
+            // 用 explorer 打开文件夹比 Process.Start(dir) 稳（后者在没关联时会失败）
+            Process.Start("explorer.exe", "\"" + dir + "\"");
+        }
+        catch (Exception ex)
+        {
+            CustomMessageBox.Warn("打不开日志文件夹：" + ex.Message + "\n\n可以在「常规与外观」里查看数据目录，日志在它旁边的 logs 子目录。",
+                "遇到问题");
+        }
+    }
+
+    private async void OnCopyDiagnostics(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            long count = 0;
+            try
+            {
+                count = await _repo.GetTotalCountAsync();
+            }
+            catch
+            {
+                // 库读不出来也要能复制诊断信息 —— 这恰恰是最需要反馈的时候
+            }
+
+            var snapshot = DiagnosticInfo.Capture(
+                VersionText.Text, _config.DataDirectory, App.ResolveLogDirectory(), count);
+            var text = DiagnosticInfo.Compose(snapshot, DateTime.Now);
+
+            if (!TrySetClipboard(text))
+            {
+                CustomMessageBox.Warn("剪贴板被别的程序占用了，请稍后再试。\n\n" + text, "遇到问题");
+                return;
+            }
+
+            CustomMessageBox.Info("诊断信息已复制，直接粘贴到反馈里就行。\n\n"
+                + "如果问题能复现，再把「打开日志文件夹」里最近那份 app-.log 一起附上更好。",
+                "遇到问题");
+        }
+        catch (Exception ex)
+        {
+            CustomMessageBox.Warn("生成诊断信息失败：" + ex.Message, "遇到问题");
+        }
+    }
+
+    /// <summary>
+    /// 写剪贴板。别的程序占着剪贴板时会抛 COMException，重试几次基本就过了；
+    /// 这里不静默失败 —— 用户以为复制成功了却粘出一片空白更难查。
+    /// </summary>
+    private static bool TrySetClipboard(string text)
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            try
+            {
+                Clipboard.SetText(text);
+                return true;
+            }
+            catch (Exception) when (i < 2)
+            {
+                Thread.Sleep(120);
+            }
+        }
+        return false;
+    }
 
     /// <summary>用系统默认浏览器打开链接（explorer.exe 比 Process.Start(url) 更稳）。</summary>
     private void OpenUrl(string url)

@@ -542,6 +542,20 @@
 
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
+                                <TextBlock Text="遇到问题" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                           Text="报错时先复制下面这份诊断信息，再连同问题现象一起反馈 —— 比只说「打不开 / 好卡」有用得多。诊断信息只包含版本、系统、路径和条目数，不读你的照片和日记，路径里的用户名会自动抹掉。" />
+                                <TextBlock x:Name="LogPathText" Style="{StaticResource Hint}" TextWrapping="Wrap"
+                                           Margin="0,0,0,10" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="📂 打开日志文件夹" Click="OnOpenLogFolder" Margin="0,0,8,0" />
+                                    <Button Content="📋 复制诊断信息" Click="OnCopyDiagnostics" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
                                 <TextBlock Text="赞助开发者" Style="{StaticResource SectionTitle}" />
                                 <TextBlock Text="如果这个软件帮到了你，欢迎请开发者喝杯咖啡 ☕。你的支持是持续维护与功能更新的动力。"
                                            Style="{StaticResource Hint}" Margin="0,0,0,10" />

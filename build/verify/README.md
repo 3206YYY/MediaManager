@@ -43,8 +43,9 @@ pip install uiautomation pillow
 | `verify_diary_calendar.py` | 日历弹窗在深色下不是白板、点日期能写回日期框、年视图 12 个方块、点月份能跳转 | 弹窗截图**平均亮度 < 150**（深色底约 44，白板约 240+） | 17/17 |
 | `verify_light_theme.py` | 同一套模板在浅色下没被弄坏 | 日历平均亮度 **> 200**（正常浅底约 247） | 通过 |
 | `verify_diary_attachment.py` | 日记附件缩略图：能看到图 → 点开内置查看器 → 打开的是**被点的那张** → 按 → 翻的仍是本篇日记的图；缩略图缺失时自己补生成 | 查看器窗口出现且标题含被点文件名；缩略图区域**像素标准差 ≥ 20**（空灰框 ≈ 0，真图 ≈ 90+） | 9/9 |
+| `verify_diagnostic_info.py` | 设置页「遇到问题」：日志目录显示的是真实存在的目录、复制出来的诊断信息含版本与路径、**不含用户名**（会被贴到公开论坛） | 目录 `os.path.isdir` 为真；剪贴板文本含「版本：」「日志目录：」，不含 `%USERNAME%` | 11/11 |
 
-## 脚本自身的三个坑（都真踩过，别再踩）
+## 脚本自身的四个坑（都真踩过，别再踩）
 
 1. **数据库路径要跟程序同一套判断。** exe 旁边有 `portable.marker` 时数据在 `Data/library.db`，
    否则在 `%LOCALAPPDATA%\MediaManager\library.db`。第一版 `verify_diary_attachment.py` 按
@@ -55,6 +56,8 @@ pip install uiautomation pillow
 3. **UIA 树的遍历深度要给够。** 日记附件是
    `ItemsControl → ContentPresenter → Border → StackPanel → ItemsControl → … → Image`，
    深度 14 走不到底，`ImageControl` 一个都数不到；改成 24 才找得到。
+4. **读 PowerShell 的输出前先设 `[Console]::OutputEncoding=UTF8`。** 不然中文按 GBK 出来是乱码，
+   `"版本：" in text` 这种断言会莫名其妙变红（`verify_diagnostic_info.py` 第一次跑就栽在这）。
 
 ## 为什么用"平均亮度"当判据（深色 / 浅色）
 

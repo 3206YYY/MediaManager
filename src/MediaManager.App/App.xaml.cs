@@ -141,8 +141,9 @@ public partial class App : Application
     /// 日志目录必须可写。用户若在安装时选「为所有用户安装」，程序会落到 Program Files，
     /// 那里普通权限写不进去——日志初始化失败会连带拖垮整个启动。
     /// 所以日志跟随数据目录：便携模式 Data\logs，安装模式 %LocalAppData%\MediaManager\logs。
+    /// （设置页「遇到问题」也要显示这个路径，所以是 public。）
     /// </summary>
-    private static string ResolveLogDirectory()
+    public static string ResolveLogDirectory()
     {
         try
         {
@@ -424,7 +425,10 @@ public partial class App : Application
             try
             {
                 CustomMessageBox.Error(
-                    "程序遇到严重错误，即将关闭。\n\n请重新打开程序；如反复出现，请把 logs 目录下的日志发给开发者。",
+                    "程序遇到严重错误，即将关闭。\n\n"
+                    + "日志在这个文件夹里：\n" + ResolveLogDirectory() + "\n\n"
+                    + "重新打开后如果还能进到界面，可以去「设置 → 关于与更新 → 遇到问题」，"
+                    + "一键复制诊断信息再反馈。",
                     "媒体管理器");
             }
             catch { /* 已无法弹窗则忽略 */ }
@@ -685,7 +689,8 @@ public partial class App : Application
             else
             {
                 message = "刚才的操作出现了意外错误，已记录到日志。\n\n"
-                          + "程序会继续运行；如果反复出现，请把 logs 目录下的日志发给开发者。\n\n"
+                          + "程序会继续运行。如果反复出现，打开「设置 → 关于与更新 → 遇到问题」，"
+                          + "点「复制诊断信息」发给开发者（日志文件夹也在那里一键打开）。\n\n"
                           + "详细信息：" + ex.Message;
             }
 
