@@ -4,6 +4,8 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using MediaManager.App.Services;
+using MediaManager.App.ViewModels;
+using MediaManager.Core.Media;
 using MediaManager.Core.Models;
 using MediaManager.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,6 +51,20 @@ public partial class DiaryWindow : Window
 
     private bool _loaded;
 
+    /// <summary>
+    /// 当前这一天读出来的条目（刷新缩略图时要把同一个列表重新绑一次，
+    /// 因为 <see cref="MediaItem"/> 没有实现 INotifyPropertyChanged）。
+    /// </summary>
+    private List<DiaryEntry> _dayEntries = new();
+
+    /// <summary>当前这一天涉及的媒体 Id，用来过滤缩略图完成通知（别的日期的事件不管）。</summary>
+    private readonly HashSet<long> _dayMediaIds = new();
+
+    private readonly IThumbnailService? _thumbnails;
+
+    /// <summary>缩略图陆续生成时合并重绑，避免一批图刷十几次界面。</summary>
+    private readonly System.Windows.Threading.DispatcherTimer _thumbRefreshTimer;
+
     /// <summary>「写一篇」编辑框是否已经打开（非模态窗口里可能被二次点击触发）。</summary>
     private bool _editorOpen;
 
@@ -61,6 +77,26 @@ public partial class DiaryWindow : Window
 
         _diary = App.Services.GetRequiredService<IDiaryRepository>();
         _presetMedia = presetMedia?.ToList() ?? new List<MediaItem>();
+
+        // 日记里的附件如果库里还没缩略图（清过缓存 / 导入时生成失败 / 备份恢复），
+        // 以前就是几个永远空着的灰框。这里补上「生成 + 生成好之后重绑」。
+        _thumbnails = App.Services.GetService<IThumbnailService>();
+        if (_thumbnails != null) _thumbnails.ThumbnailReady += OnThumbnailReady;
+
+        _thumbRefreshTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(280),
+        };
+        _thumbRefreshTimer.Tick += (_, _) =>
+        {
+            _thumbRefreshTimer.Stop();
+            RebindEntries();
+        };
+        Closed += (_, _) =>
+        {
+            _thumbRefreshTimer.Stop();
+            if (_thumbnails != null) _thumbnails.ThumbnailReady -= OnThumbnailReady;
+        };
 
         SourceInitialized += (_, _) => Services.WindowThemeHelper.ApplyTitleBarDarkMode(this, App.IsDarkTheme);
         Loaded += OnLoaded;
@@ -164,6 +200,58 @@ public partial class DiaryWindow : Window
 
         EntryItems.ItemsSource = entries;
         EmptyState.Visibility = entries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        _dayEntries = entries;
+        _dayMediaIds.Clear();
+        foreach (var m in entries.SelectMany(e => e.Media))
+            if (m.Id != 0) _dayMediaIds.Add(m.Id);
+
+        EnsureDayThumbnails(entries);
+    }
+
+    /// <summary>
+    /// 给这一天里「库里还没有缩略图」的附件排上生成任务。
+    /// 走系统默认程序打开的类型（音频/文档/压缩包）不需要缩略图，判定统一问
+    /// <see cref="MediaOpenStrategy"/>，别在这里另抄一份类型列表。
+    /// </summary>
+    private void EnsureDayThumbnails(IReadOnlyList<DiaryEntry> entries)
+    {
+        if (_thumbnails == null) return;
+
+        foreach (var media in entries.SelectMany(e => e.Media))
+        {
+            if (MediaOpenStrategy.UseExternalApp(media.MediaType)) continue;
+            if (!string.IsNullOrEmpty(media.ThumbnailPath) && System.IO.File.Exists(media.ThumbnailPath))
+                continue;
+            _thumbnails.Enqueue(media);
+        }
+    }
+
+    /// <summary>
+    /// 缩略图生成好一个就重绑一次（合并 280ms 内的多个通知）。
+    /// 事件在后台线程上触发，改界面必须切回 UI 线程。
+    /// </summary>
+    private void OnThumbnailReady(long mediaId, string thumbnailPath)
+    {
+        if (!_dayMediaIds.Contains(mediaId)) return;
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            // 重绑会把滚动位置带回顶部，所以只在确实有图要换的时候做
+            _thumbRefreshTimer.Stop();
+            _thumbRefreshTimer.Start();
+        }));
+    }
+
+    /// <summary>
+    /// 把当前一天的条目重新绑一次，让 ThumbnailPath 的新值生效。
+    /// 先置 null 再赋同一个实例：WPF 对「同一个引用」不会重建，等于什么都没发生。
+    /// </summary>
+    private void RebindEntries()
+    {
+        if (_dayEntries.Count == 0) return;
+        EntryItems.ItemsSource = null;
+        EntryItems.ItemsSource = _dayEntries;
     }
 
     private static string WeekdayName(DateTime date) => date.DayOfWeek switch
@@ -502,6 +590,31 @@ public partial class DiaryWindow : Window
         {
             Dialogs.CustomMessageBox.Warn("删除失败：" + ex.Message, "日记");
         }
+    }
+
+    /// <summary>
+    /// 点日记里的附件缩略图 → 打开内置查看器 / 播放器（音频文档压缩包交给系统默认程序）。
+    ///
+    /// 以前这些缩略图纯粹是「一张图」，没绑任何事件，点上去毫无反应 —— 看上去像功能，
+    /// 实际点不动，比不显示还糟。上一张 / 下一张的范围限定在**同一篇日记**的图片里，
+    /// 不放整个媒体库（在回忆里翻照片，不该滑到三个月前去的别的东西）。
+    /// </summary>
+    private void OnAttachmentClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: MediaItem media }) return;
+        e.Handled = true;
+
+        // 找这篇日记的全部附件作为翻页范围
+        var siblings = (EntryItems.ItemsSource as IEnumerable<DiaryEntry>)
+            ?.FirstOrDefault(en => en.Media.Any(m => ReferenceEquals(m, media) || (m.Id != 0 && m.Id == media.Id)))
+            ?.Media ?? new List<MediaItem> { media };
+
+        var scope = siblings.Select(m => new ThumbnailItemViewModel(m)).ToList();
+        var target = scope.FirstOrDefault(i => media.Id != 0 && i.Id == media.Id)
+                     ?? scope.FirstOrDefault(i => string.Equals(i.Path, media.Path, StringComparison.OrdinalIgnoreCase))
+                     ?? new ThumbnailItemViewModel(media);
+
+        MediaOpenLauncher.Open(scope, target);
     }
 
     private async Task OpenEditorAsync(DiaryEntry? entry, IReadOnlyList<MediaItem>? presetMedia)

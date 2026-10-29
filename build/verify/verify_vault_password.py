@@ -115,6 +115,21 @@ def click(ctrl):
             return False
 
 
+def activate(win):
+    """把窗口顶到前台再操作。
+
+    密码框没拿到焦点时 SendKeys 会打到别的窗口上，界面表现是「框还是空的 +
+    提示密码至少 4 位」—— 看起来像产品 bug，其实是脚本没激活窗口。
+    """
+    for fn in (lambda: user32.SetForegroundWindow(win.NativeWindowHandle),
+               lambda: win.SetActive()):
+        try:
+            fn()
+        except Exception:
+            pass
+    time.sleep(0.4)
+
+
 def kill_app():
     subprocess.run(["taskkill", "/F", "/IM", "MediaManager.App.exe"], capture_output=True)
     time.sleep(1.5)
@@ -200,17 +215,27 @@ def main():
         return 1
 
     shot(pwd_win, "03_setup_dialog")
-    box = find_password_box(pwd_win)
-    if box is not None:
-        box.Click()
-        uia.SendKeys("1234", waitTime=0.1)
-        uia.SendKeys("{TAB}", waitTime=0.1)
-        uia.SendKeys("1234", waitTime=0.1)
     ok_btn = find_btn(pwd_win, "创建")
     check("设置窗有「创建」按钮", ok_btn is not None)
-    if ok_btn is not None:
-        click(ok_btn)
-    time.sleep(1.8)
+
+    # 输两遍密码（「密码」+「再输一次」）。第一遍要是没进到框里，重来一次 ——
+    # 否则后面每一步都红，却看不出是「脚本没激活窗口」而不是功能坏了。
+    for attempt in range(2):
+        activate(pwd_win)
+        box = find_password_box(pwd_win)
+        if box is not None:
+            box.Click()
+            time.sleep(0.3)
+            uia.SendKeys("1234", waitTime=0.1)
+            uia.SendKeys("{TAB}", waitTime=0.1)
+            uia.SendKeys("1234", waitTime=0.1)
+        if ok_btn is not None:
+            click(ok_btn)
+        time.sleep(1.8)
+        if not pwd_win.Exists(1, 0.5):
+            break
+        log("第 %d 次设置密码后对话框仍开着，重试" % (attempt + 1))
+        shot(pwd_win, "03b_setup_retry")
     check("设置后密码窗关闭", not pwd_win.Exists(1, 0.5))
 
     # 按钮文字应该变成「密码已开启」

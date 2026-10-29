@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    App 层（WPF/ViewModel）的测试项目。
+    为什么要单独一个项目：主测试项目是 net8.0（无 WPF），而 App 是 net8.0-windows。
+    以前 App 层 0 个测试，占全仓库 68% 的代码量完全没人守 —— 这里先从不依赖窗口、
+    只算数据的那部分开始（打开媒体时「上一张/下一张」的范围），逐步往外扩。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MediaManager.App\MediaManager.App.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -733,55 +733,13 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
     /// </remarks>
     private Window? OpenInWindow(MediaItem media)
     {
-        // 音频 / 文档 / 压缩包：交给系统默认程序，返回 null（没有需要跟着一起关的窗口）
-        if (MediaOpenStrategy.UseExternalApp(media.MediaType))
-        {
-            OpenWithExternalApp(media.Path);
-            return null;
-        }
-
-        switch (media.MediaType)
-        {
-            case MediaType.Image:
-            {
-                var images = _items.Where(i => i.IsVisual && i.Media.MediaType == MediaType.Image).ToList();
-                var index = Math.Max(0, images.FindIndex(i => i.Id == media.Id));
-
-                var vm = new ViewerViewModel(App.Services.GetRequiredService<IMediaRepository>());
-                var window = new ViewerWindow(vm) { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-                window.SetItems(images, index);
-                window.Show();
-                window.Activate();
-                WindowThemeHelper.ApplyTitleBarDarkMode(window, App.IsDarkTheme);
-                return window;
-            }
-            case MediaType.Video:
-            {
-                var videos = _items.Where(i => i.IsVideo).Select(i => i.Media.Path).ToList();
-                var startIndex = Math.Max(0, videos.FindIndex(p =>
-                    string.Equals(p, media.Path, StringComparison.OrdinalIgnoreCase)));
-
-                var player = new VideoPlayerWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-                player.SetPlaylist(videos, startIndex);
-                player.Show();
-                player.Activate();
-                WindowThemeHelper.ApplyTitleBarDarkMode(player, App.IsDarkTheme);
-                return player;
-            }
-            default:
-                // 外放类型已在前面被 MediaOpenStrategy 拦走，这里只剩「将来新加、还没登记的类型」。
-                // 宁可交给系统，也别点了没反应。
-                OpenWithExternalApp(media.Path);
-                return null;
-        }
+        // 分流与窗口创建统一在 MediaOpenLauncher 里（主界面 / 私密空间 / 日记附件共用一份）
+        var item = _items.FirstOrDefault(i => i.Id == media.Id) ?? new ThumbnailItemViewModel(media);
+        return MediaOpenLauncher.Open(_items, item);
     }
 
     /// <summary>用系统默认关联程序打开（音频 / 文档 / 压缩包，以及右键菜单与 Ctrl+O）。</summary>
-    private void OpenWithExternalApp(string? path)
-    {
-        if (ShellHelper.TryOpenWithDefaultApp(path, out var error)) return;
-        CustomMessageBox.Warn(error ?? "打开失败。", "用系统默认程序打开");
-    }
+    private static void OpenWithExternalApp(string? path) => MediaOpenLauncher.OpenExternal(path);
 
     // ---------- 右键菜单 ----------
 

@@ -906,45 +906,10 @@ public partial class MainWindow : Window
         // 记录最近查看
         _ = _viewModel.RecordViewAsync(item.Id);
 
-        // 音频 / 文档 / 压缩包不再内置预览，直接交给系统默认程序。
-        // 判断统一走 MediaOpenStrategy（图片视频必须内置，见那里的注释）。
-        if (MediaOpenStrategy.UseExternalApp(item.Media.MediaType))
-        {
-            OpenWithExternalApp(item.Path);
-            return;
-        }
-
-        if (item.IsVideo)
-        {
-            // 视频：打开 LibVLC 播放器，并把当前列表里的所有视频交给它（支持播完自动连播）
-            var videos = _viewModel.MediaItems.Where(i => i.IsVideo).Select(i => i.Path).ToList();
-            var startIndex = videos.FindIndex(p => string.Equals(p, item.Path, StringComparison.OrdinalIgnoreCase));
-
-            // 不能设 Owner：WPF/Windows 会把「有主窗口」的窗口跟主窗口一起最小化，
-            // 主窗口一最小化视频窗口就被藏掉、只剩透明/黑屏。必须做成独立顶层窗口。
-            var player = new VideoPlayerWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-            player.SetPlaylist(videos, startIndex);
-            player.Show();
-            player.Activate();
-            WindowThemeHelper.ApplyTitleBarDarkMode(player, App.IsDarkTheme);
-            return;
-        }
-
-        // 图片查看器只放图片：否则上一张/下一张会切到视频/音频/文档，加载必失败
-        var items = _viewModel.MediaItems
-            .Where(i => i.Media.MediaType == Core.Enums.MediaType.Image)
-            .ToList();
-        var index = items.IndexOf(item);
-
-        var viewerVm = new ViewerViewModel(App.Services.GetRequiredService<Core.Services.IMediaRepository>());
-        // 不设 Owner：设了的话主窗口最小化会把查看器一起收进任务栏（系统把两者的
-        // 显示状态绑在一起）。查看器必须是独立的顶层窗口，自己收自己。
-        var window = new ViewerWindow(viewerVm) { WindowStartupLocation = WindowStartupLocation.CenterScreen };
-        window.CopySaved += OnViewerCopySaved;
-        window.SetItems(items, index);
-        window.Show();
-        window.Activate();
-        WindowThemeHelper.ApplyTitleBarDarkMode(window, App.IsDarkTheme);
+        // 分流（图片视频内置 / 其余外放）与窗口创建统一在 MediaOpenLauncher 里，
+        // 主界面、私密空间、日记附件共用一份实现。
+        if (MediaOpenLauncher.Open(_viewModel.MediaItems, item) is ViewerWindow window)
+            window.CopySaved += OnViewerCopySaved;
     }
 
     // ---------- 交给系统默认程序 ----------
@@ -953,11 +918,7 @@ public partial class MainWindow : Window
     /// 用系统默认关联程序打开（右键菜单 / Ctrl+O / 音频文档压缩包的默认双击）。
     /// 失败弹提示而不是静默 —— 拔盘、没关联程序都很常见，静默会让人以为点了没反应。
     /// </summary>
-    private void OpenWithExternalApp(string? path)
-    {
-        if (ShellHelper.TryOpenWithDefaultApp(path, out var error)) return;
-        CustomMessageBox.Warn(error ?? "打开失败。", "用系统默认程序打开");
-    }
+    private static void OpenWithExternalApp(string? path) => MediaOpenLauncher.OpenExternal(path);
 
     /// <summary>
     /// 编辑器保存后：刷新主网格并选中 / 滚动到这张图，
