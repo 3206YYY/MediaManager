@@ -50,8 +50,10 @@ pip install uiautomation pillow
 | `verify_diagnostic_info.py` | 设置页「遇到问题」：日志目录显示的是真实存在的目录、复制出来的诊断信息含版本与路径、**不含用户名**（会被贴到公开论坛） | 目录 `os.path.isdir` 为真；剪贴板文本含「版本：」「日志目录：」，不含 `%USERNAME%` | 11/11 |
 | `verify_first_run.py` | 首启二选一：空库启动 → 弹选择窗（非模态，主窗口同时在）→ 选「只看图」→ 侧栏收起日记/私密/回收站/标签、保留发现/全部/收藏；重启不再问；**老库（27 条媒体）升级不弹窗**，只静默补标记且不改用户原设置 | 侧栏文本按 `IsOffscreen` 判可见性（WPF 的 Collapsed 控件仍在 UIA 树里）；设置值回查 SQLite | 30/30 |
 | `verify_plugin_breaker.py` | 插件动作熔断：必炸插件的动作点 3 次 —— 前两次弹「插件出错」、第 3 次起**不再弹框**，状态栏出「已停用」，「🧩 插件」入口自动隐藏 | 对话框按 **Win32 标题轮询**（不能用 UIA 根枚举，见坑 7）；反向验证过：阈值 3→30 后三项全红 | 14/14 |
+| `verify_video_player.py` | 视频播放器（LibVLC）：命令行带视频路径启动 → 窗口出现、无「无法播放此视频」面板、顶栏是文件名、总时长已加载、**时间在走**；空格暂停后时间停住、暂停时按→步进 5 秒、再按空格恢复；关播放器主窗口还在 | 全程只读 UIA 时间文本（`mm:ss`）+ 键盘驱动，**不碰视频区截图**（HwndHost 截出来是黑的）；视频画面本身仍靠人眼 | 10/10 |
+| `verify_memory.py` | 内存实测（可复跑）：空载 / 打开查看器 / 关掉查看器三个场景各采样 10 次左右，写 `mem_result.json` | psapi `GetProcessMemoryInfo`，不用第三方库；**只记数字不下结论** | 空载 218MB / 开查看器 303MB / 关后 301MB（Debug，27 条库；两轮复跑都在 ±5MB 内） |
 
-## 脚本自身的八个坑（都真踩过，别再踩）
+## 脚本自身的九个坑（都真踩过，别再踩）
 
 1. **数据库路径要跟程序同一套判断。** exe 旁边有 `portable.marker` 时数据在 `Data/library.db`，
    否则在 `%LOCALAPPDATA%\MediaManager\library.db`。第一版 `verify_diary_attachment.py` 按
@@ -81,6 +83,11 @@ pip install uiautomation pillow
    UIA 树里（找「一定失败」要在主窗口里遍历，不是找顶层窗口）。另外
    `ControlFromHandle` 拿到对话框后，其 `Button` 的 Name 读不到（Content 是字符串
    也一样）—— 别依赖读对话框内部，直接发键盘。
+9. **双击必须发原生鼠标事件，UIA 的 `Click` 连点两次不算双击。**
+   `verify_memory.py` 第一版用 `item.Click(simulateMove=False)` 点两次想触发「双击打开」，
+   查看器纹丝不动（连选中都不稳定）；改成 `SetCursorPos` + `mouse_event` 的
+   down/up/down/up 一口气就开了。另外网格项的 UIA Name 以前是类名
+   （`ThumbnailItemViewModel` 没写 `ToString`），定位只能靠坐标 —— 已补 `ToString`。
 
 ## 为什么用"平均亮度"当判据（深色 / 浅色）
 
@@ -102,8 +109,12 @@ pip install uiautomation pillow
 ## 已知局限（别把 N/N 当全覆盖）
 
 - 只覆盖**被写进脚本的路径**。脚本没写的交互等于没验。
-- **视频播放器（LibVLC）没有任何实机脚本覆盖**：`MediaOpenLauncher` 里视频那条分支目前只靠
-  编译 + 人眼看，改动它要自己手动放一遍。
-- 全是"点一下、看有没有"式断言，**没有性能断言**（不测耗时、不测内存）。
+- **视频播放器只覆盖 UI/键盘路径**（`verify_video_player.py`）：窗口、控制栏、暂停/步进
+  这些 UIA 读得到的部分有守了，但 LibVLC 的**视频画面本身**（解码、渲染、黑屏类问题）
+  截图截不到、UIA 读不到，仍然只靠人眼。改动 LibVLC 集成要自己放一遍视频。
+- 内存有 `verify_memory.py` 记数字，但只在 27 条的开发库上测（合成数据没有真实缩略图，
+  填不满缩略图缓存），**规模化后的内存没有数字**。SQL 层的规模化表现另看
+  `build/bench_db.py`。
+- 全是"点一下、看有没有"式断言，**没有性能断言**（不测耗时、不测帧率）。
 - 依赖屏幕坐标和 UIA 树，**换个 DPI 缩放或系统语言可能失效**（本机按 125% DPI 写的）。
 - 不属于 CI：没有无头环境能跑 WPF 真窗口，只能人工触发。

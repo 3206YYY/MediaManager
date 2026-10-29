@@ -1,0 +1,27 @@
+{
+  "generated_at": "2026-10-29T20:21:21",
+  "build": "Debug",
+  "scenarios": [
+    {
+      "label": "A 空载",
+      "samples": 10,
+      "working_set_mb": 218,
+      "private_mb": 144,
+      "peak_ws_mb": 218
+    },
+    {
+      "label": "B 查看器开",
+      "samples": 6,
+      "working_set_mb": 303,
+      "private_mb": 224,
+      "peak_ws_mb": 305
+    },
+    {
+      "label": "C 查看器关",
+      "samples": 6,
+      "working_set_mb": 301,
+      "private_mb": 221,
+      "peak_ws_mb": 305
+    }
+  ]
+}

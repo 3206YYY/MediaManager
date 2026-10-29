@@ -69,6 +69,13 @@ public partial class ThumbnailItemViewModel : ObservableObject
     public bool IsNonVisual => !IsVisual;
 
     /// <summary>
+    /// UIA Name 默认是类名（实测自动化读到
+    /// "MediaManager.App.ViewModels.ThumbnailItemViewModel"），读屏软件等于没读。
+    /// 同 <see cref="NavigationItemViewModel.ToString"/> 的理由：给读屏和自动化一个正常名字。
+    /// </summary>
+    public override string ToString() => FileName;
+
+    /// <summary>
     /// 类型说明。以前只有「文档 / 音频 / 压缩包」三个大类，
     /// 现在直接用图标自带的描述（"PDF 文档" / "压缩包"），状态栏信息量更足。
     /// </summary>

@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- App 测试项目要看 internal 类（MediaDrop / ImportPolicy 等纯逻辑服务） -->
+    <InternalsVisibleTo Include="MediaManager.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 移除 WinForms 的隐式 global using，避免与 WPF 的 Point/ListBox/MouseEventArgs 等冲突 -->
     <Using Remove="System.Windows.Forms" />
     <Using Remove="System.Drawing" />
