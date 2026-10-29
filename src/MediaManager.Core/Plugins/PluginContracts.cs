@@ -118,7 +118,13 @@ public sealed class PluginInfo
     /// <summary>是否加载成功。</summary>
     public bool IsLoaded { get; init; }
 
-    /// <summary>失败原因（加载成功时为 null）。</summary>
+    /// <summary>
+    /// 加载本身成功，但菜单动作连续执行失败，被宿主熔断停用（重启程序后重置）。
+    /// 与 <see cref="IsLoaded"/> 不冲突：插件还在进程里，只是菜单项被撤了。
+    /// </summary>
+    public bool DisabledByFailures { get; init; }
+
+    /// <summary>失败原因（加载成功且未熔断时为 null）。</summary>
     public string? Error { get; init; }
 
     /// <summary>这个插件注册了几个菜单动作。</summary>

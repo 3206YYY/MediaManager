@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
@@ -15,6 +16,8 @@ namespace MediaManager.App.Plugins;
 /// 设计原则（很重要，改之前先读）：
 /// <list type="bullet">
 /// <item>单个插件加载失败**只影响它自己**：记一条错误，其它插件照常跑，主程序绝不因此启动失败。</item>
+/// <item>菜单动作的异常也被兜住；同一个插件的动作**累计失败 3 次**就熔断——
+/// 整组菜单撤下、状态栏提示、设置页标「已停用」，不再让用户每次点都弹同一个错误框。</item>
 /// <item>插件只拿到 <see cref="IPluginContext"/>，碰不到主窗口 / 数据库 / 内部服务。
 /// 这样主程序随意重构内部实现都不会把民间插件全废掉。</item>
 /// <item>用独立的 <see cref="AssemblyLoadContext"/>，插件的依赖 dll 不会和主程序抢版本。</item>
@@ -31,9 +34,14 @@ public sealed class PluginService
     private readonly object _gate = new();
 
     private readonly List<PluginInfo> _plugins = new();
-    private readonly List<PluginAction> _actions = new();
+
+    /// <summary>动作带注册者，失败回滚和熔断时要按归属整组撤掉。</summary>
+    private readonly List<(PluginHost Owner, PluginAction Action)> _actions = new();
     private readonly HashSet<string> _loadedFiles = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<IMediaManagerPlugin> _instances = new();
+
+    /// <summary>动作执行失败计数：累计达到阈值就熔断该插件的全部菜单项。</summary>
+    private readonly PluginFaultTracker _faults = new(threshold: 3);
 
     public PluginService(IAppConfigService config, ILogger<PluginService> logger)
     {
@@ -47,7 +55,7 @@ public sealed class PluginService
     /// <summary>已注册的菜单动作（主界面据此生成「🧩 插件」菜单）。</summary>
     public IReadOnlyList<PluginAction> Actions
     {
-        get { lock (_gate) return _actions.ToArray(); }
+        get { lock (_gate) return _actions.Select(a => a.Action).ToArray(); }
     }
 
     /// <summary>最近一次扫描结果。</summary>
@@ -191,6 +199,7 @@ public sealed class PluginService
         }
 
         var displayName = candidate.DisplayName;
+        var loadedAny = false;
 
         try
         {
@@ -208,49 +217,68 @@ public sealed class PluginService
                 return;
             }
 
+            // 逐个类型独立处理：同一个 dll 里的第二个插件类型初始化失败，
+            // 不能把第一个已加载成功的实例和它注册的动作一起拖下水（以前就是这样乱掉的）。
             foreach (var type in types)
             {
-                var plugin = (IMediaManagerPlugin?)Activator.CreateInstance(type);
-                if (plugin == null) continue;
-
-                var host = new PluginHost(this, plugin.Name, candidate.Folder);
-                plugin.Initialize(host);
-
-                lock (_gate)
+                PluginHost? host = null;
+                try
                 {
-                    _instances.Add(plugin);
-                    var info = new PluginInfo
-                    {
-                        Name = string.IsNullOrWhiteSpace(plugin.Name) ? displayName : plugin.Name,
-                        Version = string.IsNullOrWhiteSpace(plugin.Version) ? "—" : plugin.Version,
-                        Author = plugin.Author,
-                        Description = plugin.Description,
-                        FilePath = candidate.DllPath,
-                        IsLoaded = true,
-                        ActionCount = host.ActionCount,
-                    };
-                    _plugins.RemoveAll(p => string.Equals(p.FilePath, candidate.DllPath, StringComparison.OrdinalIgnoreCase));
-                    _plugins.Add(info);
-                }
+                    var plugin = (IMediaManagerPlugin?)Activator.CreateInstance(type);
+                    if (plugin == null) continue;
 
-                _logger.LogInformation("插件已加载：{Name} {Version}（{File}）",
-                    plugin.Name, plugin.Version, candidate.DllPath);
+                    host = new PluginHost(this, plugin.Name, candidate.Folder);
+                    plugin.Initialize(host);
+
+                    lock (_gate)
+                    {
+                        _instances.Add(plugin);
+                        var info = new PluginInfo
+                        {
+                            Name = string.IsNullOrWhiteSpace(plugin.Name) ? displayName : plugin.Name,
+                            Version = string.IsNullOrWhiteSpace(plugin.Version) ? "—" : plugin.Version,
+                            Author = plugin.Author,
+                            Description = plugin.Description,
+                            FilePath = candidate.DllPath,
+                            IsLoaded = true,
+                            ActionCount = host.ActionCount,
+                        };
+                        _plugins.RemoveAll(p => string.Equals(p.FilePath, candidate.DllPath, StringComparison.OrdinalIgnoreCase)
+                                                && !p.DisabledByFailures
+                                                && string.Equals(p.Name, info.Name, StringComparison.OrdinalIgnoreCase));
+                        _plugins.Add(info);
+                    }
+
+                    loadedAny = true;
+                    _logger.LogInformation("插件已加载：{Name} {Version}（{File}）",
+                        plugin.Name, plugin.Version, candidate.DllPath);
+                }
+                catch
+                {
+                    // 回滚：初始化半途而废，它已经注册的动作必须撤掉，不能留死菜单项
+                    if (host != null) RemoveActionsOf(host);
+                    throw;
+                }
             }
         }
         catch (Exception ex)
         {
-            // 插件写错不能影响主程序：记错误 + 设置页里显示一条红色的失败记录
+            // 插件写错不能影响主程序：记错误 + 设置页里显示一条红色的失败记录。
+            // 若这个 dll 里已有类型加载成功，只记日志——别把成功条目覆盖成失败。
             _logger.LogError(ex, "插件加载失败：{File}", candidate.DllPath);
-            lock (_gate)
+            if (!loadedAny)
             {
-                _plugins.RemoveAll(p => string.Equals(p.FilePath, candidate.DllPath, StringComparison.OrdinalIgnoreCase));
-                _plugins.Add(new PluginInfo
+                lock (_gate)
                 {
-                    Name = displayName,
-                    FilePath = candidate.DllPath,
-                    IsLoaded = false,
-                    Error = Flatten(ex),
-                });
+                    _plugins.RemoveAll(p => string.Equals(p.FilePath, candidate.DllPath, StringComparison.OrdinalIgnoreCase));
+                    _plugins.Add(new PluginInfo
+                    {
+                        Name = displayName,
+                        FilePath = candidate.DllPath,
+                        IsLoaded = false,
+                        Error = Flatten(ex),
+                    });
+                }
             }
         }
     }
@@ -264,9 +292,50 @@ public sealed class PluginService
         return string.IsNullOrWhiteSpace(msg) ? ex.GetType().Name : msg;
     }
 
-    internal void RegisterAction(PluginAction action)
+    internal void RegisterAction(PluginHost owner, PluginAction action)
     {
-        lock (_gate) _actions.Add(action);
+        lock (_gate) _actions.Add((owner, action));
+    }
+
+    /// <summary>撤掉某个宿主注册的全部动作（插件初始化失败回滚时用）。</summary>
+    internal void RemoveActionsOf(PluginHost owner)
+    {
+        lock (_gate) _actions.RemoveAll(a => ReferenceEquals(a.Owner, owner));
+    }
+
+    /// <summary>
+    /// 熔断：某插件的动作累计失败达到阈值，把它的全部菜单项整组撤下，
+    /// 设置页改标「已停用」，状态栏告诉用户原因。重启程序后重置。
+    /// </summary>
+    private void TripBreaker(string pluginName)
+    {
+        lock (_gate)
+        {
+            _actions.RemoveAll(a => string.Equals(a.Owner.PluginName, pluginName, StringComparison.OrdinalIgnoreCase));
+
+            for (var i = 0; i < _plugins.Count; i++)
+            {
+                if (!string.Equals(_plugins[i].Name, pluginName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var old = _plugins[i];
+                _plugins[i] = new PluginInfo
+                {
+                    Name = old.Name,
+                    Version = old.Version,
+                    Author = old.Author,
+                    Description = old.Description,
+                    FilePath = old.FilePath,
+                    IsLoaded = true,
+                    DisabledByFailures = true,
+                    Error = $"菜单动作累计 {_faults.Threshold} 次执行失败，已停用；重启程序后重置。",
+                };
+            }
+        }
+
+        _logger.LogError("插件 {Name} 的动作累计失败 {Count} 次，已熔断停用其菜单项",
+            pluginName, _faults.Threshold);
+        RaiseNotification($"插件「{pluginName}」连续出错，已停用它的菜单项（重启程序后重置）");
+        NotifyChanged();
     }
 
     internal void RaiseNotification(string message)
@@ -298,7 +367,7 @@ public sealed class PluginService
     private sealed record PluginCandidate(string DisplayName, string DllPath, string Folder, string? ManifestPath = null);
 
     /// <summary>插件上下文实现：转发到宿主，顺便统计这个插件注册了几个动作。</summary>
-    private sealed class PluginHost : IPluginContext
+    internal sealed class PluginHost : IPluginContext
     {
         private readonly PluginService _owner;
         private readonly string _pluginName;
@@ -309,6 +378,9 @@ public sealed class PluginService
             _pluginName = string.IsNullOrWhiteSpace(pluginName) ? "未命名插件" : pluginName;
             PluginDirectory = pluginFolder;
         }
+
+        /// <summary>注册名（熔断与回滚都按它归组，所以要在类外可见）。</summary>
+        internal string PluginName => _pluginName;
 
         public string DataDirectory => _owner._config.DataDirectory;
 
@@ -322,7 +394,7 @@ public sealed class PluginService
         {
             if (string.IsNullOrWhiteSpace(title) || handler == null) return;
 
-            _owner.RegisterAction(new PluginAction(_pluginName, title.Trim(), description, selection =>
+            _owner.RegisterAction(this, new PluginAction(_pluginName, title.Trim(), description, selection =>
             {
                 try
                 {
@@ -330,12 +402,17 @@ public sealed class PluginService
                 }
                 catch (Exception ex)
                 {
-                    // 插件动作抛异常 → 提示用户，主程序继续活着
-                    _owner._logger.LogError(ex, "插件动作执行失败：{Plugin} / {Title}", _pluginName, title);
-                    System.Windows.Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
-                        Views.Dialogs.CustomMessageBox.Error(
-                            $"插件「{_pluginName}」执行「{title}」时出错：\n\n{Flatten(ex)}",
-                            "插件出错")));
+                    // 插件动作抛异常 → 提示用户，主程序继续活着。
+                    // 累计失败达到阈值就熔断：一个每次都炸的动作不该让用户每次点都弹同一个错误框。
+                    _owner._logger.LogError(ex, "插件动作执行失败：{Plugin} / {Title}（第 {N} 次）",
+                        _pluginName, title, _owner._faults.Count(_pluginName) + 1);
+                    if (_owner._faults.Record(_pluginName))
+                        _owner.TripBreaker(_pluginName);
+                    else
+                        System.Windows.Application.Current?.Dispatcher.BeginInvoke(new Action(() =>
+                            Views.Dialogs.CustomMessageBox.Error(
+                                $"插件「{_pluginName}」执行「{title}」时出错：\n\n{Flatten(ex)}",
+                                "插件出错")));
                 }
             }));
 

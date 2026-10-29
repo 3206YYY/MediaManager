@@ -164,9 +164,11 @@ public static class CustomMessageBox
             window.ShowDialog();
             return (window.Result, window.Remember);
         }
-        catch
+        catch (Exception ex)
         {
-            // 弹窗自身异常绝不能影响业务流程：忽略并返回取消语义
+            // 弹窗自身异常绝不能影响业务流程：忽略并返回取消语义。
+            // 但绝不能「无声无息」—— 否则「为什么没弹窗」这种问题连查都没处查。
+            Serilog.Log.Warning(ex, "弹窗显示失败：{Title}", title ?? "提示");
             return (MsgBoxResult.None, false);
         }
     }

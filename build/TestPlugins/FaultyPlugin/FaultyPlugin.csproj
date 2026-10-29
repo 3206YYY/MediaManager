@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    仅供实机验证用的「必炸」插件：菜单动作每次执行都抛异常。
+    用它验证 PluginService 的熔断：累计 3 次失败后菜单项被整组撤下。
+    不被任何项目引用，不随主程序发布。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>FaultyPlugin</AssemblyName>
+    <RootNamespace>FaultyPlugin</RootNamespace>
+    <MediaManagerCorePath Condition="'$(MediaManagerCorePath)' == ''">$(MSBuildThisFileDirectory)..\..\..\src\MediaManager.Core\bin\Debug\net8.0\MediaManager.Core.dll</MediaManagerCorePath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="MediaManager.Core">
+      <HintPath>$(MediaManagerCorePath)</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

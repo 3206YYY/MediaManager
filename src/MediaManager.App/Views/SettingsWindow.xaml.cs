@@ -1322,12 +1322,18 @@ public partial class SettingsWindow : Window
 
     private Border BuildPluginRow(PluginInfo info)
     {
+        // 三态：正常加载（绿）/ 熔断停用（橙）/ 加载失败（红）。
+        // 熔断的插件还在进程里，只是菜单被撤了，用户得能看出来它为什么「消失」。
+        var (stateText, stateBrush, cardBorder) = info.DisabledByFailures
+            ? ("● 已停用（连续出错）", FromRgb(0xD9, 0x77, 0x06), FromRgb(0xD9, 0x77, 0x06))
+            : info.IsLoaded
+                ? ("● 已加载", FromRgb(0x2E, 0xA0, 0x43), (System.Windows.Media.Brush)FindResource("BorderBrush"))
+                : ("● 加载失败", FromRgb(0xC0, 0x39, 0x2B), FromRgb(0xC0, 0x39, 0x2B));
+
         var card = new Border
         {
             Background = (System.Windows.Media.Brush)FindResource("PanelBrush"),
-            BorderBrush = info.IsLoaded
-                ? (System.Windows.Media.Brush)FindResource("BorderBrush")
-                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xC0, 0x39, 0x2B)),
+            BorderBrush = cardBorder,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(14, 11, 14, 11),
@@ -1339,13 +1345,11 @@ public partial class SettingsWindow : Window
         var header = new DockPanel();
         var state = new TextBlock
         {
-            Text = info.IsLoaded ? "● 已加载" : "● 加载失败",
+            Text = stateText,
             FontSize = 11,
             Margin = new Thickness(10, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
-            Foreground = info.IsLoaded
-                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2E, 0xA0, 0x43))
-                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xC0, 0x39, 0x2B)),
+            Foreground = stateBrush,
         };
         DockPanel.SetDock(state, Dock.Right);
 
@@ -1383,7 +1387,8 @@ public partial class SettingsWindow : Window
             });
         }
 
-        if (!info.IsLoaded && !string.IsNullOrWhiteSpace(info.Error))
+        if (!string.IsNullOrWhiteSpace(info.Error)
+            && (!info.IsLoaded || info.DisabledByFailures))
         {
             panel.Children.Add(new TextBlock
             {
@@ -1398,6 +1403,9 @@ public partial class SettingsWindow : Window
         card.Child = panel;
         return card;
     }
+
+    private static System.Windows.Media.Brush FromRgb(byte r, byte g, byte b)
+        => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
 
     private void OnOpenPluginDir(object sender, RoutedEventArgs e)
     {
