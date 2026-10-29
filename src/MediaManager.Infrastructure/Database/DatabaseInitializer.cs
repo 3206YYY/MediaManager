@@ -176,6 +176,22 @@ public class DatabaseInitializer
         // 整个初始化随之失败（实测踩过）。
         Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_Media_Private    ON MediaItem(IsPrivate);");
 
+        // ---- 主列表的复合索引（v1.4.2）----
+        // 位置必须和上一行一样在 MigrateColumn 之后：它们都引用 IsPrivate，而 IsPrivate 是
+        // v1.3.4 才给老库 ALTER 补上的列。挪回建表语句旁边 = v1.3.x 用户升级时
+        // "no such column: IsPrivate"，初始化整个失败（本文件 185 行的注释就是踩这坑留下的）。
+        //
+        // 为什么要这几个索引：不加时 SQLite 会挑中 IX_Media_Private —— 布尔列选择性接近 100%，
+        // 用它过滤等于没过滤，而且一旦选它就利用不上 DateAddedUtc 的有序性，只能对全表做
+        // TEMP B-TREE 排序。10 万条实测（build/bench_db.py）：
+        //   首页 100 条 79ms ｜ OFFSET 50000 达 2.37 秒 ｜ COUNT 65ms ｜ 按文件夹分组 1.05 秒
+        // 加上后同样数据：0.4ms ｜ 12ms ｜ 3.1ms ｜ 7.1ms。
+        // 代价：写入慢约 50%（10 万条多花 20 秒，一次性扫描成本），库体积约 +14%。
+        Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_Media_Feed       ON MediaItem(IsMissing, IsPrivate, DateAddedUtc DESC, Id DESC);");
+        Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_Media_NameFeed   ON MediaItem(IsMissing, IsPrivate, FileName COLLATE NOCASE);");
+        Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_Media_Active     ON MediaItem(IsMissing, IsPrivate);");
+        Execute(cmd, "CREATE INDEX IF NOT EXISTS IX_Media_RootActive ON MediaItem(IsMissing, RootFolderId);");
+
         // 私密空间的分区（v1.4.0 二轮）：私密内容自己的一套分区，
         // 故意不复用 Category —— 复用的话主界面侧栏会露出「私密分区」名字和数量，
         // 等于在门口贴清单。分区被删时只把文件变回「未分区」，绝不碰文件本身。

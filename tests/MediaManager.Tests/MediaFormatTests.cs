@@ -93,6 +93,23 @@ public class MediaFormatTests
     }
 
     /// <summary>
+    /// 「是否受扩展格式扫描开关控制」和「是否外放给系统程序」现在是同一批类型，
+    /// 但它们是**两个独立概念**，将来完全可能分叉（比如哪天内置了 PDF 阅读，
+    /// 它仍是扩展格式却不再外放）。所以这里不强行合并实现，只用测试把当下的
+    /// 一致性钉住：一旦有人只改一边，这条会红，逼他确认那是不是有意为之。
+    /// </summary>
+    [Fact]
+    public void ExtendedTypeAndExternalOpen_CurrentlyAgree()
+    {
+        foreach (var type in Enum.GetValues<MediaType>())
+        {
+            Assert.Equal(
+                MediaManager.Core.Media.MediaOpenStrategy.UseExternalApp(type),
+                MediaFormat.IsExtendedType(type));
+        }
+    }
+
+    /// <summary>
     /// Windows 每个目录都塞一个 desktop.ini。它曾被当成「文本文档」扫进图库，
     /// 于是图库里全是文档图标 —— 这条守住不再收录 ini。
     /// </summary>

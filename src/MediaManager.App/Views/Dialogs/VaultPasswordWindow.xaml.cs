@@ -64,11 +64,13 @@ public partial class VaultPasswordWindow : Window
                 ConfirmLabel.Text = "再输一次";
                 OkButton.Content = "创建";
                 MessageText.Text =
-                    "密码只在本机校验（PBKDF2 哈希，不存明文），至少 4 位。\n\n"
-                    + "不设也完全可以：点「取消」就行，私密空间照样能用，只是谁点都能打开。\n\n"
-                    + "有一点先说清楚：保险箱不加密文件，它只是把文件挪到数据目录下的 Vault 文件夹"
-                    + "（并设成隐藏），从主界面、搜索、文件夹视图里全部隐藏起来。"
-                    + "所以密码忘了不会丢数据 —— 直接去 Vault 文件夹就能把文件拷出来。";
+                    "密码只在本机校验（PBKDF2-SHA256 加盐哈希，不存明文），至少 4 位。\n\n"
+                    + "说实话：这是一道「防顺手」的门，不是加密保险箱。"
+                    + "挡得住别人坐在你电脑前随手点开；挡不住能操作这台电脑文件的人 —— "
+                    + "凭据就存在同一个数据库里，删掉 Vault.Credential 那一行即失效，"
+                    + "文件本身也不加密，就在数据目录的 Vault 文件夹里。"
+                    + "真要防取证，请用 VeraCrypt 这类真加密工具。\n\n"
+                    + "不设也完全可以：点「取消」即可，私密空间照旧能用，只是谁点都能打开。";
                 break;
 
             case VaultDialogMode.Unlock:
@@ -76,7 +78,10 @@ public partial class VaultPasswordWindow : Window
                 TitleText.Text = "输入密码解锁";
                 MainLabel.Text = "密码";
                 OkButton.Content = "解锁";
-                MessageText.Text = "解锁后才能看到保险箱里的内容。";
+                MessageText.Text =
+                    "解锁后才能看到保险箱里的内容。\n\n"
+                    + "忘了密码也不用慌：文件没加密，去「设置 → 数据目录 → 打开数据目录」，"
+                    + "里面的 Vault 文件夹能直接拷出来。";
                 break;
 
             case VaultDialogMode.Change:

@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MediaManager.Core.Diagnostics;
 using MediaManager.Core.Enums;
+using MediaManager.Core.Media;
 using MediaManager.Core.Models;
 using MediaManager.Core.Services;
 using MediaManager.App.Collections;
@@ -690,8 +691,10 @@ public partial class MainViewModel : ObservableObject
         Dictionary<string, bool>? rootOnline = null;
         foreach (var m in items)
         {
-            // 音频/文档/压缩包不生成缩略图（列表用固定图标），避免 worker 空转
-            if (m.MediaType is Core.Enums.MediaType.Audio or Core.Enums.MediaType.Text or Core.Enums.MediaType.Archive)
+            // 走系统默认程序打开的类型不生成缩略图（列表用固定图标），避免 worker 空转。
+            // 判定必须问 MediaOpenStrategy，不要在这里另抄一份 Audio/Text/Archive ——
+            // 否则将来加类型时这里和双击行为会悄悄不一致。
+            if (MediaOpenStrategy.UseExternalApp(m.MediaType))
                 continue;
 
             // 当前源文件（大小 + 修改时间）对应的缓存是否已经存在。

@@ -49,6 +49,8 @@ Desktop.ini
 .DS_Store
 
 # ---------- 本地 UI 自动化 / 截图测试脚本（含本机绝对路径） ----------
+# build/verify/ 下的验收脚本是**例外**：它们已去掉本机路径、只靠 __file__ 推导，
+# 故意纳入仓库让「实机 N/N 通过」可被复现（见 build/verify/README.md）。
 build/uia_*.py
 build/verify*.py
 build/probe_*.py
@@ -59,7 +61,13 @@ build/verify_shots/
 build/verify_shots_diary/
 build/shots_vault/
 build/shots_cal/
+build/verify/shots_*/
+build/verify/*_log.txt
 build/testmedia/
+# 数据库基准的工作副本（几十 MB，跑一次生成一次）
+build/bench_work.db*
+build/try_idx.db*
+build/no_idx.db*
 build/skel_*.jpg
 build/screen_now.jpg
 

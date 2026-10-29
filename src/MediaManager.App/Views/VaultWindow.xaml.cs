@@ -768,13 +768,9 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
                 WindowThemeHelper.ApplyTitleBarDarkMode(player, App.IsDarkTheme);
                 return player;
             }
-            case MediaType.Audio:
-            case MediaType.Text:
-            case MediaType.Archive:
-                OpenWithExternalApp(media.Path);
-                return null;
             default:
-                // 正常走不到（前面已按 MediaOpenStrategy 分流）：宁可交给系统，也别点了没反应
+                // 外放类型已在前面被 MediaOpenStrategy 拦走，这里只剩「将来新加、还没登记的类型」。
+                // 宁可交给系统，也别点了没反应。
                 OpenWithExternalApp(media.Path);
                 return null;
         }
