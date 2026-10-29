@@ -198,6 +198,10 @@ public partial class App : Application
 
             LogMemory("数据加载完成");
 
+            // 4.5) 首启问一句「只看图 / 要整理」。放在列表加载之后：用户能看见背景里已经有照片了，
+            //      回答问题时心里有底。只显示、不等关闭，不拖慢后面的初始化。
+            await MaybeAskFirstRunAsync(provider, mainWindow);
+
             // 不在启动关键路径上做 full blocking GC：GC.Collect(2, Forced, blocking, compacting)
             // 会让整个进程暂停，正好压在缩略图解码和用户第一次交互上。
             // 启动期的一次性临时对象交给运行时自然回收即可。
@@ -262,6 +266,78 @@ public partial class App : Application
                     "媒体管理器");
             }
             catch { /* 弹窗失败则忽略 */ }
+        }
+    }
+
+    /// <summary>
+    /// 首次启动问一句「你主要用它做什么」，把侧栏密度交给用户自己定。
+    ///
+    /// <para>
+    /// **只在全新库上问**（没有根目录、没有媒体条目）。老库升级时突然弹一个选择框，
+    /// 会让人以为程序把库清空了 —— 那种惊吓比「侧栏有点多」严重得多。
+    /// 老库只静默补一个「问过」标记。
+    /// </para>
+    ///
+    /// <para>只负责显示，不等用户回答；失败只记日志，不影响启动。</para>
+    /// </summary>
+    private async Task MaybeAskFirstRunAsync(IServiceProvider provider, MainWindow mainWindow)
+    {
+        try
+        {
+            var repo = provider.GetRequiredService<IMediaRepository>();
+            var done = await repo.GetSettingAsync(FirstRunPolicy.DoneSettingKey) == "1";
+            var rootCount = (await repo.GetRootFoldersAsync()).Count;
+            var mediaCount = await repo.GetTotalCountAsync();
+            Log.Debug("首启判定：已完成={Done} 根目录={Roots} 媒体={Media}", done, rootCount, mediaCount);
+
+            if (FirstRunPolicy.ShouldSilentlyMarkDone(done, rootCount, mediaCount))
+            {
+                await repo.SetSettingAsync(FirstRunPolicy.DoneSettingKey, "1");
+                Log.Debug("首启：库里已有内容，按老用户处理，不弹窗");
+                return;
+            }
+
+            if (!FirstRunPolicy.ShouldAsk(done, rootCount, mediaCount)) return;
+
+            mainWindow.Dispatcher.Invoke(() =>
+            {
+                var window = new FirstRunWindow { WindowStartupLocation = WindowStartupLocation.CenterScreen };
+                window.Closed += async (_, _) =>
+                    await SaveFirstRunChoiceAsync(provider, window.ChooseSimpleMode);
+                window.Show();
+                window.Activate();
+                Log.Information("首启：已弹出「你主要用它做什么」选择窗");
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "首启选择窗失败（不影响使用）");
+        }
+    }
+
+    /// <summary>保存首启选择：选了就写 Ui.SimpleMode 并立刻生效，没选就只记「问过了」。</summary>
+    private static async Task SaveFirstRunChoiceAsync(IServiceProvider provider, bool? chooseSimple)
+    {
+        try
+        {
+            var repo = provider.GetRequiredService<IMediaRepository>();
+
+            if (chooseSimple is bool simpleMode)
+            {
+                await repo.SetSettingAsync(MainViewModel.SimpleModeSettingKey, simpleMode ? "1" : "0");
+                provider.GetRequiredService<MainViewModel>().IsSimpleMode = simpleMode;
+                Log.Information("首启：用户选择「{Choice}」", simpleMode ? "只看图和视频" : "整理和记录");
+            }
+            else
+            {
+                Log.Information("首启：用户没选就关掉了，保持当前设置");
+            }
+
+            await repo.SetSettingAsync(FirstRunPolicy.DoneSettingKey, "1");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "保存首启选择失败");
         }
     }
 

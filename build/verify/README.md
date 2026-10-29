@@ -31,6 +31,8 @@ pip install uiautomation pillow
   文件名 `diary_shot_*.png`），跑完**连同临时图片一起删掉**，脚本中途崩了下次运行也会先清干净
 - `verify_vault_password.py` 会设密码 → 改密码 → 取消密码，结束时回到"无密码"
 - `verify_light_theme.py` 会切主题，跑完切回去
+- `verify_first_run.py` **会把整个库临时挪走**（模拟全新安装），跑完再原样放回；
+  中途崩了也会在 `finally` 里恢复，实在不行备份在 `Data/_verify_first_run_bak/`
 
 **跑之前建议先备份 `library.db`**。截图落在同级 `shots_*/`，已 gitignore。
 
@@ -44,8 +46,9 @@ pip install uiautomation pillow
 | `verify_light_theme.py` | 同一套模板在浅色下没被弄坏 | 日历平均亮度 **> 200**（正常浅底约 247） | 通过 |
 | `verify_diary_attachment.py` | 日记附件缩略图：能看到图 → 点开内置查看器 → 打开的是**被点的那张** → 按 → 翻的仍是本篇日记的图；缩略图缺失时自己补生成 | 查看器窗口出现且标题含被点文件名；缩略图区域**像素标准差 ≥ 20**（空灰框 ≈ 0，真图 ≈ 90+） | 9/9 |
 | `verify_diagnostic_info.py` | 设置页「遇到问题」：日志目录显示的是真实存在的目录、复制出来的诊断信息含版本与路径、**不含用户名**（会被贴到公开论坛） | 目录 `os.path.isdir` 为真；剪贴板文本含「版本：」「日志目录：」，不含 `%USERNAME%` | 11/11 |
+| `verify_first_run.py` | 首启二选一：空库启动 → 弹选择窗（非模态，主窗口同时在）→ 选「只看图」→ 侧栏收起日记/私密/回收站/标签、保留发现/全部/收藏；重启不再问；**老库（27 条媒体）升级不弹窗**，只静默补标记且不改用户原设置 | 侧栏文本按 `IsOffscreen` 判可见性（WPF 的 Collapsed 控件仍在 UIA 树里）；设置值回查 SQLite | 30/30 |
 
-## 脚本自身的四个坑（都真踩过，别再踩）
+## 脚本自身的六个坑（都真踩过，别再踩）
 
 1. **数据库路径要跟程序同一套判断。** exe 旁边有 `portable.marker` 时数据在 `Data/library.db`，
    否则在 `%LOCALAPPDATA%\MediaManager\library.db`。第一版 `verify_diary_attachment.py` 按
@@ -58,6 +61,13 @@ pip install uiautomation pillow
    深度 14 走不到底，`ImageControl` 一个都数不到；改成 24 才找得到。
 4. **读 PowerShell 的输出前先设 `[Console]::OutputEncoding=UTF8`。** 不然中文按 GBK 出来是乱码，
    `"版本：" in text` 这种断言会莫名其妙变红（`verify_diagnostic_info.py` 第一次跑就栽在这）。
+5. **WPF 里 `Visibility=Collapsed` 的控件仍然在 UIA 树里**，只是 `IsOffscreen=True`，
+   而 `BoundingRectangle` 还留着上一次布局的坐标 —— 看起来像"它明明在那儿"。
+   `verify_first_run.py` 第一版没加 `IsOffscreen` 过滤，六项"侧栏已收起"全判成失败，
+   可截图里侧栏明明只剩四项。判"藏没藏"必须看 `IsOffscreen`，不能看"找不找得到"。
+6. **UIA 读 `Name` 会抛 COMError（-2147220991）。** 窗口正在重绘/销毁的瞬间元素句柄失效，
+   这不是被测程序的问题，是 UIA 自己的时序。统一包一层 `name_of()` 吞掉，
+   否则脚本会随机崩在"找窗口"这一步，看起来像程序根本没启动。
 
 ## 为什么用"平均亮度"当判据（深色 / 浅色）
 

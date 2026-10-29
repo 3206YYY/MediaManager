@@ -320,10 +320,13 @@
                             </ListBox.ContextMenu>
                         </ListBox>
 
+                        <!-- 标签和「分类」一样属于整理概念：极简模式一并收起，
+                             否则「极简」里还留着一个新建标签按钮，跟分类被藏掉自相矛盾 -->
                         <ToggleButton x:Name="TagToggle" IsChecked="True" Margin="8,16,8,4"
                                       Click="OnToggleSection" Tag="Tag"
                                       Style="{StaticResource SidebarSectionHeader}"
                                       HorizontalAlignment="Left"
+                                      Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}"
                                       ToolTip="展开 / 收起标签分组">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock x:Name="TagChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
@@ -333,10 +336,12 @@
                                            VerticalAlignment="Center" Margin="4,0,0,0" />
                             </StackPanel>
                         </ToggleButton>
-                        <StackPanel x:Name="TagAddPanel" Orientation="Horizontal" Margin="8,0,8,4">
+                        <StackPanel x:Name="TagAddPanel" Orientation="Horizontal" Margin="8,0,8,4"
+                                    Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}">
                             <Button Content="＋ 新建标签" Command="{Binding AddTagCommand}" />
                         </StackPanel>
                         <ListBox x:Name="TagListBox" BorderThickness="0" Background="Transparent"
+                                 Visibility="{Binding IsSimpleMode, Converter={StaticResource InverseBoolToVis}}"
                                  ItemsSource="{Binding TagItems}"
                                  ItemContainerStyle="{StaticResource SidebarItemStyle}"
                                  SelectionChanged="OnTagSelectionChanged"
