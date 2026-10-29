@@ -18,6 +18,7 @@ public class TrayIconService : IDisposable
     private readonly Action _showMainWindow;
     private readonly Action _exitApplication;
     private readonly ContextMenuStrip _menu;
+    private readonly Icon _icon;   // NotifyIcon.Dispose 不会替你释放 Icon 属性，得自己留着手柄
     private readonly List<ToolStripItem> _themedItems = new();
     private ToolStripMenuItem? _header;
 
@@ -28,9 +29,10 @@ public class TrayIconService : IDisposable
 
         var version = UpdateChecker.CurrentVersion;
 
+        _icon = LoadIcon();
         _notifyIcon = new NotifyIcon
         {
-            Icon = LoadIcon(),
+            Icon = _icon,
             Text = $"媒体管理器 {version} · 双击打开",
             Visible = true,
         };
@@ -185,15 +187,19 @@ public class TrayIconService : IDisposable
             // 忽略，回退到系统图标
         }
 
-        // 回退：从当前 exe 提取图标
+        // 回退：从当前 exe 提取图标。
+        // 注意不能直接把 SystemIcons.Application 交出去：Dispose() 会把共享系统图标释放掉，
+        // 进程里其它地方再用它就炸 —— 克隆一份自己拥有的副本。
         try
         {
-            return Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? "") ?? SystemIcons.Application;
+            using var extracted = Icon.ExtractAssociatedIcon(Environment.ProcessPath ?? "");
+            if (extracted != null) return (Icon)extracted.Clone();
         }
         catch
         {
-            return SystemIcons.Application;
+            // 忽略
         }
+        return (Icon)SystemIcons.Application.Clone();
     }
 
     /// <summary>显示气泡提示（可选）。</summary>
@@ -216,6 +222,7 @@ public class TrayIconService : IDisposable
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
         _menu.Dispose();
+        _icon.Dispose();
     }
 
     // ---------------------------------------------------------------- 主题配色

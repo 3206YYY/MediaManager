@@ -139,12 +139,17 @@ def read_times(player):
 
 
 def send_key(vk):
-    """先抢前台再发键。播放器快捷键走 PreProcessInput，必须让它真的拿到键盘焦点。"""
+    """先抢前台再发键。播放器快捷键走 PreProcessInput，必须让它真的拿到键盘焦点。
+    SetForegroundWindow 偶尔抢不到（README 坑 2），必须确认前台窗口真的是播放器，
+    没抢到就重试 —— 否则按键打到别的窗口上，无声无息。"""
     hwnd = find_window("视频播放器")
     if hwnd is None:
         return False
-    user32.SetForegroundWindow(hwnd)
-    time.sleep(0.35)
+    for _ in range(4):
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.4)
+        if user32.GetForegroundWindow() == hwnd:
+            break
     user32.keybd_event(vk, 0, 0, 0)
     time.sleep(0.05)
     user32.keybd_event(vk, 0, 2, 0)  # KEYEVENTF_KEYUP
@@ -219,13 +224,22 @@ def main():
     check("播放中时间在走", playing, "%s -> %s" % (t1[:1], t2[:1]))
 
     # ---- 6) 空格暂停 → 时间停住 ----
-    send_key(VK_SPACE)
-    time.sleep(0.6)
-    p1 = read_times(player)
-    time.sleep(2.2)
-    p2 = read_times(player)
-    paused = bool(p1) and bool(p2) and p1[0] == p2[0]
-    check("空格暂停后时间停住", paused, "%s vs %s" % (p1[:1], p2[:1]))
+    # 抢前台偶发失败会让第一下空格打空（时间还在走 = 没暂停），此时再发一次空格；
+    # 反过来如果第一次空格其实生效了，时间停住，判断直接通过 —— 两种情况都正确。
+    paused = False
+    detail = ""
+    for attempt in range(2):
+        send_key(VK_SPACE)
+        time.sleep(0.6)
+        p1 = read_times(player)
+        time.sleep(2.2)
+        p2 = read_times(player)
+        if p1 and p2 and p1[0] == p2[0]:
+            paused = True
+            detail = "%s vs %s%s" % (p1[0], p2[0], "" if attempt == 0 else "（第 2 次尝试才停住）")
+            break
+        detail = "%s vs %s" % (p1[:1], p2[:1])
+    check("空格暂停后时间停住", paused, detail)
 
     # ---- 7) 暂停时按 → 步进 5 秒 ----
     send_key(VK_RIGHT)
@@ -243,13 +257,20 @@ def main():
         check("暂停时按→步进约5秒", False, "前置失败: paused=%s times=%s" % (paused, s1))
 
     # ---- 8) 再按空格恢复 ----
-    send_key(VK_SPACE)
-    time.sleep(0.5)
-    r1 = read_times(player)
-    time.sleep(2.2)
-    r2 = read_times(player)
-    resumed = bool(r1) and bool(r2) and r1[0] != r2[0]
-    check("再按空格恢复播放", resumed, "%s -> %s" % (r1[:1], r2[:1]))
+    resumed = False
+    detail = ""
+    for attempt in range(2):
+        send_key(VK_SPACE)
+        time.sleep(0.5)
+        r1 = read_times(player)
+        time.sleep(2.2)
+        r2 = read_times(player)
+        if r1 and r2 and r1[0] != r2[0]:
+            resumed = True
+            detail = "%s -> %s%s" % (r1[0], r2[0], "" if attempt == 0 else "（第 2 次尝试才恢复）")
+            break
+        detail = "%s vs %s" % (r1[:1], r2[:1])
+    check("再按空格恢复播放", resumed, detail)
 
     shot(player, "02_after_controls")
 

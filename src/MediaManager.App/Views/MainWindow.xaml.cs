@@ -1009,9 +1009,7 @@ public partial class MainWindow : Window
         if (paths is not { Count: > 0 }) return;
 
         var videos = new List<string>();
-        var audios = new List<string>();
-        var texts = new List<string>();
-        var archives = new List<string>();
+        var externals = new List<string>();
         string? firstImage = null;
 
         foreach (var path in paths)
@@ -1034,11 +1032,18 @@ public partial class MainWindow : Window
                 continue;
             }
 
-            if (type == Core.Enums.MediaType.Video) videos.Add(path);
-            else if (type == Core.Enums.MediaType.Audio) audios.Add(path);
-            else if (type == Core.Enums.MediaType.Text) texts.Add(path);
-            else if (type == Core.Enums.MediaType.Archive) archives.Add(path);
-            else firstImage ??= path;
+            // 内置还是外放，只认 MediaOpenStrategy —— 这里以前自写了一份类型 switch，
+            // 将来 MediaOpenStrategy 一改这边就会分叉（双击和独立打开行为不一致）。
+            // 分组语义保留：视频合并成一个播放列表，图片各开各的，其余交给系统。
+            if (MediaOpenStrategy.UseExternalApp(type.Value))
+                externals.Add(path);
+            else if (type == Core.Enums.MediaType.Video)
+                videos.Add(path);
+            else if (type == Core.Enums.MediaType.Image)
+                firstImage ??= path;
+            else
+                // 内置了但还没有专用窗口的类型：宁可外放，也别塞进图片查看器加载失败
+                externals.Add(path);
         }
 
         if (videos.Count > 0)
@@ -1053,9 +1058,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (audios.Count > 0) { OpenWithExternalApp(audios[0]); return; }
-        if (texts.Count > 0) { OpenWithExternalApp(texts[0]); return; }
-        if (archives.Count > 0) { OpenWithExternalApp(archives[0]); return; }
+        if (externals.Count > 0) { OpenWithExternalApp(externals[0]); return; }
 
         if (firstImage != null) OpenImageStandalone(firstImage);
     }
