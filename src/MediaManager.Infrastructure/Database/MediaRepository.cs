@@ -45,6 +45,45 @@ public class MediaRepository : IMediaRepository
         await conn.ExecuteAsync("DELETE FROM RootFolder WHERE Id = @Id;", new { Id = id }).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 库里所有「真的有媒体」的目录（用于侧栏子文件夹树）。
+    /// 用 Path 减掉 FileName 再减一个分隔符得到目录 —— 比递归 CTE 简单，也不用额外建表。
+    /// </summary>
+    public async Task<List<string>> GetMediaFolderPathsAsync()
+    {
+        using var conn = _factory.CreateConnection();
+        var rows = await conn.QueryAsync<string>(@"
+            SELECT DISTINCT SUBSTR(Path, 1, LENGTH(Path) - LENGTH(FileName) - 1)
+            FROM MediaItem
+            WHERE IsPrivate = 0
+              AND LENGTH(Path) > LENGTH(FileName) + 1
+              AND LENGTH(FileName) > 0;").ConfigureAwait(false);
+        return rows.Where(p => !string.IsNullOrWhiteSpace(p)).ToList();
+    }
+
+    /// <summary>
+    /// 把若干子根目录合并进父根目录：媒体记录改归属后删除子根目录记录。
+    /// 顺序不能反 —— RootFolder 上有级联删除，先删子根会把名下的媒体一起带走。
+    /// </summary>
+    public async Task<int> MergeRootFoldersIntoAsync(long parentId, IReadOnlyCollection<long> childIds)
+    {
+        if (childIds.Count == 0) return 0;
+
+        using var conn = _factory.CreateConnection();
+        using var tx = conn.BeginTransaction();
+
+        var moved = await conn.ExecuteAsync(
+            "UPDATE MediaItem SET RootFolderId = @ParentId WHERE RootFolderId IN @ChildIds;",
+            new { ParentId = parentId, ChildIds = childIds }, tx).ConfigureAwait(false);
+
+        await conn.ExecuteAsync(
+            "DELETE FROM RootFolder WHERE Id IN @ChildIds;",
+            new { ChildIds = childIds }, tx).ConfigureAwait(false);
+
+        tx.Commit();
+        return moved;
+    }
+
     public async Task<List<RootFolder>> GetRootFoldersAsync()
     {
         using var conn = _factory.CreateConnection();
@@ -836,6 +875,18 @@ public class MediaRepository : IMediaRepository
 
     // ---------- 构建查询 ----------
 
+    /// <summary>
+    /// 把文件夹路径转成 LIKE 前缀模式：<c>C:\测试\实拍</c> → <c>C:\\测试\\实拍\\%</c>（ESCAPE '\'）。
+    /// 路径里的 % _ \ 必须先转义，否则名字里带下划线的文件夹会匹配到一堆无关文件。
+    /// </summary>
+    private static string LikePrefix(string folderPath)
+    {
+        var p = folderPath.Replace('/', '\\').TrimEnd('\\');
+        if (p.Length == 2 && p[1] == ':') p += "\\";   // 盘根：C:\ 不能退化成 C:
+        var escaped = p.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+        return escaped + "\\\\%";   // 转义后的分隔符 + 通配符
+    }
+
     private static (string Where, DynamicParameters Param) BuildWhere(MediaFilter f)
     {
         var param = new DynamicParameters();
@@ -889,7 +940,20 @@ public class MediaRepository : IMediaRepository
         {
             clauses.Add("instr(lower(m.FileName), '_edited') > 0");
         }
-        if (f.RootFolderId.HasValue)
+        if (!string.IsNullOrWhiteSpace(f.FolderPath))
+        {
+            // 按路径前缀查（含子文件夹）。RootFolderId 只能命中「扫描时归属的那个根」，
+            // 嵌套根目录、合并过的根目录都会漏 —— 这正是「点子文件夹共 0 项」的根因。
+            // 同时保留 RootFolderId 的 OR 分支：万一某条记录的 Path 变了但归属没变，
+            // 也不会从视图里消失（宁多勿漏）。
+            var prefix = LikePrefix(f.FolderPath!);
+            clauses.Add(@"(m.Path LIKE @FolderPrefix ESCAPE '\'" +
+                        (f.RootFolderId.HasValue ? " OR m.RootFolderId = @RootFolderId" : "") + ")");
+            param.Add("FolderPrefix", prefix);
+            if (f.RootFolderId.HasValue)
+                param.Add("RootFolderId", f.RootFolderId.Value);
+        }
+        else if (f.RootFolderId.HasValue)
         {
             clauses.Add("m.RootFolderId = @RootFolderId");
             param.Add("RootFolderId", f.RootFolderId.Value);

@@ -8,6 +8,12 @@ public interface IMediaRepository
     // RootFolder
     Task<long> AddRootFolderAsync(string path, string? volumeSerial, string? relativePath);
     Task RemoveRootFolderAsync(long id);
+
+    /// <summary>把子根目录的媒体记录改归属到父根目录，并删除子根目录；返回迁移的记录数。</summary>
+    Task<int> MergeRootFoldersIntoAsync(long parentId, IReadOnlyCollection<long> childIds);
+
+    /// <summary>库里所有真的有媒体的目录（侧栏子文件夹树用）。</summary>
+    Task<List<string>> GetMediaFolderPathsAsync();
     Task<List<RootFolder>> GetRootFoldersAsync();
     Task UpdateRootFolderAsync(RootFolder folder);
 

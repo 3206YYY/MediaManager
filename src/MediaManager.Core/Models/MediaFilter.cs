@@ -38,6 +38,15 @@ public class MediaFilter
     /// <summary>按文件夹（根目录）筛选。</summary>
     public long? RootFolderId { get; set; }
 
+    /// <summary>
+    /// 按文件夹路径前缀筛选（含所有子文件夹）。
+    ///
+    /// 为什么不能只靠 <see cref="RootFolderId"/>：媒体记录按 Path 唯一，
+    /// 扫描父目录时子目录里的文件已经入库并归属父级；此时把子目录当独立根目录，
+    /// 它名下一条记录都没有 —— 点进去就是「共 0 项」。按路径查才是「这个文件夹里有什么」的真答案。
+    /// </summary>
+    public string? FolderPath { get; set; }
+
     /// <summary>按私密空间的分区筛选（配合 <see cref="IncludePrivate"/> 使用）。</summary>
     public long? VaultSectionId { get; set; }
 

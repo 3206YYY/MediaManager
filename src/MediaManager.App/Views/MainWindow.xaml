@@ -302,19 +302,42 @@
                                      以前直接放整条路径，侧栏宽度不够被截成
                                      「C:\Users\xxx\Videos\Capt…」，两个目录看着一模一样 -->
                                 <DataTemplate>
-                                    <StackPanel x:Name="Root" ToolTip="{Binding ToolTipText}">
-                                        <TextBlock x:Name="TitleText" Text="{Binding Title}" TextTrimming="CharacterEllipsis"
-                                                   Style="{StaticResource SidebarText}" />
-                                        <TextBlock Text="{Binding SubTitle}" TextTrimming="CharacterEllipsis"
-                                                   FontSize="10" Opacity="0.55" Margin="0,1,0,0"
-                                                   Style="{StaticResource SidebarText}" />
-                                        <!-- 离线标记：移动硬盘没插 / 盘符变了时提前告知，
-                                             别让用户点进去看到「共 0 项」还以为是软件坏了 -->
-                                        <TextBlock x:Name="OfflineBadge" Text="⛔ 离线" FontSize="10"
-                                                   Foreground="#C4554D" FontWeight="Bold"
-                                                   Margin="0,2,0,0" Visibility="Collapsed" />
-                                    </StackPanel>
+                                    <!-- 用 Grid 而不是横向 StackPanel：横向 StackPanel 会给子项无限宽度，
+                                         TextTrimming 失效 → 长路径文字直接溢出侧栏（实测踩过） -->
+                                    <Grid Margin="{Binding Indent}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <!-- 展开三角：只有真有子文件夹的节点才显示 -->
+                                        <Button x:Name="Expander" Grid.Column="0" Content="▸" Width="14" Height="14"
+                                                Padding="0" Margin="0,0,2,0" FontSize="9"
+                                                Background="Transparent" BorderThickness="0"
+                                                VerticalAlignment="Center"
+                                                Command="{Binding DataContext.ToggleFolderNodeCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="Collapsed"
+                                                ToolTip="展开 / 收起子文件夹" />
+                                        <StackPanel x:Name="Root" Grid.Column="1" ToolTip="{Binding ToolTipText}">
+                                            <TextBlock x:Name="TitleText" Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                                       Style="{StaticResource SidebarText}" />
+                                            <TextBlock Text="{Binding SubTitle}" TextTrimming="CharacterEllipsis"
+                                                       FontSize="10" Opacity="0.55" Margin="0,1,0,0"
+                                                       Style="{StaticResource SidebarText}" />
+                                            <!-- 离线标记：移动硬盘没插 / 盘符变了时提前告知，
+                                                 别让用户点进去看到「共 0 项」还以为是软件坏了 -->
+                                            <TextBlock x:Name="OfflineBadge" Text="⛔ 离线" FontSize="10"
+                                                       Foreground="#C4554D" FontWeight="Bold"
+                                                       Margin="0,2,0,0" Visibility="Collapsed" />
+                                        </StackPanel>
+                                    </Grid>
                                     <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding HasChildren}" Value="True">
+                                            <Setter TargetName="Expander" Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                            <Setter TargetName="Expander" Property="Content" Value="▾" />
+                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding IsOffline}" Value="True">
                                             <Setter TargetName="TitleText" Property="Opacity" Value="0.45" />
                                             <Setter TargetName="OfflineBadge" Property="Visibility" Value="Visible" />

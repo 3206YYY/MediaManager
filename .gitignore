@@ -96,3 +96,4 @@ build/_cover_cmp.png
 build/_db_backup*.db
 TestResults/
 代码评审*.md
+build/verify/shots_*.png

@@ -453,10 +453,14 @@ public partial class MainWindow : Window
         // 程序化同步导航（保存副本后自动切视图）时不要再触发一次加载
         if (_suppressNavSync) return;
 
-        if (sender is ListBox lb && lb.SelectedItem is NavigationItemViewModel nav && nav.RelatedId.HasValue)
+        if (sender is ListBox lb && lb.SelectedItem is NavigationItemViewModel nav)
         {
             ClearSidebarSelectionExcept(lb);
-            _viewModel.SelectViewCommand.Execute($"folder:{nav.RelatedId.Value}");
+            // 根目录按 Id 查；子文件夹节点没有 RootFolder 记录，按路径查
+            if (nav.RelatedId is long id)
+                _viewModel.SelectViewCommand.Execute($"folder:{id}");
+            else if (nav.ToolTipText is { Length: > 0 } path)
+                _viewModel.SelectViewCommand.Execute($"folderpath:{path}");
         }
     }
 

@@ -73,6 +73,15 @@ def name_of(ctrl):
         return ""
 
 
+def visible(ctrl):
+    """WPF 里 Collapsed 的元素**仍然出现在 UIA 树里**（IsOffscreen=True），
+    所以「文字存在」不等于「用户看得见」—— 判断可见性必须看 IsOffscreen。"""
+    try:
+        return not ctrl.IsOffscreen
+    except Exception:
+        return False
+
+
 def collect(ctrl, acc=None, depth=0, maxd=24):
     acc = acc if acc is not None else []
     if depth > maxd:
@@ -113,11 +122,11 @@ def main():
         win = uia.ControlFromHandle(hwnd)
         all_ctls = collect(win)
 
-        # 1) 侧栏离线标记（列表项里要有「离线」文字）
+        # 1) 侧栏离线标记（列表项里要有「离线」文字，且真的画出来了）
         sidebar_items = [c for c in all_ctls if c.ControlTypeName == "ListItemControl"
                          and FAKE_PATH.split("\\")[-1] in name_of(c)]
         offline_badge = [c for c in all_ctls if c.ControlTypeName == "TextControl"
-                         and "离线" in name_of(c)]
+                         and "离线" in name_of(c) and visible(c)]
         check("侧栏离线文件夹出现", len(sidebar_items) > 0,
               "items=%s" % [name_of(c) for c in sidebar_items][:3])
         check("侧栏显示离线徽标", len(offline_badge) > 0,
@@ -128,7 +137,17 @@ def main():
         # 注意（坑 3 的变体）：SetForegroundWindow 抢不到前台时，第一次点击只激活
         # 窗口、SelectionChanged 不触发。必须确认前台真的是主窗口，失败重试。
         def click_item(ctrl):
-            r = ctrl.BoundingRectangle
+            # 优先 SelectionItemPattern：后台进程抢前台经常失败（SetForegroundWindow 被拒），
+            # 鼠标点击只会「激活窗口」，列表选择不触发。模式调用不需要前台。
+            try:
+                ctrl.GetSelectionItemPattern().Select()
+                return True
+            except Exception:
+                pass
+            try:
+                r = ctrl.BoundingRectangle
+            except Exception:
+                return False
             cx, cy = (r.left + r.right) // 2, (r.top + r.bottom) // 2
             for _ in range(3):
                 user32.SetForegroundWindow(hwnd)
@@ -166,12 +185,16 @@ def main():
             texts = [name_of(c) for c in collect(win) if c.ControlTypeName == "TextControl"]
             ok_status = [t for t in texts if "共 27 项" in t]
             check("正常文件夹显示共 27 项", len(ok_status) > 0, "found=%s" % ok_status[:1])
-            still_offline = [t for t in texts if t == "⛔ 离线"]
-            # 离线徽标仍在侧栏（属于假目录），但实拍项不能有
-            check("正常文件夹无误报离线", True, "badge_count=%d" % len(still_offline))
+            # 真判断：可达的文件夹项里不能有**可见的**离线徽标
+            # （Collapsed 的徽标仍会在 UIA 树里，按文字是否存在判断会永远通过 —— 别再用那种写法）
+            badges_in_normal = [c for c in collect(normal[0], maxd=4)
+                                if c.ControlTypeName == "TextControl"
+                                and "离线" in name_of(c) and visible(c)]
+            check("正常文件夹无误报离线", len(badges_in_normal) == 0,
+                  "visible_badge=%d" % len(badges_in_normal))
         else:
             check("正常文件夹显示共 27 项", False, "没找到实拍项")
-            check("正常文件夹无误报离线", True)
+            check("正常文件夹无误报离线", False, "没找到实拍项")
 
     finally:
         kill_app()

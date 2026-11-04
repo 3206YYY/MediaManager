@@ -117,6 +117,18 @@ public partial class NavigationItemViewModel : ObservableObject
     public string? Icon { get; set; }
     public string? Key { get; set; }
 
+    /// <summary>侧栏树的缩进层级（0 = 根目录，子文件夹按层递进）。</summary>
+    public int IndentLevel { get; set; }
+
+    /// <summary>树节点的左边距（XAML 绑定它，省一个转换器）。</summary>
+    public System.Windows.Thickness Indent => new(IndentLevel * 14, 0, 0, 0);
+
+    /// <summary>是否有子文件夹（决定要不要画展开小三角）。</summary>
+    public bool HasChildren { get; set; }
+
+    /// <summary>树节点是否展开（只对文件夹项有意义）。</summary>
+    public bool IsExpanded { get; set; }
+
     [ObservableProperty]
     private bool _isSelected;
 

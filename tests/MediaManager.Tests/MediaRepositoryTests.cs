@@ -237,6 +237,92 @@ public class MediaRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task FolderPathQuery_ShouldFindNestedFilesEvenWhenChildRootOwnsNothing()
+    {
+        // 复刻测试员的真实数据：父目录 C:\测试 扫描入库（归属父），
+        // 子目录 C:\测试\实拍 被当成独立根目录加进来 —— 它名下一条记录都没有。
+        var parentId = await _repo.AddRootFolderAsync(@"C:\测试", null, null);
+        var childId = await _repo.AddRootFolderAsync(@"C:\测试\实拍", null, null);
+
+        await _repo.UpsertMediaAsync(new MediaItem
+        {
+            RootFolderId = parentId, Path = @"C:\测试\实拍\DSC_0140.jpg",
+            FileName = "DSC_0140.jpg", Extension = "jpg", MediaType = MediaType.Image,
+        });
+        await _repo.UpsertMediaAsync(new MediaItem
+        {
+            RootFolderId = parentId, Path = @"C:\测试\封面.png",
+            FileName = "封面.png", Extension = "png", MediaType = MediaType.Image,
+        });
+
+        // 旧行为（只按 RootFolderId 查）：子目录 0 条 —— 就是「共 0 项」的来源
+        var byIdOnly = await _repo.QueryAsync(new MediaFilter { RootFolderId = childId });
+        Assert.Empty(byIdOnly);
+
+        // 新行为（带 FolderPath）：按路径前缀能查到子目录里的文件
+        var byPath = await _repo.QueryAsync(new MediaFilter
+        {
+            RootFolderId = childId,
+            FolderPath = @"C:\测试\实拍",
+        });
+        Assert.Single(byPath);
+        Assert.Equal("DSC_0140.jpg", byPath[0].FileName);
+
+        // 父目录仍然能看到全部两条（含子目录）
+        var parentView = await _repo.QueryAsync(new MediaFilter
+        {
+            RootFolderId = parentId,
+            FolderPath = @"C:\测试",
+        });
+        Assert.Equal(2, parentView.Count);
+    }
+
+    [Fact]
+    public async Task FolderPathQuery_ShouldEscapeLikeWildcardsInFolderName()
+    {
+        // 文件夹名里带下划线：LIKE 里 _ 是通配符，不转义会把 C:\测_试 和 C:\测x试 混在一起
+        var rootId = await _repo.AddRootFolderAsync(@"C:\测_试", null, null);
+        await _repo.UpsertMediaAsync(new MediaItem
+        {
+            RootFolderId = rootId, Path = @"C:\测_试\a.jpg",
+            FileName = "a.jpg", Extension = "jpg", MediaType = MediaType.Image,
+        });
+        await _repo.UpsertMediaAsync(new MediaItem
+        {
+            RootFolderId = rootId, Path = @"C:\测x试\b.jpg",
+            FileName = "b.jpg", Extension = "jpg", MediaType = MediaType.Image,
+        });
+
+        var items = await _repo.QueryAsync(new MediaFilter { FolderPath = @"C:\测_试" });
+        Assert.Single(items);
+        Assert.Equal("a.jpg", items[0].FileName);
+    }
+
+    [Fact]
+    public async Task MergeRootFoldersInto_ShouldMoveItemsAndDeleteChildRoot()
+    {
+        var childId = await _repo.AddRootFolderAsync(@"C:\测试\实拍", null, null);
+        await _repo.UpsertMediaAsync(new MediaItem
+        {
+            RootFolderId = childId, Path = @"C:\测试\实拍\x.jpg",
+            FileName = "x.jpg", Extension = "jpg", MediaType = MediaType.Image,
+        });
+
+        // 后来添加了父目录 → 合并
+        var parentId = await _repo.AddRootFolderAsync(@"C:\测试", null, null);
+        var moved = await _repo.MergeRootFoldersIntoAsync(parentId, new[] { childId });
+
+        Assert.Equal(1, moved);
+        var roots = await _repo.GetRootFoldersAsync();
+        Assert.Single(roots);
+        Assert.Equal(@"C:\测试", roots[0].Path);
+
+        var item = await _repo.GetByIdAsync(
+            (await _repo.QueryAsync(new MediaFilter { RootFolderId = parentId }))[0].Id);
+        Assert.Equal(parentId, item!.RootFolderId);
+    }
+
+    [Fact]
     public async Task UpsertMediaBatch_ShouldInsertThenUpdate()
     {
         var rootId = await _repo.AddRootFolderAsync("C:\\Batch", null, null);

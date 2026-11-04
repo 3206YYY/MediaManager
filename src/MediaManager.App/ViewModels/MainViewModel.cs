@@ -33,6 +33,12 @@ public partial class MainViewModel : ObservableObject
     private MediaFilter _currentFilter = new();
     private string _currentViewKey = "discovery";
     private long? _currentRootFolderId;
+
+    /// <summary>
+    /// 当前正在看的文件夹路径。选中根目录时为空（用 RootFolderId 过滤），
+    /// 选中子文件夹时是完整路径 —— 子文件夹没有独立 RootFolder 记录，只能按路径查。
+    /// </summary>
+    private string? _currentFolderPath;
     private long? _currentTagId;
     private long? _currentCategoryId;
 
@@ -329,37 +335,23 @@ public partial class MainViewModel : ObservableObject
             Categories: await _repo.GetCategoriesAsync(),
             FavoriteCount: await _repo.GetFavoriteCountAsync(),
             TagCount: await _repo.GetTagCountAsync(),
-            CategoryCount: await _repo.GetCategoryCountAsync()));
-
-        FolderItems.Clear();
+            CategoryCount: await _repo.GetCategoryCountAsync(),
+            // 库里有媒体的目录：侧栏文件夹树要能展开到子文件夹
+            MediaDirs: await _repo.GetMediaFolderPathsAsync()));
 
         // 保险箱锚点目录（路径 = 数据目录下的 Vault）只为满足外键存在，
         // 不能出现在侧栏 —— 否则用户点进去看到一片空白，还暴露了保险箱目录位置
         var vaultDir = System.IO.Path.Combine(_config.DataDirectory, "Vault")
             .TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar);
 
-        foreach (var f in data.Folders)
-        {
-            if (string.Equals(
-                    f.Path?.TrimEnd(System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar),
-                    vaultDir, StringComparison.OrdinalIgnoreCase))
-                continue;
+        // 老库自愈：父目录和子目录都被添加过（v1.4.4 及以前的用户很容易踩到）。
+        // 光靠「按路径查」能让它显示正确，但子根目录还留着，后果是：
+        // 在子目录上点「扫描」→ 这批媒体记录改归属到子根 → 再「移除文件夹」时
+        // RootFolder 的级联删除会把它们一起带走。并掉才是干净的。
+        if (await HealNestedRootsAsync(data.Folders, vaultDir))
+            data.Folders = await DbAsync(() => _repo.GetRootFoldersAsync());
 
-            var fullPath = f.Path ?? string.Empty;
-            var (title, subTitle) = SplitFolderPath(fullPath);
-
-            FolderItems.Add(new NavigationItemViewModel
-            {
-                // 侧栏只放末级目录名：以前直接显示整条路径，宽度不够被截成
-                // 「C:\Users\xxx\Videos\Capt…」，两个目录看起来一模一样，选哪个全靠猜
-                Title = title,
-                SubTitle = subTitle,
-                ToolTipText = fullPath,
-                Icon = "📂",
-                Key = "folder",
-                RelatedId = f.Id,
-            });
-        }
+        BuildFolderTree(data.Folders, data.MediaDirs, vaultDir);
 
         TagItems.Clear();
         foreach (var t in data.Tags)
@@ -393,12 +385,170 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// 把「父目录也在库里」的嵌套根目录并进父目录，返回是否真的并过。
+    ///
+    /// 只清掉多余的 <c>RootFolder</c> 记录，媒体一条不删（改归属，见
+    /// <c>MediaRepository.MergeRootFoldersIntoAsync</c>）；侧栏里的子文件夹节点由
+    /// <see cref="BuildFolderTree"/> 按真实目录重建，用户看到的层级不变。
+    /// </summary>
+    private async Task<bool> HealNestedRootsAsync(IReadOnlyList<Core.Models.RootFolder> folders, string vaultDir)
+    {
+        var byParent = FolderNestingPolicy.GroupNestedRoots(
+            folders.Select(f => (f.Id, (string?)f.Path)), vaultDir);
+        if (byParent.Count == 0) return false;
+
+        foreach (var (parentId, childIds) in byParent)
+        {
+            foreach (var cid in childIds) _watcher.Stop(cid);
+            var moved = await DbAsync(() => _repo.MergeRootFoldersIntoAsync(parentId, childIds));
+            _logger.LogInformation("侧栏自愈：{Count} 个嵌套根目录并入 RootFolder#{Parent}（迁移 {Moved} 条记录）",
+                childIds.Count, parentId, moved);
+        }
+        return true;
+    }
+
+    /// <summary>
     /// 逐个探测根目录可达性并写入侧栏项的 IsOffline。
     /// 在线程池做，结果一次回 UI 线程设置 —— 侧栏就能在用户点进去**之前**
     /// 把离线的文件夹标出来，而不是让人点进去看到「共 0 项」摸不着头脑。
     /// </summary>
-    private async Task ProbeFolderOfflineAsync()
+    // ---------- 侧栏文件夹树 ----------
+
+    /// <summary>展开状态（按路径记，重建列表时不丢）。</summary>
+    private readonly HashSet<string> _expandedFolderPaths = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>目录 → 直接子目录（只收录库里有媒体的目录链）。</summary>
+    private Dictionary<string, SortedSet<string>> _folderChildren = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>根目录路径 → RootFolder.Id（子文件夹没有 Id）。</summary>
+    private Dictionary<string, long> _folderRootIds = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>顶层根目录（未被其它根包含的），按路径排序。</summary>
+    private List<string> _topFolderRoots = new();
+
+    /// <summary>
+    /// 构建侧栏文件夹树：根目录 + 库里有媒体的子目录层级。
+    ///
+    /// 为什么要有子目录这一层：以前侧栏只列根目录，用户加了一个大文件夹后，
+    /// 想只看其中某个子文件夹根本点不到 —— 而「把子文件夹再添加一次」会撞上
+    /// 「媒体记录按 Path 唯一、归属父级」的规则，点进去就是共 0 项（v1.4.5 的 P0）。
+    /// 现在嵌套的根目录也渲染成树上的节点，不再单列一行。
+    /// </summary>
+    private void BuildFolderTree(
+        IReadOnlyList<Core.Models.RootFolder> roots,
+        IEnumerable<string> mediaDirs,
+        string vaultDir)
     {
+        _folderRootIds = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        _folderChildren = new Dictionary<string, SortedSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        var normalizedVault = FolderNestingPolicy.Normalize(vaultDir);
+        var rootPaths = new List<string>();
+        foreach (var f in roots)
+        {
+            var p = FolderNestingPolicy.Normalize(f.Path);
+            if (string.IsNullOrEmpty(p)) continue;
+            // 保险箱锚点不能出现在侧栏（进私密空间要走独立窗口）
+            if (string.Equals(p, normalizedVault, StringComparison.OrdinalIgnoreCase)) continue;
+            _folderRootIds[p] = f.Id;
+            rootPaths.Add(p);
+        }
+
+        _topFolderRoots = rootPaths
+            .Where(p => !rootPaths.Any(other =>
+                !string.Equals(other, p, StringComparison.OrdinalIgnoreCase)
+                && FolderNestingPolicy.IsUnder(p, other)))
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        void AddEdge(string parent, string child)
+        {
+            if (!_folderChildren.TryGetValue(parent, out var set))
+                _folderChildren[parent] = set = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            set.Add(child);
+        }
+
+        foreach (var raw in mediaDirs)
+        {
+            var dir = FolderNestingPolicy.Normalize(raw);
+            if (string.IsNullOrEmpty(dir)) continue;
+
+            // 只收在某个根目录下面的目录；顶层根优先，嵌套根也认
+            var owner = _topFolderRoots.FirstOrDefault(r => FolderNestingPolicy.IsUnder(dir, r))
+                        ?? rootPaths.FirstOrDefault(r => FolderNestingPolicy.IsUnder(dir, r));
+            if (owner == null) continue;
+
+            var cur = dir;
+            var guard = 0;
+            while (!string.Equals(cur, owner, StringComparison.OrdinalIgnoreCase) && guard++ < 64)
+            {
+                var parent = System.IO.Path.GetDirectoryName(cur)?.TrimEnd('\\', '/');
+                if (string.IsNullOrEmpty(parent)) break;
+                // 中间层没有媒体文件也要出现在树上，否则子目录会「凭空冒出来」
+                AddEdge(parent, cur);
+                cur = parent;
+            }
+        }
+
+        RebuildFolderList();
+    }
+
+    /// <summary>按展开状态把树拍平成侧栏可见列表（ListBox 只认扁平 ItemsSource）。</summary>
+    private void RebuildFolderList()
+    {
+        FolderItems.Clear();
+        foreach (var root in _topFolderRoots)
+            AddFolderNode(root, depth: 0);
+        _logger.LogDebug("文件夹树重建：顶层 {Roots}，可见 {Count} 行",
+            _topFolderRoots.Count, FolderItems.Count);
+    }
+
+    private void AddFolderNode(string path, int depth)
+    {
+        var (title, subTitle) = SplitFolderPath(path);
+        var hasChildren = _folderChildren.TryGetValue(path, out var kids) && kids.Count > 0;
+
+        var nav = new NavigationItemViewModel
+        {
+            // 侧栏只放末级目录名：以前直接显示整条路径，宽度不够被截成
+            // 「C:\Users\xxx\Videos\Capt…」，两个目录看起来一模一样，选哪个全靠猜
+            Title = title,
+            // 副标题是**上级目录**，不是本节点的路径。前面加「在」就是为了不被误读成
+            // 「这个文件夹的路径写错了」——测试员正是把它当成了路径 Bug。
+            SubTitle = subTitle == "整个磁盘" ? subTitle : "在 " + subTitle,
+            ToolTipText = path,
+            Icon = depth == 0 ? "📂" : "📁",
+            Key = "folder",
+            // 嵌套根目录保留自己的 Id（扫描 / 移除要用）；普通子目录没有 Id
+            RelatedId = _folderRootIds.TryGetValue(path, out var id) ? id : null,
+            IndentLevel = depth,
+            HasChildren = hasChildren,
+            IsExpanded = hasChildren && _expandedFolderPaths.Contains(path),
+        };
+        FolderItems.Add(nav);
+
+        if (nav.IsExpanded && kids != null)
+            foreach (var child in kids)
+                AddFolderNode(child, depth + 1);
+    }
+
+    /// <summary>点小三角展开 / 收起子文件夹。</summary>
+    [RelayCommand]
+    private void ToggleFolderNode(NavigationItemViewModel? node)
+    {
+        if (node?.ToolTipText is not { Length: > 0 } path || !node.HasChildren) return;
+
+        if (!_expandedFolderPaths.Remove(path))
+            _expandedFolderPaths.Add(path);
+
+        _logger.LogDebug("树节点 {Path} 展开={Expanded}，子目录 {Count}",
+            path, _expandedFolderPaths.Contains(path),
+            _folderChildren.TryGetValue(path, out var kids) ? kids.Count : 0);
+
+        RebuildFolderList();
+    }
+
+    private async Task ProbeFolderOfflineAsync()    {
         var roots = FolderItems.Where(f => f.RelatedId.HasValue).ToList();
         if (roots.Count == 0) return;
 
@@ -529,14 +679,19 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private async Task ExplainEmptyResultAsync(int generation)
     {
-        if (_currentViewKey == "folder" && _currentRootFolderId.HasValue)
+        if (_currentViewKey == "folder")
         {
-            var rootId = _currentRootFolderId.Value;
-            var rootPath = FolderItems.FirstOrDefault(f => f.RelatedId == rootId)?.ToolTipText;
+            var rootId = _currentRootFolderId;
+            var folderPath = _currentFolderPath
+                ?? (rootId.HasValue ? FolderItems.FirstOrDefault(f => f.RelatedId == rootId)?.ToolTipText : null);
             var (diagTotal, missing, onDisk) = await Task.Run(async () =>
             {
-                var d = await _repo.GetFolderDiagnosticsAsync(rootId).ConfigureAwait(false);
-                var exists = rootPath is null || System.IO.Directory.Exists(rootPath);
+                // 子文件夹没有自己的 RootFolderId，只能按路径判断可达性；
+                // 缺失计数按根目录统计（子文件夹级别的缺失数意义不大，提示也用不上）
+                var d = rootId.HasValue
+                    ? await _repo.GetFolderDiagnosticsAsync(rootId.Value).ConfigureAwait(false)
+                    : (Total: 0, Missing: 0);
+                var exists = folderPath is null || System.IO.Directory.Exists(folderPath);
                 return (d.Total, d.Missing, exists);
             }).ConfigureAwait(true);
             if (generation != _loadGeneration) return;   // 期间又触发了新加载，别覆盖新结果
@@ -1042,6 +1197,12 @@ public partial class MainViewModel : ObservableObject
                 break;
             case "folder":
                 f.RootFolderId = _currentRootFolderId;
+                // 同时带路径：嵌套根目录、子文件夹节点名下可能一条记录都没有，
+                // 只按 RootFolderId 查必然 0 项。路径才是「这个文件夹里有什么」的真答案。
+                f.FolderPath = _currentFolderPath
+                    ?? (_currentRootFolderId.HasValue
+                        ? FolderItems.FirstOrDefault(x => x.RelatedId == _currentRootFolderId)?.ToolTipText
+                        : null);
                 break;
             case "tag":
                 f.TagId = _currentTagId;
@@ -1158,9 +1319,68 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        // 嵌套拦截：媒体记录按 Path 唯一，扫父目录时子目录里的文件已经入库并归属父级。
+        // 这时再把子目录当独立根目录加进来，它名下永远 0 条 —— 用户点进去就是「共 0 项」，
+        // 刷新扫描都救不回来（除非按路径查，见 MediaFilter.FolderPath）。
+        var existingPaths = FolderItems.Where(f => f.RelatedId.HasValue)
+            .Select(f => f.ToolTipText ?? f.Title)
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .ToList();
+        var verdict = FolderNestingPolicy.Evaluate(path, existingPaths, out var coveringRoot, out var containedRoots);
+
+        if (verdict == FolderAddVerdict.CoveredByExisting)
+        {
+            var owner = FolderItems.FirstOrDefault(f => f.RelatedId.HasValue
+                && string.Equals(FolderNestingPolicy.Normalize(f.ToolTipText), FolderNestingPolicy.Normalize(coveringRoot),
+                    StringComparison.OrdinalIgnoreCase));
+            StatusText = $"「{path}」已经在库中（属于「{coveringRoot}」），不需要单独添加";
+            CustomMessageBox.Info(
+                "这个文件夹已经在媒体库里了。\n\n" +
+                $"它属于已添加的「{coveringRoot}」——里面的文件点开那个文件夹就能看到，" +
+                "再单独添加一次只会多出一个永远查不到内容的空文件夹。\n\n" +
+                "现在直接带你去看那个文件夹。",
+                "不需要重复添加");
+            if (owner?.RelatedId is long ownerId)
+            {
+                _currentViewKey = "folder";
+                _currentRootFolderId = ownerId;
+                await LoadMediaAsync();
+            }
+            return;
+        }
+
         try
         {
             var id = await _repo.AddRootFolderAsync(path, serial, relative);
+
+            // 反过来：新加的是某些已有根目录的上级（先加了子目录、后加父目录）。
+            // 两份根目录并存会让同一个文件有两套「归属」、扫描互相打架 —— 合并成一份。
+            if (containedRoots.Count > 0)
+            {
+                var childIds = FolderItems
+                    .Where(f => f.RelatedId.HasValue && containedRoots.Any(c =>
+                        string.Equals(FolderNestingPolicy.Normalize(f.ToolTipText), c, StringComparison.OrdinalIgnoreCase)))
+                    .Select(f => f.RelatedId!.Value)
+                    .ToList();
+
+                // 保险：绝不合并保险箱锚点目录（它的 Path 也挂在 RootFolder 表里）
+                var vaultAnchor = FolderNestingPolicy.Normalize(System.IO.Path.Combine(_config.DataDirectory, "Vault"));
+                childIds = childIds.Where(cid =>
+                {
+                    var p = FolderItems.FirstOrDefault(x => x.RelatedId == cid)?.ToolTipText;
+                    return !string.Equals(FolderNestingPolicy.Normalize(p), vaultAnchor, StringComparison.OrdinalIgnoreCase);
+                }).ToList();
+
+                if (childIds.Count > 0)
+                {
+                    var moved = await _repo.MergeRootFoldersIntoAsync(id, childIds);
+                    foreach (var cid in childIds) _watcher.Stop(cid);
+                    _logger.LogInformation("已把 {Count} 个子文件夹合并进 {Path}（迁移 {Moved} 条记录）",
+                        childIds.Count, path, moved);
+                    StatusText = $"「{path}」包含已添加的子文件夹，已合并（迁移 {moved} 条记录）";
+                }
+            }
+
             await LoadNavigationAsync();
             _watcher.Start(id, path);
 
@@ -1247,6 +1467,21 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ScanAllAsync()
     {
+        // 选中了某个文件夹就只扫它 —— 用户点「扫描」是想让当前这个文件夹刷新，
+        // 「无头苍蝇式全局扫描」在移动硬盘离线时还会把整库拖慢。
+        var scanTarget = _currentRootFolderId;
+        if (scanTarget == null && _currentFolderPath is { Length: > 0 } subPath)
+        {
+            // 子文件夹本身没有 RootFolder 记录，扫描它所属的那个根目录
+            scanTarget = FolderItems.FirstOrDefault(f => f.RelatedId.HasValue
+                    && FolderNestingPolicy.IsUnder(subPath, f.ToolTipText ?? string.Empty))?.RelatedId;
+        }
+        if (_currentViewKey == "folder" && scanTarget.HasValue)
+        {
+            await ScanFolderAsync(scanTarget.Value);
+            return;
+        }
+
         foreach (var f in FolderItems.Where(x => x.RelatedId.HasValue))
         {
             await ScanFolderAsync(f.RelatedId!.Value);
@@ -1320,10 +1555,17 @@ public partial class MainViewModel : ObservableObject
     private async Task SelectViewAsync(string key)
     {
         _currentRootFolderId = null;
+        _currentFolderPath = null;
         _currentTagId = null;
         _currentCategoryId = null;
 
-        if (key.StartsWith("folder:"))
+        if (key.StartsWith("folderpath:", StringComparison.Ordinal))
+        {
+            // 子文件夹：没有独立 RootFolder 记录，只能按路径查（含它下面的所有层级）
+            _currentViewKey = "folder";
+            _currentFolderPath = key.Substring("folderpath:".Length);
+        }
+        else if (key.StartsWith("folder:"))
         {
             _currentViewKey = "folder";
             _currentRootFolderId = long.Parse(key.Substring(7));
