@@ -290,13 +290,16 @@ def main():
         # 空目录不能凭空出现（它没有媒体文件）
         check("空子目录不出现在侧栏", sidebar_item("丙") is None)
 
-        # 展开一级
-        exp = expander_of(root_node)
-        check("父目录有展开三角", exp is not None)
-        if exp is None:
-            return
-        invoke(exp)
-        time.sleep(2)
+        # 顶层根目录默认就是展开的（子文件夹要一眼可见）；万一没展开再点三角
+        if sidebar_item("甲") is None:
+            exp = expander_of(root_node)
+            check("父目录有展开三角", exp is not None)
+            if exp is None:
+                return
+            invoke(exp)
+            time.sleep(2)
+        else:
+            check("父目录有展开三角", expander_of(root_node) is not None)
 
         for title in ("甲", "乙"):
             check("一级子目录「%s」出现" % title, sidebar_item(title) is not None)

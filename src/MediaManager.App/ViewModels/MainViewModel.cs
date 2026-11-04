@@ -417,6 +417,16 @@ public partial class MainViewModel : ObservableObject
     /// <summary>展开状态（按路径记，重建列表时不丢）。</summary>
     private readonly HashSet<string> _expandedFolderPaths = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// 是否已经做过「默认展开顶层根目录」。
+    ///
+    /// 为什么要默认展开：子文件夹藏在三角后面，用户点「文件夹」分组看到只有一个根目录，
+    /// 会以为子文件夹「不见了」（测试员就是这么理解的）。默认展开一层，层级结构一眼看全；
+    /// 只有这一层默认开，二级往下仍收起，避免一上来刷出几百行。
+    /// 用一次性开关而不是「集合为空就展开」：用户手动全部收起后，不该又被自动展开。
+    /// </summary>
+    private bool _autoExpandedFolders;
+
     /// <summary>目录 → 直接子目录（只收录库里有媒体的目录链）。</summary>
     private Dictionary<string, SortedSet<string>> _folderChildren = new(StringComparer.OrdinalIgnoreCase);
 
@@ -460,6 +470,13 @@ public partial class MainViewModel : ObservableObject
                 && FolderNestingPolicy.IsUnder(p, other)))
             .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        // 第一次建树时把顶层根目录展开，让子文件夹一眼可见（只展开这一层）
+        if (!_autoExpandedFolders)
+        {
+            foreach (var r in _topFolderRoots) _expandedFolderPaths.Add(r);
+            _autoExpandedFolders = true;
+        }
 
         void AddEdge(string parent, string child)
         {

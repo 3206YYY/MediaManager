@@ -274,19 +274,30 @@ def main():
         check("顶层根目录副标题是盘符", any(t.strip() in ("在 C:", "在 D:", "在 E:") for t in subs),
               "subs=%s" % subs[:3])
 
-        # ③ 默认收起：子节点不该出现在侧栏
-        check("默认收起：看不到子文件夹", sidebar_item(CHILD) is None)
+        # ③ 默认就把顶层根目录展开：子文件夹要一眼看得见
+        #    （藏在小三角后面，用户会以为「我的文件夹不见了」——测试员就这么理解的）
+        check("默认展开：子文件夹直接可见", sidebar_item(CHILD) is not None)
+        if sidebar_item(CHILD) is None:
+            return
 
-        # ④ 展开三角 → 子节点出现
+        # ④ 三角能收起 / 再展开
         exp = expander_of(parent)
         check("父文件夹有展开三角", exp is not None)
         if exp is None:
             return
 
         hit_expander(exp)
-        time.sleep(2)
+        time.sleep(1.5)
+        check("点三角可收起", sidebar_item(CHILD) is None)
+
+        exp = expander_of(sidebar_item(PARENT))
+        if exp is None:
+            check("再点三角可展开", False, "收起后找不到三角")
+            return
+        hit_expander(exp)
+        time.sleep(1.5)
         child = sidebar_item(CHILD)
-        check("展开后出现子文件夹节点", child is not None, CHILD)
+        check("再点三角可展开", child is not None, CHILD)
         if child is None:
             return
 
@@ -339,16 +350,6 @@ def main():
                 select_and_wait(p4)
             shown_p = count_shown(expect_parent)
         check("点「测试」显示 %d 项" % expect_parent, shown_p is not None, "shown=%r" % (shown_p,))
-
-        # ⑧ 再点一次三角 → 收起，子节点消失
-        p5 = sidebar_item(PARENT)
-        exp2 = expander_of(p5) if p5 is not None else None
-        if exp2 is not None:
-            hit_expander(exp2)
-            time.sleep(2)
-            check("再点三角可收起", sidebar_item(CHILD) is None)
-        else:
-            check("再点三角可收起", False, "找不到展开三角")
 
     finally:
         kill_app()
