@@ -309,14 +309,17 @@
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <!-- 展开三角：只有真有子文件夹的节点才显示 -->
-                                        <Button x:Name="Expander" Grid.Column="0" Content="▸" Width="14" Height="14"
-                                                Padding="0" Margin="0,0,2,0" FontSize="9"
+                                        <!-- 展开三角：只有真有子文件夹的节点才显示。
+                                             用 Hidden 而不是 Collapsed —— Collapsed 会把这一列
+                                             收成 0 宽，没有子目录的根目录标题就会比有子目录的
+                                             左移 16px，看着像缩进错乱 -->
+                                        <Button x:Name="Expander" Grid.Column="0" Content="▸" Width="16" Height="16"
+                                                Padding="0" Margin="0,0,3,0" FontSize="10" Opacity="0.75"
                                                 Background="Transparent" BorderThickness="0"
                                                 VerticalAlignment="Center"
                                                 Command="{Binding DataContext.ToggleFolderNodeCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                                 CommandParameter="{Binding}"
-                                                Visibility="Collapsed"
+                                                Visibility="Hidden"
                                                 ToolTip="展开 / 收起子文件夹" />
                                         <StackPanel x:Name="Root" Grid.Column="1" ToolTip="{Binding ToolTipText}">
                                             <TextBlock x:Name="TitleText" Text="{Binding Title}" TextTrimming="CharacterEllipsis"
