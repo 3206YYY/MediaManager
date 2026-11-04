@@ -26,6 +26,9 @@ public interface IMediaRepository
     Task UpdateMediaSizeAsync(long id, int width, int height);
     Task<int> MarkMissingAsync(long rootFolderId, ISet<string> existingPaths);
     Task MarkMissingSingleAsync(long id);
+
+    /// <summary>文件夹视图 0 项时的原因诊断：该根目录的（总数, 缺失数），只统计普通媒体。</summary>
+    Task<(int Total, int Missing)> GetFolderDiagnosticsAsync(long rootFolderId);
     Task<List<MediaItem>> QueryAsync(MediaFilter filter);
     Task<int> CountAsync(MediaFilter filter);
     Task<MediaItem?> GetByIdAsync(long id);

@@ -173,6 +173,23 @@ public class MediaRepository : IMediaRepository
         tx.Commit();
     }
 
+    /// <summary>
+    /// 文件夹视图查到 0 项时的原因诊断：该根目录下共有多少条普通媒体、
+    /// 其中多少被标记缺失。只做一次聚合查询，代价极小；
+    /// 磁盘可达性由调用方在同一个后台上下文里用 Directory.Exists 探测。
+    /// </summary>
+    public async Task<(int Total, int Missing)> GetFolderDiagnosticsAsync(long rootFolderId)
+    {
+        using var conn = _factory.CreateConnection();
+        var row = await conn.QuerySingleAsync<(int Total, int Missing)>(
+            @"SELECT COUNT(*),
+                     COALESCE(SUM(CASE WHEN IsMissing = 1 THEN 1 ELSE 0 END), 0)
+              FROM MediaItem
+              WHERE RootFolderId = @RootFolderId AND IsPrivate = 0;",
+            new { RootFolderId = rootFolderId }).ConfigureAwait(false);
+        return row;
+    }
+
     /// <summary>取出还没有宽高的图片（用于启动后台补齐，一次处理一批）。</summary>
     public async Task<List<MediaItem>> GetMissingSizeAsync(int limit, CancellationToken ct = default)
     {

@@ -386,13 +386,41 @@ public partial class MainViewModel : ObservableObject
         FavoriteCount = (int)data.FavoriteCount;
         TagCount = (int)data.TagCount;
         CategoryCount = (int)data.CategoryCount;
+
+        // 后台探测每个根目录在磁盘上是否可达。不能在 UI 线程逐个 Directory.Exists：
+        // 未挂载的移动硬盘 / 断开的网络盘上它可能阻塞几百毫秒甚至更久，侧栏会卡住。
+        await ProbeFolderOfflineAsync();
+    }
+
+    /// <summary>
+    /// 逐个探测根目录可达性并写入侧栏项的 IsOffline。
+    /// 在线程池做，结果一次回 UI 线程设置 —— 侧栏就能在用户点进去**之前**
+    /// 把离线的文件夹标出来，而不是让人点进去看到「共 0 项」摸不着头脑。
+    /// </summary>
+    private async Task ProbeFolderOfflineAsync()
+    {
+        var roots = FolderItems.Where(f => f.RelatedId.HasValue).ToList();
+        if (roots.Count == 0) return;
+
+        var results = await Task.Run(() =>
+        {
+            var dict = new Dictionary<long, bool>(roots.Count);
+            foreach (var r in roots)
+                dict[r.RelatedId!.Value] = System.IO.Directory.Exists(r.ToolTipText ?? string.Empty);
+            return dict;
+        }).ConfigureAwait(true);
+
+        foreach (var r in roots)
+            r.IsOffline = !results[r.RelatedId!.Value];
     }
 
     private void StartWatchers()
     {
         foreach (var f in FolderItems)
         {
-            if (f.RelatedId.HasValue && System.IO.Directory.Exists(f.ToolTipText))
+            // 可达性已在 ProbeFolderOfflineAsync 探测过（线程池），这里复用结果：
+            // 原来在这里逐个 Directory.Exists 是 UI 线程调用，离线盘会卡住启动
+            if (f.RelatedId.HasValue && !f.IsOffline && System.IO.Directory.Exists(f.ToolTipText))
                 _watcher.Start(f.RelatedId.Value, f.ToolTipText!);
         }
     }
@@ -483,7 +511,70 @@ public partial class MainViewModel : ObservableObject
         StatusText = total > MediaItems.Count
             ? $"已加载 {MediaItems.Count} / 共 {total} 项"
             : $"共 {total} 项";
+
+        // 0 项必须给出「为什么」，不能只甩一句共 0 项：用户分不清「真的没文件」
+        // 和「移动硬盘没插上」。folder 视图有内容时也顺手同步离线标记。
+        if (total == 0)
+            await ExplainEmptyResultAsync(generation);
+        else if (_currentViewKey == "folder" && _currentRootFolderId.HasValue)
+            await RefreshFolderOfflineFlagAsync(_currentRootFolderId.Value, generation);
+
         _logger.LogDebug("  · 列表就绪 {Ms} ms", swLoad.ElapsedMilliseconds);
+    }
+
+    /// <summary>
+    /// 查询结果为空时，在状态栏给出针对性的原因（而不是一句「共 0 项」）。
+    /// folder 视图：查缺失计数 + 探测磁盘可达性；其他视图：指出筛选条件残留。
+    /// 探测都在线程池做 —— 未挂载的移动硬盘上 Directory.Exists 可能阻塞上百毫秒。
+    /// </summary>
+    private async Task ExplainEmptyResultAsync(int generation)
+    {
+        if (_currentViewKey == "folder" && _currentRootFolderId.HasValue)
+        {
+            var rootId = _currentRootFolderId.Value;
+            var rootPath = FolderItems.FirstOrDefault(f => f.RelatedId == rootId)?.ToolTipText;
+            var (diagTotal, missing, onDisk) = await Task.Run(async () =>
+            {
+                var d = await _repo.GetFolderDiagnosticsAsync(rootId).ConfigureAwait(false);
+                var exists = rootPath is null || System.IO.Directory.Exists(rootPath);
+                return (d.Total, d.Missing, exists);
+            }).ConfigureAwait(true);
+            if (generation != _loadGeneration) return;   // 期间又触发了新加载，别覆盖新结果
+
+            if (!onDisk)
+                StatusText = diagTotal > 0
+                    ? $"共 0 项 —— 此文件夹的 {diagTotal} 个文件当前不可达（磁盘未连接或路径已变更），重新连接后点「扫描」即可恢复"
+                    : "共 0 项 —— 此文件夹当前无法访问（磁盘未连接或路径已变更）";
+            else if (missing > 0)
+                StatusText = $"共 0 项 —— 有 {missing} 个文件暂不可达，点「扫描」重新扫描此文件夹即可恢复";
+            else
+                StatusText = "共 0 项 —— 文件夹可达但里面没有匹配的文件（检查顶部「类型」勾选与搜索词）";
+            return;
+        }
+
+        var hints = new List<string>();
+        if (!string.IsNullOrWhiteSpace(SearchText))
+            hints.Add($"搜索词「{SearchText}」");
+        var selectedTypes = TypeFilterOptions.Where(o => o.IsSelected).Select(o => o.MediaType).ToList();
+        var allTypes = TypeFilterOptions.Select(o => o.MediaType).ToList();
+        if (selectedTypes.Count > 0 && selectedTypes.Count < allTypes.Count)
+            hints.Add("类型筛选（只勾了 " + string.Join("、", selectedTypes) + "）");
+        if (EditedOnly)
+            hints.Add("只看已编辑");
+        StatusText = hints.Count > 0
+            ? $"共 0 项 —— 没有文件同时满足 " + string.Join(" 和 ", hints) + "，清除筛选后再试试"
+            : "共 0 项 —— 当前视图没有文件";
+    }
+
+    /// <summary>后台探测根目录可达性并同步侧栏离线标记（不改变状态栏）。</summary>
+    private async Task RefreshFolderOfflineFlagAsync(long rootId, int generation)
+    {
+        var nav = FolderItems.FirstOrDefault(f => f.RelatedId == rootId);
+        if (nav is null) return;
+        var path = nav.ToolTipText;
+        var exists = await Task.Run(() => path is null || System.IO.Directory.Exists(path)).ConfigureAwait(true);
+        if (generation != _loadGeneration) return;
+        nav.IsOffline = !exists;
     }
 
     /// <summary>

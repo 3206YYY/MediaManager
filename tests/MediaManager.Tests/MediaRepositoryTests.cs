@@ -2,6 +2,7 @@ using MediaManager.Core.Enums;
 using MediaManager.Core.Models;
 using MediaManager.Infrastructure.Database;
 using MediaManager.Infrastructure.Portable;
+using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -211,6 +212,28 @@ public class MediaRepositoryTests : IDisposable
 
         var loaded = await _repo.GetByIdAsync(m1.Id);
         Assert.True(loaded!.IsMissing);
+    }
+
+    [Fact]
+    public async Task GetFolderDiagnostics_ShouldCountTotalAndMissingOnlyForPlainMedia()
+    {
+        var rootId = await _repo.AddRootFolderAsync("C:\\Photos", null, null);
+        var otherId = await _repo.AddRootFolderAsync("C:\\Other", null, null);
+        await _repo.UpsertMediaAsync(new MediaItem { RootFolderId = rootId, Path = "C:\\Photos\\a.jpg", FileName = "a.jpg", Extension = "jpg", MediaType = MediaType.Image });
+        await _repo.UpsertMediaAsync(new MediaItem { RootFolderId = rootId, Path = "C:\\Photos\\b.jpg", FileName = "b.jpg", Extension = "jpg", MediaType = MediaType.Image });
+        await _repo.UpsertMediaAsync(new MediaItem { RootFolderId = rootId, Path = "C:\\Photos\\gone.jpg", FileName = "gone.jpg", Extension = "jpg", MediaType = MediaType.Image });
+        await _repo.UpsertMediaAsync(new MediaItem { RootFolderId = otherId, Path = "C:\\Other\\x.jpg", FileName = "x.jpg", Extension = "jpg", MediaType = MediaType.Image });
+
+        // 把 gone.jpg 标缺失（与 MarkMissing 相同的写库路径）
+        await _repo.MarkMissingAsync(rootId, new HashSet<string> { "C:\\Photos\\a.jpg", "C:\\Photos\\b.jpg" });
+        // 一条标成私密：诊断只统计普通媒体，不能把私密文件算进总数（私密有独立查询路径）
+        var factory = _provider.GetRequiredService<IDbConnectionFactory>();
+        using (var conn = factory.CreateConnection())
+            await conn.ExecuteAsync("UPDATE MediaItem SET IsPrivate=1 WHERE Path='C:\\Other\\x.jpg';");
+
+        var (total, missing) = await _repo.GetFolderDiagnosticsAsync(rootId);
+        Assert.Equal(3, total);
+        Assert.Equal(1, missing);
     }
 
     [Fact]

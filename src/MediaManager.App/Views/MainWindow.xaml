@@ -302,13 +302,26 @@
                                      以前直接放整条路径，侧栏宽度不够被截成
                                      「C:\Users\xxx\Videos\Capt…」，两个目录看着一模一样 -->
                                 <DataTemplate>
-                                    <StackPanel ToolTip="{Binding ToolTipText}">
-                                        <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                                    <StackPanel x:Name="Root" ToolTip="{Binding ToolTipText}">
+                                        <TextBlock x:Name="TitleText" Text="{Binding Title}" TextTrimming="CharacterEllipsis"
                                                    Style="{StaticResource SidebarText}" />
                                         <TextBlock Text="{Binding SubTitle}" TextTrimming="CharacterEllipsis"
                                                    FontSize="10" Opacity="0.55" Margin="0,1,0,0"
                                                    Style="{StaticResource SidebarText}" />
+                                        <!-- 离线标记：移动硬盘没插 / 盘符变了时提前告知，
+                                             别让用户点进去看到「共 0 项」还以为是软件坏了 -->
+                                        <TextBlock x:Name="OfflineBadge" Text="⛔ 离线" FontSize="10"
+                                                   Foreground="#C4554D" FontWeight="Bold"
+                                                   Margin="0,2,0,0" Visibility="Collapsed" />
                                     </StackPanel>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsOffline}" Value="True">
+                                            <Setter TargetName="TitleText" Property="Opacity" Value="0.45" />
+                                            <Setter TargetName="OfflineBadge" Property="Visibility" Value="Visible" />
+                                            <Setter TargetName="Root" Property="ToolTip"
+                                                    Value="文件夹当前不可达（移动硬盘未连接或路径已变更）。重新连接后点「扫描」即可恢复。" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                             <ListBox.ContextMenu>
@@ -432,6 +445,8 @@
                          VirtualizingPanel.VirtualizationMode="Recycling"
                          VirtualizingPanel.CacheLength="1"
                          VirtualizingPanel.CacheLengthUnit="Page"
+                         VirtualizingPanel.ScrollUnit="Pixel"
+                         ScrollViewer.IsDeferredScrollingEnabled="False"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
                          ScrollViewer.CanContentScroll="True"

@@ -124,6 +124,15 @@ public partial class NavigationItemViewModel : ObservableObject
     public long? RelatedId { get; set; }
 
     /// <summary>
+    /// 根目录当前在磁盘上不可达（移动硬盘没插 / 盘符变了 / 网络盘断开）。
+    /// 由 LoadNavigationAsync 在后台线程探测后设置 —— 之所以要探测，是因为
+    /// 「点进文件夹看到共 0 项、刷新也没用」十有八九就是这个：文件被标了
+    /// IsMissing，查询写死了 IsMissing=0，侧栏却毫无提示，用户只会觉得程序坏了。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isOffline;
+
+    /// <summary>
     /// 列表项内容模板里放的是 StackPanel（两级文字），UI 自动化合成不出名字，
     /// 会退化成「类名」；给个 ToString 让读屏软件和自动化测试都能读到正常文字。
     /// </summary>
