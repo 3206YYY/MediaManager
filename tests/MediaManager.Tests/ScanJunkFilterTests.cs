@@ -99,4 +99,50 @@ public class ScanJunkFilterTests : IDisposable
         Assert.Contains("a.png", names);
         Assert.DoesNotContain("desktop.ini", names);
     }
+
+    /// <summary>
+    /// 测试员现场：父目录和子目录都被添加过，子目录里的文件早就扫进父级了。
+    /// 这时扫子目录必须是「更新 0 新增」，绝不能报「新增 27」——
+    /// 老逻辑按「这个根目录下已知路径」判断新旧，报出来的新增条数纯属幻觉，
+    /// 用户看到的就是「说导入了 27 个，点进去共 0 项」。
+    /// </summary>
+    [Fact]
+    public async Task ScanNestedRoot_DoesNotClaimNewItemsAlreadyOwnedByParent()
+    {
+        var parent = Path.Combine(_tempDir, "父");
+        var child = Path.Combine(parent, "子");
+        Directory.CreateDirectory(child);
+        File.WriteAllBytes(Path.Combine(child, "a.png"), new byte[] { 0x89, 0x50, 0x4E, 0x47 });
+        File.WriteAllBytes(Path.Combine(child, "b.png"), new byte[] { 0x89, 0x50, 0x4E, 0x47 });
+
+        // 先扫父目录：两条记录归属父级
+        var parentId = await _repo.AddRootFolderAsync(parent, null, null);
+        await _scanner.ScanRootFolderAsync(parentId);
+
+        // 再把子目录当独立根目录加进来扫一遍
+        var childId = await _repo.AddRootFolderAsync(child, null, null);
+        var progress = new RecordingProgress();
+        await _scanner.ScanRootFolderAsync(childId, progress);
+
+        var last = progress.Last!;
+        // 扫完必须报出真实文件数：<500 个文件时原来 ScannedFiles 一直是 0，状态栏显示「0 个文件」
+        Assert.Equal(2, last.ScannedFiles);
+        Assert.Equal(0, last.Added);
+        Assert.Equal(2, last.Updated);
+
+        // 归属没被改：父级名下还是两条
+        var byParent = await _repo.QueryAsync(new MediaFilter { RootFolderId = parentId, Limit = 100 });
+        Assert.Equal(2, byParent.Count);
+
+        // 但按路径查子目录能看到它们（侧栏点进去要显示内容，靠的就是这个）
+        var byPath = await _repo.QueryAsync(new MediaFilter { FolderPath = child, Limit = 100 });
+        Assert.Equal(2, byPath.Count);
+    }
+
+    /// <summary>同步记录最后一次进度：Progress&lt;T&gt; 会 post 到线程池，断言会飘。</summary>
+    private sealed class RecordingProgress : IProgress<ScanProgress>
+    {
+        public ScanProgress? Last { get; private set; }
+        public void Report(ScanProgress value) => Last = value;
+    }
 }

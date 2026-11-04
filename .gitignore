@@ -97,3 +97,6 @@ build/_db_backup*.db
 TestResults/
 代码评审*.md
 build/verify/shots_*.png
+
+# Python 字节码（build/verify 下的脚本被纳入仓库，缓存别跟着进去）
+__pycache__/

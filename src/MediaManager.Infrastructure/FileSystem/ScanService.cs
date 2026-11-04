@@ -40,7 +40,7 @@ public class ScanService : IScanService
         var scanned = new List<MediaItem>(BatchSize);
         var existingPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var enumState = new EnumerationState();
-        int added = 0, updated = 0, scannedCount = 0;
+        int inserted = 0, updated = 0, scannedCount = 0;
         var utcNow = DateTime.UtcNow.ToString("O");
 
         // 预加载该根目录下已有的路径，用于区分新增/更新
@@ -86,24 +86,25 @@ public class ScanService : IScanService
             scannedCount++;
             existingPaths.Add(file);
 
-            var isNew = !knownPaths.Contains(file);
-
-            // 计数在这里立刻累加。原来放在「攒够一批」的分支里，等于每 500 个文件只按
-            // 最后一个文件的 isNew 记一次，最后不足一批的尾巴完全不计，进度数字永远是错的。
-            if (isNew) added++; else updated++;
+            // 「看着像新文件」只用来决定要不要读宽高：真正的入库结果以 write 返回值为准。
+            // 老逻辑拿这个当「新增 N」报给用户，遇到「同一路径已挂在别的根目录下」时
+            // 会报「新增 27」而库里一条没变（用户看到的就是「说导入了 27 个，点进去 0 项」）。
+            var looksNew = !knownPaths.Contains(file);
 
             // 新文件顺便把宽高读出来（只读文件头，成本极低）。
             // 之前完全没写这一列，导致界面上所有图片都显示「未知」。
-            if (isNew && type.Value == MediaType.Image)
+            if (looksNew && type.Value == MediaType.Image)
                 FillSize(item);
 
             scanned.Add(item);
 
             if (scanned.Count >= BatchSize)
             {
-                await FlushBatchAsync(scanned);
+                var (ins, upd) = await FlushBatchAsync(scanned);
+                inserted += ins;
+                updated += upd;
                 p.ScannedFiles = scannedCount;
-                p.Added = added;
+                p.Added = inserted;
                 p.Updated = updated;
                 progress?.Report(p);
                 scanned.Clear();
@@ -112,7 +113,9 @@ public class ScanService : IScanService
 
         if (scanned.Count > 0)
         {
-            await FlushBatchAsync(scanned);
+            var (ins, upd) = await FlushBatchAsync(scanned);
+            inserted += ins;
+            updated += upd;
         }
 
         // 扫描途中设备被拔（目录已不可达）：绝不能把还没扫到的文件标记为「缺失」，
@@ -120,9 +123,10 @@ public class ScanService : IScanService
         if (!Directory.Exists(root.Path))
         {
             _logger.LogWarning("扫描过程中根目录失联（可能是设备被拔出），跳过缺失标记：{Path}", root.Path);
+            p.ScannedFiles = scannedCount;
             p.Total = scannedCount;
             p.IsCompleted = true;
-            p.Added = added;
+            p.Added = inserted;
             p.Updated = updated;
             progress?.Report(p);
             return;
@@ -133,18 +137,22 @@ public class ScanService : IScanService
         if (!enumState.Complete)
         {
             _logger.LogWarning("扫描时有部分目录无法读取，跳过缺失标记以避免误判：{Path}", root.Path);
+            p.ScannedFiles = scannedCount;
             p.Total = scannedCount;
             p.IsCompleted = true;
-            p.Added = added;
+            p.Added = inserted;
             p.Updated = updated;
             progress?.Report(p);
             return;
         }
 
         p.MarkedMissing = await _repo.MarkMissingAsync(rootFolderId, existingPaths);
+        // ScannedFiles 必须在这里补上：只有攒满 500 条的那批才报过进度，
+        // 小于 500 个文件的文件夹扫完 ScannedFiles 还是 0 —— 状态栏就会显示「0 个文件」。
+        p.ScannedFiles = scannedCount;
         p.Total = scannedCount;
         p.IsCompleted = true;
-        p.Added = added;
+        p.Added = inserted;
         p.Updated = updated;
         progress?.Report(p);
 
@@ -152,7 +160,7 @@ public class ScanService : IScanService
         await _repo.UpdateRootFolderAsync(root);
 
         _logger.LogInformation("扫描完成：{Path}，扫描 {Scanned}，新增 {Added}，更新 {Updated}，缺失 {Missing}",
-            root.Path, scannedCount, added, updated, p.MarkedMissing);
+            root.Path, scannedCount, inserted, updated, p.MarkedMissing);
     }
 
     /// <summary>
@@ -281,11 +289,11 @@ public class ScanService : IScanService
         return set;
     }
 
-    private async Task FlushBatchAsync(List<MediaItem> batch)
+    private async Task<(int Inserted, int Updated)> FlushBatchAsync(List<MediaItem> batch)
     {
         // 一批一个连接 + 一个事务：原来逐条 Upsert 是「每条开一次连接 + 一次 SELECT + 一次写」，
         // 500 个文件就是 1000 多次数据库往返，整个扫描的耗时基本都耗在这里。
-        await _repo.UpsertMediaBatchAsync(batch).ConfigureAwait(false);
+        return await _repo.UpsertMediaBatchAsync(batch).ConfigureAwait(false);
     }
 
     /// <summary>枚举过程的完成状态：有目录读不到时置为 false，用于决定是否可信地标记「缺失」。</summary>

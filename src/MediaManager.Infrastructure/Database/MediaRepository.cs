@@ -153,10 +153,12 @@ public class MediaRepository : IMediaRepository
     /// 批量 Upsert：一个连接 + 一个事务，先按路径一次性查已有 Id，再逐条 UPDATE / INSERT。
     /// 扫描 500 个文件从「每条一次连接 + 一次 SELECT + 一次写」降到两次查询。
     /// </summary>
-    public async Task UpsertMediaBatchAsync(IReadOnlyList<MediaItem> items, CancellationToken ct = default)
+    public async Task<(int Inserted, int Updated)> UpsertMediaBatchAsync(
+        IReadOnlyList<MediaItem> items, CancellationToken ct = default)
     {
-        if (items.Count == 0) return;
+        if (items.Count == 0) return (0, 0);
 
+        int inserted = 0, updated = 0;
         using var conn = _factory.CreateConnection();
         using var tx = conn.BeginTransaction();
 
@@ -187,6 +189,7 @@ public class MediaRepository : IMediaRepository
                     item.Width, item.Height,
                     item.LastScanUtc, item.Id,
                 }, tx).ConfigureAwait(false);
+                updated++;
             }
             else
             {
@@ -206,10 +209,12 @@ public class MediaRepository : IMediaRepository
                         item.LastScanUtc,
                     }, tx).ConfigureAwait(false);
                 item.Id = newId;
+                inserted++;
             }
         }
 
         tx.Commit();
+        return (inserted, updated);
     }
 
     /// <summary>

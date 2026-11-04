@@ -352,6 +352,12 @@ def main():
             print("清理临时根目录失败：", e)
         shutil.copy2(BAK, DB)
         os.remove(BAK)
+        # 还原备份时必须连 -wal/-shm 一起删：SQLite 下次打开会把 WAL 里的页重放到
+        # 刚还原的库上 —— 等于「备份白还了」（实测：验证跑完 root 8 又没了）。
+        for suffix in ("-wal", "-shm"):
+            side = DB + suffix
+            if os.path.exists(side):
+                os.remove(side)
         if moved and os.path.exists(MARKER_OFF):
             os.replace(MARKER_OFF, MARKER)
         if os.path.exists(BASE):

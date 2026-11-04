@@ -28,6 +28,12 @@ user32 = ctypes.windll.user32
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 APP_DIR = os.path.join(ROOT, "src", "MediaManager.App", "bin", "Debug", "net8.0-windows")
 APP = os.path.join(APP_DIR, "MediaManager.App.exe")
+
+# 允许指向任意构建（例如 dist 里的 Release 预览版）：验证「用户实际会装的这个 exe」
+if os.environ.get("MM_VERIFY_APP"):
+    APP = os.environ["MM_VERIFY_APP"]
+    APP_DIR = os.path.dirname(APP)
+    print("被测 exe：", APP)
 PORTABLE_MARKER = os.path.join(APP_DIR, "portable.marker")
 PORTABLE_OFF = PORTABLE_MARKER + ".verify_off"
 DB = os.path.join(os.environ["LOCALAPPDATA"], "MediaManager", "library.db")
@@ -350,6 +356,12 @@ def main():
         if os.path.exists(BAK):
             shutil.copy2(BAK, DB)
             os.remove(BAK)
+        # 还原备份时必须连 -wal/-shm 一起删：SQLite 下次打开会把 WAL 里的页重放到
+        # 刚还原的库上 —— 等于「备份白还了」（实测：验证跑完 root 8 又没了）。
+        for suffix in ("-wal", "-shm"):
+            side = DB + suffix
+            if os.path.exists(side):
+                os.remove(side)
         # 便携标记归位
         if marker_moved and os.path.exists(PORTABLE_OFF):
             os.replace(PORTABLE_OFF, PORTABLE_MARKER)

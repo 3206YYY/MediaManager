@@ -21,7 +21,12 @@ public interface IMediaRepository
     Task<long> UpsertMediaAsync(MediaItem item);
 
     /// <summary>批量写入（同一连接 + 同一事务）。扫描入库用，避免逐条开连接与逐条 SELECT。</summary>
-    Task UpsertMediaBatchAsync(IReadOnlyList<MediaItem> items, CancellationToken ct = default);
+    /// <summary>
+    /// 批量写入。返回**真正**入库的条数（插入 / 更新各多少）——
+    /// 扫描进度和「新增 N」必须用它，不能拿「看着像新文件」估：
+    /// 同一路径已经在别的根目录下时，写入是 UPDATE，估算会把它们全算成新增。
+    /// </summary>
+    Task<(int Inserted, int Updated)> UpsertMediaBatchAsync(IReadOnlyList<MediaItem> items, CancellationToken ct = default);
 
     Task DeleteMediaAsync(long id);
 
