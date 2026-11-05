@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -84,6 +85,10 @@ public partial class MainWindow : Window
         Activated += (_, _) => UpdateThemeGlyph();
 
         AttachVault();
+
+        // XAML 加载阶段 SelectionChanged 可能早于悬浮条字段赋值触发，
+        // 这里在所有控件都就绪后补一次，保证两个入口的初始状态一致。
+        UpdateSelectionUi();
     }
 
     // ===================================================================
@@ -1148,7 +1153,11 @@ public partial class MainWindow : Window
                     ThumbList.SelectAll();
                     break;
                 case Key.F:
-                    // 聚焦搜索框
+                    // 搜索框 ToolTip 一直承诺了 Ctrl+F，这里原本是空的（只写了个注释）。
+                    // 帮助页把这条列出来之前先让它真的生效。
+                    SearchTextBox.Focus();
+                    SearchTextBox.SelectAll();
+                    e.Handled = true;
                     break;
                 case Key.Enter:
                     _ = OpenSelectedLocationAsync();
@@ -1229,19 +1238,24 @@ public partial class MainWindow : Window
     private void OnSettings(object sender, RoutedEventArgs e) => OpenSettingsDialog();
 
     /// <summary>打开设置（主界面按钮和全局快捷键共用一份实现）。</summary>
-    public void OpenSettingsDialog()
+    /// <summary>
+    /// 打开设置（主界面按钮和全局快捷键共用一份实现）。
+    /// initialPage 用来从状态栏「❓ 帮助与快捷键」直接跳到帮助页，省得用户自己翻左侧分类。
+    /// </summary>
+    public void OpenSettingsDialog(string initialPage = "general")
     {
         // 快捷键可能在设置窗口已经开着的时候被按下：已经开着就还原/提到前面，不重复开窗。
         if (_settingsWindow is { IsLoaded: true })
         {
             if (_settingsWindow.WindowState == WindowState.Minimized)
                 _settingsWindow.WindowState = WindowState.Normal;
+            _settingsWindow.NavigateTo(initialPage);
             _settingsWindow.Show();
             _settingsWindow.Activate();
             return;
         }
 
-        var settings = new SettingsWindow(_viewModel);
+        var settings = new SettingsWindow(_viewModel, initialPage);
         _settingsWindow = settings;
         settings.Closed += (_, _) => _settingsWindow = null;
         // 非模态且不挂 Owner：设置窗可像普通窗口一样随便最小化/切后台，不联动主窗口
@@ -1302,6 +1316,77 @@ public partial class MainWindow : Window
             list.Add(single);
         return list;
     }
+
+    // ===================================================================
+    //  批量操作的两处显眼入口（顶部按钮 + 网格底部悬浮条）
+    // ===================================================================
+
+    /// <summary>
+    /// 选中数量变化时刷新两处入口。ListBox 是 Extended 多选：Ctrl / Shift 点击、拖框、Ctrl+A
+    /// 都会走到这里；换页、刷新、删除后 MediaItems 重置也会走，按钮会自动回到置灰。
+    /// </summary>
+    private void OnThumbListSelectionChanged(object sender, SelectionChangedEventArgs e)
+        => UpdateSelectionUi();
+
+    private void UpdateSelectionUi()
+    {
+        // XAML 加载期这个事件可能先于后面几个字段赋值触发，逐个判空
+        var n = ThumbList?.SelectedItems.Count ?? 0;
+        var has = n > 0;
+        var caption = has ? $"删除选中的 {n} 项" : "批量删除";
+
+        if (BatchDeleteButton != null)
+        {
+            BatchDeleteButton.IsEnabled = has;
+            if (BatchDeleteCaption != null) BatchDeleteCaption.Text = caption;
+            // Content 是矢量图标 + TextBlock 的面板，UIA 不会自动取到文字，
+            // 屏幕阅读器和实机验证脚本都靠这个名称。
+            AutomationProperties.SetName(BatchDeleteButton, caption);
+        }
+        if (SelectionBar != null)
+            SelectionBar.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
+        if (SelectionCountText != null)
+            SelectionCountText.Text = $"已选中 {n} 项";
+        if (SelectionBarDeleteCaption != null)
+            SelectionBarDeleteCaption.Text = caption;
+        if (SelectionBarDeleteButton != null)
+            AutomationProperties.SetName(SelectionBarDeleteButton, caption);
+    }
+
+    /// <summary>
+    /// 顶部按钮 / 悬浮条 / Delete 键 / 右键菜单共用同一个 BatchDeleteAsync：
+    /// 确认弹窗 → 回收站 → 删库前抓快照 → 5 秒撤销条，一个环节都不会漏。
+    /// </summary>
+    private void OnBatchDelete(object sender, RoutedEventArgs e)
+        => _ = _viewModel.BatchDeleteAsync(GetSelectedItems());
+
+    private void OnClearSelection(object sender, RoutedEventArgs e)
+        => ThumbList.SelectedItems.Clear();
+
+    /// <summary>悬浮条的「批量分类」：动态列出分类，点击复用右键菜单的同一处理逻辑。</summary>
+    private void OnBatchCategory(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        var menu = new ContextMenu { PlacementTarget = btn, Placement = PlacementMode.Top };
+
+        if (_viewModel.CategoryItems.Count == 0)
+        {
+            menu.Items.Add(new MenuItem { Header = "（还没有分类，先在左侧「分类」里新建）", IsEnabled = false });
+        }
+        else
+        {
+            foreach (var cat in _viewModel.CategoryItems.ToList())
+            {
+                var mi = new MenuItem { Header = cat.Name, Tag = cat.Id };
+                mi.Click += OnCategoryToggleMenu;   // 单张切换 / 多选批量加入，逻辑只有一份
+                menu.Items.Add(mi);
+            }
+        }
+        menu.IsOpen = true;
+    }
+
+    /// <summary>状态栏的「❓ 帮助与快捷键」：直接跳到设置里的帮助页。</summary>
+    private void OnOpenHelp(object sender, RoutedEventArgs e) => OpenSettingsDialog("help");
 
     private void OnFavoriteMenu(object sender, RoutedEventArgs e)
     {

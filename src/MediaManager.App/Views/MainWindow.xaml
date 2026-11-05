@@ -71,7 +71,7 @@
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
                 Padding="10,8">
             <DockPanel>
-                <TextBox DockPanel.Dock="Left" Width="240" Margin="0,0,10,0"
+                <TextBox x:Name="SearchTextBox" DockPanel.Dock="Left" Width="240" Margin="0,0,10,0"
                          InputMethod.IsInputMethodEnabled="True"
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                          ToolTip="搜索（Ctrl+F）" />
@@ -140,6 +140,37 @@
                         ToolTip="由插件提供的扩展功能" />
                 <Button DockPanel.Dock="Right" Content="🔄 刷新" Command="{Binding RefreshCommand}" />
                 <Button DockPanel.Dock="Right" Content="🗂 去重" Click="OnFindDuplicates" />
+                <!-- 批量删除：小白用户最容易卡在「怎么一次删多张」。没选中置灰，选中后高亮并显示数量；
+                     点击走的是和 Delete 键 / 右键菜单完全相同的 BatchDeleteAsync（确认 → 回收站 → 撤销条）。
+                     图标用矢量 Path 而不是 🗑 emoji：U+1F5D1 在不少 Windows 字体里根本没有字形，
+                     实测会渲染成一个空心方框，看起来像「图标没加载出来」。
+                     AutomationProperties.Name 必须动态维护 —— Content 是自绘面板时 UIA 拿不到按钮文字。 -->
+                <Button x:Name="BatchDeleteButton" DockPanel.Dock="Right" Margin="0,0,10,0"
+                        IsEnabled="False" Click="OnBatchDelete"
+                        AutomationProperties.Name="批量删除"
+                        ToolTip="删除选中的文件（Delete）。按住 Ctrl / Shift 点击可多选，Ctrl+A 全选；删除后进回收站，5 秒内可撤销。">
+                    <StackPanel Orientation="Horizontal">
+                        <Viewbox Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform">
+                            <Path Data="M3 6 H21 M8 6 V4 H16 V6 M5 6 L6 21 H18 L19 6 M10 10 V17 M14 10 V17"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" Fill="Transparent" />
+                        </Viewbox>
+                        <TextBlock x:Name="BatchDeleteCaption" Text="批量删除" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Style.Triggers>
+                                <Trigger Property="IsEnabled" Value="True">
+                                    <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
+                                    <Setter Property="Foreground" Value="White" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
                 <Button DockPanel.Dock="Right" Content="扫描" Command="{Binding ScanAllCommand}" />
                 <Button DockPanel.Dock="Right" Content="👁 快速查看" Margin="0,0,10,0" Click="OnOpenFile"
                         ToolTip="直接打开单个文件预览，不加入媒体库（也可把文件拖进窗口）" />
@@ -482,6 +513,7 @@
                          PreviewMouseMove="OnThumbListMouseMove"
                          PreviewMouseLeftButtonUp="OnThumbListMouseUp"
                          PreviewMouseWheel="OnThumbListPreviewMouseWheel"
+                         SelectionChanged="OnThumbListSelectionChanged"
                          SelectedItem="{Binding SelectedItem, Mode=TwoWay}">
                     <ListBox.ContextMenu>
                         <ContextMenu Opened="OnContextMenuOpened">
@@ -741,6 +773,43 @@
             </Border>
         </Grid>
 
+        <!-- ============ 多选操作条（网格底部悬浮，像手机相册；没选中时整条不占位） ============
+             ZIndex 低于撤销提示条 / 轻提示：删除完成后选中被清空、这条自动收起，提示条会盖上来，
+             两者不会叠成两层。底部留 18px，和上方 74px 的轻提示错开。 -->
+        <Border x:Name="SelectionBar" Grid.Row="1" Panel.ZIndex="895"
+                HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                Margin="0,0,0,18" Padding="14,10" CornerRadius="10"
+                Background="{DynamicResource PanelBrush}"
+                BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="1"
+                Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock x:Name="SelectionCountText" Text="已选中 0 项"
+                           FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                           Margin="4,0,16,0" />
+                <Button Content="取消选择" Click="OnClearSelection" Margin="0,0,8,0"
+                        ToolTip="清空当前选择（Esc 之外最直观的退出方式）" />
+                <Button Content="📁 批量分类" Click="OnBatchCategory" Margin="0,0,8,0"
+                        ToolTip="把选中的文件一次加入某个分类" />
+                <!-- 删除按钮和顶部同款矢量图标；文字 / UIA 名称由 UpdateSelectionUi 同步 -->
+                <Button x:Name="SelectionBarDeleteButton" Click="OnBatchDelete" MinWidth="160"
+                        FontWeight="SemiBold" AutomationProperties.Name="删除选中的 0 项"
+                        Background="{DynamicResource PrimaryBrush}" Foreground="White"
+                        BorderBrush="{DynamicResource PrimaryBrush}"
+                        ToolTip="和顶部「批量删除」/ Delete 键完全一样：确认后进回收站，5 秒内可撤销">
+                    <StackPanel Orientation="Horizontal">
+                        <Viewbox Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform">
+                            <Path Data="M3 6 H21 M8 6 V4 H16 V6 M5 6 L6 21 H18 L19 6 M10 10 V17 M14 10 V17"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                  StrokeThickness="1.7" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round" Fill="Transparent" />
+                        </Viewbox>
+                        <TextBlock x:Name="SelectionBarDeleteCaption" Text="删除选中的 0 项"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Border>
+
         <!-- ============ 删除撤销提示条（底部居中，5 秒后自动消失） ============ -->
         <!-- 发现新文件提示（右下角） -->
         <Border Grid.Row="1" Panel.ZIndex="901"
@@ -807,6 +876,11 @@
                 Padding="10,5">
             <DockPanel>
                 <TextBlock DockPanel.Dock="Left" Text="{Binding StatusText}" />
+
+                <!-- 帮助入口常驻状态栏：小白不用先猜「设置里哪一页」才知道怎么多选、怎么删 -->
+                <Button DockPanel.Dock="Right" Content="❓ 帮助与快捷键" Click="OnOpenHelp"
+                        Padding="8,2" Margin="0,0,4,0" FontSize="11.5"
+                        ToolTip="打开快速上手指南与快捷键列表（设置 → 帮助与快捷键）" />
 
                 <!-- 缩略图加载指示：队列清空后自动隐藏。
                      数据来自 ThumbnailLoadMonitor 的 250ms 聚合，不订阅逐图事件（否则 UI 线程会被回调淹没）。 -->

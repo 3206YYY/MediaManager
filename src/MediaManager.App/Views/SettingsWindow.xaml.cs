@@ -25,10 +25,13 @@ public partial class SettingsWindow : Window
     private readonly MainViewModel _mainViewModel;
     private readonly IMediaRepository _repo;
     private readonly IAppConfigService _config;
+    /// <summary>从状态栏「❓ 帮助与快捷键」进来时直接停在这一页。</summary>
+    private readonly string _initialPage;
 
-    public SettingsWindow(MainViewModel mainViewModel)
+    public SettingsWindow(MainViewModel mainViewModel, string initialPage = "general")
     {
         InitializeComponent();
+        _initialPage = initialPage;
         _mainViewModel = mainViewModel;
         _repo = App.Services.GetRequiredService<IMediaRepository>();
         _config = App.Services.GetRequiredService<IAppConfigService>();
@@ -52,7 +55,7 @@ public partial class SettingsWindow : Window
 
     private IReadOnlyList<FrameworkElement> Pages => new[]
     {
-        PageGeneral, PageMedia, PageIntegration, PageHotkeys, PageStorage, PagePlugins, PageAbout,
+        PageGeneral, PageMedia, PageIntegration, PageHelp, PageHotkeys, PageStorage, PagePlugins, PageAbout,
     };
 
     private void InitializePages()
@@ -61,11 +64,24 @@ public partial class SettingsWindow : Window
 
         // XAML 里给第一项设了 IsSelected，事件可能在字段赋值前就触发，
         // 所以这里统一显式指定一次初始页，别依赖事件时序
-        ShowPage("general");
+        NavigateTo(_initialPage);
 
         var version = UpdateChecker.CurrentVersion;
         SidebarVersionText.Text = $"v{version}";
         VersionText.Text = $"v{version}";
+    }
+
+    /// <summary>从主界面直接跳到某一页（设置窗口已经开着时也走这里，不重复开窗）。</summary>
+    public void NavigateTo(string? key)
+    {
+        var item = NavList.Items.OfType<ListBoxItem>()
+            .FirstOrDefault(i => string.Equals(i.Tag?.ToString(), key, StringComparison.OrdinalIgnoreCase));
+        if (item != null)
+        {
+            NavList.SelectedItem = item;
+            item.IsSelected = true;
+        }
+        ShowPage(key);
     }
 
     private void OnNavChanged(object sender, SelectionChangedEventArgs e)
@@ -81,6 +97,7 @@ public partial class SettingsWindow : Window
         {
             "media" => PageMedia,
             "integration" => PageIntegration,
+            "help" => PageHelp,
             "hotkeys" => PageHotkeys,
             "storage" => PageStorage,
             "plugins" => PagePlugins,

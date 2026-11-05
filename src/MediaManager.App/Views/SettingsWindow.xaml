@@ -109,6 +109,22 @@
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="Margin" Value="0,0,0,18" />
         </Style>
+
+        <!-- 帮助页排版：显式 Style 会顶掉隐式 TextBlock 样式，所以这里必须自己再写一遍
+             DynamicResource 的 Foreground，否则深色主题下整页退回黑字看不见。 -->
+        <Style x:Key="HelpRow" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="LineHeight" Value="20" />
+            <Setter Property="Margin" Value="0,0,0,7" />
+        </Style>
+        <Style x:Key="HelpGroup" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -140,7 +156,8 @@
                         <ListBoxItem Content="🎨  常规与外观" Tag="general" IsSelected="True" />
                         <ListBoxItem Content="⚡  媒体与性能" Tag="media" />
                         <ListBoxItem Content="🧷  系统集成" Tag="integration" />
-                        <ListBoxItem Content="⌨  快捷键" Tag="hotkeys" />
+                        <ListBoxItem Content="❓  帮助与快捷键" Tag="help" />
+                        <ListBoxItem Content="⌨  全局热键" Tag="hotkeys" />
                         <ListBoxItem Content="💾  备份与迁移" Tag="storage" />
                         <ListBoxItem x:Name="PluginsNavItem" Content="🧩  插件扩展" Tag="plugins" />
                         <ListBoxItem Content="ℹ️  关于与更新" Tag="about" />
@@ -572,6 +589,144 @@
                                            Style="{StaticResource Hint}" Margin="0,0,0,10" />
                                 <Button Content="🗑 卸载软件" Click="OnUninstall" HorizontalAlignment="Left"
                                         Background="#C0392B" Foreground="White" BorderBrush="#C0392B" Width="120" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ================ 帮助与快捷键（内置文档，不去 GitHub 翻） ================ -->
+                    <StackPanel x:Name="PageHelp" Visibility="Collapsed">
+                        <TextBlock Text="快速上手与快捷键" Style="{StaticResource PageTitle}" />
+                        <TextBlock Text="不用上网查文档，常用的操作都写在这一页。所有颜色都跟着主题走，深色模式下一样清楚。"
+                                   Style="{StaticResource PageSubtitle}" />
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="三步开始用" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource HelpRow}">
+                                    <Run Text="1" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　点顶部「＋ 添加文件夹」，选你放照片 / 视频的目录，程序自动扫描并生成缩略图。" /><LineBreak/>
+                                    <Run Text="2" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　在左边切换「全部媒体 / 收藏 / 分类 / 文件夹」，双击任意一张打开大图。" /><LineBreak/>
+                                    <Run Text="3" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　想整理就多选，然后收藏、打星、分类或删除；改坏的编辑永远只另存副本，原图不动。" />
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="怎么一次选中多张、怎么删除（最容易卡住的一步）" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
+                                           Text="先选中，再删除。选中之后，顶部的蓝色「批量删除」按钮会亮起并写上选中的数量，网格底部也会浮出一条操作栏，两处点哪个都一样。" />
+                                <TextBlock Style="{StaticResource HelpRow}">
+                                    <Run Text="左键点一下" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　选中 1 张" /><LineBreak/>
+                                    <Run Text="Ctrl + 点击" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　一张张挑，不连续也行" /><LineBreak/>
+                                    <Run Text="Shift + 点击" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　点首尾两张，中间一片全选上" /><LineBreak/>
+                                    <Run Text="拖框" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　在网格空白处按住左键拖出一个方框，框住的都选中" /><LineBreak/>
+                                    <Run Text="Ctrl + A" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　全选当前列表" /><LineBreak/>
+                                    <Run Text="Delete" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　或点蓝色「删除选中的 N 项」→ 确认 → 文件进回收站 → 底部 5 秒内可点「撤销」" />
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="删除不会立刻抹掉文件：先在回收站，也能从左侧「最近删除」里还原，收藏 / 标签 / 备注会一起恢复。底部操作栏还有「批量分类」和「取消选择」。" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="主要功能速览" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource HelpRow}">
+                                    <Run Text="媒体库" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　文件夹自动扫描与监控，图片 / 视频 / 音频 / 文档 / 压缩包都能入库；一键查重。" /><LineBreak/>
+                                    <Run Text="浏览与搜索" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　缩略图大小可调，搜文件名 / 标签 / 分类，按类型、收藏、星级、已编辑筛选。" /><LineBreak/>
+                                    <Run Text="整理" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　收藏、1~5 星、多级分类、彩色标签、备注、EXIF 信息，右键还有批量重命名与批量导出。" /><LineBreak/>
+                                    <Run Text="查看与编辑" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　内置看图器支持缩放 / 平移 / 随机跳转；旋转、裁剪、文字、水印、涂鸦、马赛克一律另存「原名_edited」副本。" /><LineBreak/>
+                                    <Run Text="视频" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　双击播放，倍速、进度拖拽、全屏、播完后的循环方式会记住。" /><LineBreak/>
+                                    <Run Text="安全" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　纯本地、不联网、不上传；自动备份 + 时光机可整体回退；私密空间可把内容藏起来（密码可选）。" /><LineBreak/>
+                                    <Run Text="外观" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　右上角一键切深色 / 浅色；程序目录放一个 portable.marker 就变成 U 盘便携版。" />
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="全局热键（窗口最小化、在后台也生效）" Style="{StaticResource HelpGroup}" />
+                                <TextBlock Style="{StaticResource HelpRow}">
+                                    <Run Text="Ctrl + Alt + Shift + M" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　显示 / 隐藏主窗口（默认值）" />
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="想换成自己的组合键，到左侧「⌨ 全局热键」页点按键框再按下组合键即可。只有这一组带修饰键、能在后台触发；下面几组都只在对应窗口里生效。" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="主界面 / 批量操作" Style="{StaticResource HelpGroup}" />
+                                <TextBlock Style="{StaticResource HelpRow}" LineHeight="22">
+                                    <Run Text="Enter / Space" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　打开内置查看器（图片）或播放器（视频）" /><LineBreak/>
+                                    <Run Text="Delete" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　把选中的文件移到回收站，5 秒内可撤销" /><LineBreak/>
+                                    <Run Text="Ctrl + A" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　全选当前列表" /><LineBreak/>
+                                    <Run Text="F" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　收藏 / 取消收藏（对全部选中项生效）" /><LineBreak/>
+                                    <Run Text="1 ~ 5" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　打 1~5 星" /><LineBreak/>
+                                    <Run Text="F2" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　重命名" /><LineBreak/>
+                                    <Run Text="F5" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　刷新" /><LineBreak/>
+                                    <Run Text="R" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　在「发现」页换一批推荐" /><LineBreak/>
+                                    <Run Text="Ctrl + F" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　聚焦搜索框" /><LineBreak/>
+                                    <Run Text="Ctrl + O" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　交给系统默认程序打开（PS / PotPlayer 等）" /><LineBreak/>
+                                    <Run Text="Ctrl + Enter" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　在资源管理器里打开文件所在位置" /><LineBreak/>
+                                    <Run Text="Ctrl + L" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　打开 / 关闭私密空间" />
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="在搜索框、备注框里打字时，上面这些单键快捷键会自动让位给输入法，不会误触发。" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="图片查看器" Style="{StaticResource HelpGroup}" />
+                                <TextBlock Style="{StaticResource HelpRow}" LineHeight="22">
+                                    <Run Text="← / →" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　上一张 / 下一张" /><LineBreak/>
+                                    <Run Text="R" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　随机跳一张（右键可改随机范围）" /><LineBreak/>
+                                    <Run Text="滚轮 / 拖拽" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　缩放 / 平移" /><LineBreak/>
+                                    <Run Text="Ctrl + 0" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　适应窗口" /><LineBreak/>
+                                    <Run Text="Ctrl + 1" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　1:1 按实际像素显示" /><LineBreak/>
+                                    <Run Text="F11" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　全屏 / 退出全屏" /><LineBreak/>
+                                    <Run Text="Ctrl + Enter" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　打开文件所在位置" /><LineBreak/>
+                                    <Run Text="Ctrl + O" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　交给系统默认看图软件" /><LineBreak/>
+                                    <Run Text="Esc" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　关闭查看器（正在用工具时先退出该工具）" />
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="图片编辑器（不改动原图）" Style="{StaticResource HelpGroup}" />
+                                <TextBlock Style="{StaticResource HelpRow}" LineHeight="22">
+                                    <Run Text="Ctrl + Z" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　撤销一步" /><LineBreak/>
+                                    <Run Text="Ctrl + Y" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　重做" /><LineBreak/>
+                                    <Run Text="\ 键（按住）" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　临时对比原图，松开回到编辑效果" /><LineBreak/>
+                                    <Run Text="Esc" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　结束文字输入 / 退出当前编辑工具" />
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="旋转、裁剪、文字、水印、涂鸦、马赛克、滤镜都只写「原名_edited」副本，原图永远保留。" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="视频播放器" Style="{StaticResource HelpGroup}" />
+                                <TextBlock Style="{StaticResource HelpRow}" LineHeight="22">
+                                    <Run Text="Space" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　播放 / 暂停" /><LineBreak/>
+                                    <Run Text="← / →" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　快退 / 快进 5 秒" /><LineBreak/>
+                                    <Run Text="↑ / ↓" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　音量 +5 / -5" /><LineBreak/>
+                                    <Run Text="M" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　静音 / 取消静音" /><LineBreak/>
+                                    <Run Text="F / F11" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　全屏" /><LineBreak/>
+                                    <Run Text="PageUp / PageDown" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　上一个 / 下一个视频" /><LineBreak/>
+                                    <Run Text="Esc" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　退出全屏 / 关闭播放器" />
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="数据放在哪 / 出问题怎么办" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="所有索引、收藏、分类、标签、备注都存在本机，不上传云端。设置 → 备份与迁移 可改备份目录、导出导入、用「时光机」整体回退；关于与更新 里能一键复制诊断信息和打开日志文件夹。误删的文件先去「最近删除」看看。" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
