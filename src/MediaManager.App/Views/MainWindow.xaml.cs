@@ -32,6 +32,12 @@ public partial class MainWindow : Window
     /// <summary>是否正在真正退出（避免递归触发 Closing）。</summary>
     private bool _isReallyClosing;
 
+    /// <summary>
+    /// 「删除模式」是否开启。点顶部「批量删除」即可开启，开启后单击缩略图 = 移入回收站，
+    /// 不再需要先学会 Ctrl 多选。这是用户直觉里的「启用这个功能，点谁删谁」。
+    /// </summary>
+    private bool _tapDeleteMode;
+
     // 框选状态
     private bool _isMarqueeSelecting;
     private Point _marqueeStart;
@@ -555,6 +561,8 @@ public partial class MainWindow : Window
 
     private void OnItemDoubleClick(object sender, MouseButtonEventArgs e)
     {
+        // 删除模式下双击也不能打开查看器（PreviewMouseDown 已 Handled，这里再兜一层）
+        if (_tapDeleteMode) { e.Handled = true; return; }
         if (ThumbList.SelectedItem is ThumbnailItemViewModel item)
         {
             OpenViewer(item);
@@ -571,6 +579,42 @@ public partial class MainWindow : Window
         if (IsOverScrollBar(e.OriginalSource as DependencyObject)) return;
 
         var pos = e.GetPosition(ThumbList);
+
+        // 删除模式下按在缩略图上：单击即「点谁删谁」（或按横幅开关只打勾），
+        // 不打开查看器、不启动拖拽、也不让 ListBox 抢走这次点击。
+        if (_tapDeleteMode && IsOverItem(pos))
+        {
+            _thumbDragArmed = false;
+            _thumbDragItem = null;
+            e.Handled = true;
+
+            var hit = VisualTreeHelper.HitTest(ThumbList, pos);
+            var container = FindAncestor<ListBoxItem>(hit?.VisualHit);
+            if (container?.DataContext is not ThumbnailItemViewModel tapItem) return;
+
+            if (TapDeleteMarkOnly?.IsChecked == true)
+            {
+                // 先勾选模式：手动 toggle，别依赖 ListBox 的 Extended 默认单击（它会清掉其他选中）
+                container.IsSelected = !container.IsSelected;
+                return;
+            }
+
+            // 延后到本次事件分发完再改集合：在 PreviewMouseDown 里直接 Remove 会让
+            // 正在分发的视觉树 / 容器失效，偶发 COMException 和「点一下没反应」。
+            var victim = tapItem;
+            Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                if (!_tapDeleteMode) return;   // 事件排队期间用户按了 Esc，就别再删
+                if (await _viewModel.DeleteOnTapAsync(victim))
+                {
+                    _tapDeletedCount++;
+                    if (TapDeleteCount != null)
+                        TapDeleteCount.Text = $"本次已删 {_tapDeletedCount} 个";
+                }
+            }));
+            return;
+        }
+
         if (IsOverItem(pos))
         {
             // 按在缩略图上：先只记下起点，等移动超过系统阈值再启动拖拽。
@@ -1136,6 +1180,15 @@ public partial class MainWindow : Window
 
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
+        // Esc 退出删除模式要放在输入框判断之前：模式开着时焦点可能还在搜索框里，
+        // 用户按 Esc 就是想「赶紧关掉这个会删文件的状态」，不能被输入框吃掉。
+        if (e.Key == Key.Escape && _tapDeleteMode)
+        {
+            ExitTapDeleteMode();
+            e.Handled = true;
+            return;
+        }
+
         // 焦点在输入框里时，单键快捷键一律不生效。
         // 否则在搜索框里打字（尤其打中文时的拼音串）会顺手触发收藏 / 打星 / 换一批。
         if (Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase) return;
@@ -1322,22 +1375,43 @@ public partial class MainWindow : Window
     // ===================================================================
 
     /// <summary>
-    /// 选中数量变化时刷新两处入口。ListBox 是 Extended 多选：Ctrl / Shift 点击、拖框、Ctrl+A
-    /// 都会走到这里；换页、刷新、删除后 MediaItems 重置也会走，按钮会自动回到置灰。
+    /// 三态刷新两处入口：
+    ///   · 删除模式开启 → 顶部按钮是「退出删除模式」（警示色），模式横幅常驻
+    ///   · 有选中       → 「删除选中的 N 项」（主色高亮），底部悬浮条出现
+    ///   · 什么都没选   → 「批量删除」普通色但**仍然可点**，点它就是启用删除模式
+    /// 按钮不再用 IsEnabled=false 置灰：用户看到灰按钮点了没反应，会以为功能坏了。
     /// </summary>
     private void OnThumbListSelectionChanged(object sender, SelectionChangedEventArgs e)
         => UpdateSelectionUi();
+
+    private int _tapDeletedCount;
 
     private void UpdateSelectionUi()
     {
         // XAML 加载期这个事件可能先于后面几个字段赋值触发，逐个判空
         var n = ThumbList?.SelectedItems.Count ?? 0;
         var has = n > 0;
-        var caption = has ? $"删除选中的 {n} 项" : "批量删除";
+
+        string caption, tag;
+        if (_tapDeleteMode)
+        {
+            caption = "退出删除模式";
+            tag = "mode";
+        }
+        else if (has)
+        {
+            caption = $"删除选中的 {n} 项";
+            tag = "selected";
+        }
+        else
+        {
+            caption = "批量删除";
+            tag = "idle";
+        }
 
         if (BatchDeleteButton != null)
         {
-            BatchDeleteButton.IsEnabled = has;
+            BatchDeleteButton.Tag = tag;
             if (BatchDeleteCaption != null) BatchDeleteCaption.Text = caption;
             // Content 是矢量图标 + TextBlock 的面板，UIA 不会自动取到文字，
             // 屏幕阅读器和实机验证脚本都靠这个名称。
@@ -1348,17 +1422,67 @@ public partial class MainWindow : Window
         if (SelectionCountText != null)
             SelectionCountText.Text = $"已选中 {n} 项";
         if (SelectionBarDeleteCaption != null)
-            SelectionBarDeleteCaption.Text = caption;
+            SelectionBarDeleteCaption.Text = has ? caption : "删除选中的 0 项";
         if (SelectionBarDeleteButton != null)
-            AutomationProperties.SetName(SelectionBarDeleteButton, caption);
+            AutomationProperties.SetName(SelectionBarDeleteButton, has ? caption : "删除选中的 0 项");
+        if (TapDeleteBar != null)
+            TapDeleteBar.Visibility = _tapDeleteMode ? Visibility.Visible : Visibility.Collapsed;
+        if (TapDeleteHint != null)
+            TapDeleteHint.Text = TapDeleteMarkOnly?.IsChecked == true
+                ? "删除模式 · 单击文件打勾，选好点「删除选中的 N 项」"
+                : "删除模式 · 点谁删谁（进回收站，5 秒内可撤销）";
+    }
+
+    /// <summary>进入删除模式：不删任何文件，只是把「单击」的语义换成删除 / 打勾。</summary>
+    private void EnterTapDeleteMode()
+    {
+        _tapDeleteMode = true;
+        _tapDeletedCount = 0;
+        ThumbList.SelectedItems.Clear();
+        if (TapDeleteCount != null) TapDeleteCount.Text = "";
+        _viewModel.BeginTapDeleteSession();
+        UpdateSelectionUi();
+    }
+
+    private void ExitTapDeleteMode()
+    {
+        if (!_tapDeleteMode) return;
+        _tapDeleteMode = false;
+        ThumbList.SelectedItems.Clear();
+        _viewModel.EndTapDeleteSession();
+        UpdateSelectionUi();
+    }
+
+    private void OnExitTapDelete(object sender, RoutedEventArgs e) => ExitTapDeleteMode();
+
+    private void OnTapDeleteOptionChanged(object sender, RoutedEventArgs e)
+    {
+        _tapDeletedCount = 0;
+        if (TapDeleteCount != null) TapDeleteCount.Text = "";
+        UpdateSelectionUi();
     }
 
     /// <summary>
-    /// 顶部按钮 / 悬浮条 / Delete 键 / 右键菜单共用同一个 BatchDeleteAsync：
-    /// 确认弹窗 → 回收站 → 删库前抓快照 → 5 秒撤销条，一个环节都不会漏。
+    /// 顶部按钮三态：模式已开 → 退出；有选中 → 走 Delete 键那套批量删除；
+    /// 没选中 → 启用删除模式（原来的「置灰点不动」就是小白卡住的地方）。
+    /// 悬浮条 / Delete 键 / 右键菜单的删除能力全部原样保留，没有删掉任何旧功能。
     /// </summary>
     private void OnBatchDelete(object sender, RoutedEventArgs e)
-        => _ = _viewModel.BatchDeleteAsync(GetSelectedItems());
+    {
+        if (_tapDeleteMode)
+        {
+            ExitTapDeleteMode();
+            return;
+        }
+
+        var items = GetSelectedItems();
+        if (items.Count == 0)
+        {
+            EnterTapDeleteMode();
+            return;
+        }
+        _ = _viewModel.BatchDeleteAsync(items);
+    }
 
     private void OnClearSelection(object sender, RoutedEventArgs e)
         => ThumbList.SelectedItems.Clear();

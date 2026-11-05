@@ -1784,6 +1784,9 @@ public partial class MainViewModel : ObservableObject
         _undoTimer = null;
         IsUndoToastVisible = false;
         _pendingUndo = new List<DeletedMedia>();
+        // 5 秒一过，本轮「点谁删谁」的累计也失效；否则隔很久再点一张，
+        // 撤销条会冒出「已删除 12 个项目」并把早先已过期的文件一起算进去。
+        _tapDeleteRecords.Clear();
     }
 
     /// <summary>点击「撤销」：把文件从系统回收站还原回原位置，并恢复媒体库记录。</summary>
@@ -2549,6 +2552,51 @@ public partial class MainViewModel : ObservableObject
 
         if (records.Count > 0)
             ShowUndoToast(records);
+    }
+
+    // ---------- 删除模式（「点谁删谁」） ----------
+    // 顶部按钮启用后，单击缩略图就走这里。和普通批量删除的区别只有两点：
+    //   1. 不弹确认框 —— 用户已经主动进入了一个写着「点谁删谁」的模式，再弹窗等于没做；
+    //      安全靠「系统回收站 + 5 秒撤销 + 常驻红色横幅 + Esc 一键退出」兜底。
+    //   2. 连续点删的文件合并成一次撤销 —— 连点 10 张只显示一条「已删除 10 个项目」，
+    //      点撤销一次全还原，而不是弹 10 条 toast 且只救得回最后一张。
+    // 底层仍然是 DeleteToRecycleBinAsync / TrackAsync / DeleteMediaAsync，绝不绕过任何一步。
+
+    private readonly List<DeletedMedia> _tapDeleteRecords = new();
+
+    /// <summary>进入删除模式时开启一轮新的撤销累计。</summary>
+    public void BeginTapDeleteSession() => _tapDeleteRecords.Clear();
+
+    /// <summary>退出删除模式时结束本轮累计（已弹出的撤销条仍保留到 5 秒到期）。</summary>
+    public void EndTapDeleteSession() => _tapDeleteRecords.Clear();
+
+    /// <summary>删除模式下单击一个文件，返回是否成功。</summary>
+    public async Task<bool> DeleteOnTapAsync(ThumbnailItemViewModel item)
+    {
+        try
+        {
+            await _fileOps.DeleteToRecycleBinAsync(item.Path);
+            await _opLog.LogAsync("删除到回收站", item.Path, null);
+
+            // 快照要在删库之前抓，否则标签 / 分类关联已经没了，撤销恢复不全
+            var record = await _deletedItems.TrackAsync(item.Media, item.ThumbnailPath,
+                Guid.NewGuid().ToString("N"));
+            await _repo.DeleteMediaAsync(item.Id);
+            MediaItems.Remove(item);
+            SelectedItem = null;
+            await RefreshStatusAsync();
+
+            if (record != null) _tapDeleteRecords.Add(record);
+            ShowUndoToast(_tapDeleteRecords.ToList());
+            StatusText = $"已删除 {_tapDeleteRecords.Count} 个文件";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "点选删除失败：{Path}", item.Path);
+            CustomMessageBox.Warn(StorageErrors.FriendlyMessage(ex), "删除失败");
+            return false;
+        }
     }
 
     // ---------- 移出分类（多分类支持：详情面板里可以单独移出某一个） ----------

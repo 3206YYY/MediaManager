@@ -613,8 +613,14 @@
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="怎么一次选中多张、怎么删除（最容易卡住的一步）" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
+                                           Text="最省事：点一下顶部「批量删除」开启删除模式，之后点谁删谁（单击哪张就删哪张），连点连删。文件进系统回收站，底部 5 秒「撤销」能一次全还原；按 Esc 或点横幅上的「退出模式」随时关掉。" />
+                                <TextBlock Style="{StaticResource HelpRow}" Margin="0,0,0,10">
+                                    <Run Text="删除模式横幅" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　勾上「先勾选，再统一删除」就变成手机相册式：单击只打勾，选好再点「删除选中的 N 项」并确认" /><LineBreak/>
+                                    <Run Text="传统多选" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　一直都在，没被替换：Ctrl / Shift 点击、拖框、Ctrl+A，再按 Delete 或点蓝色按钮，会先弹确认框" />
+                                </TextBlock>
                                 <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
-                                           Text="先选中，再删除。选中之后，顶部的蓝色「批量删除」按钮会亮起并写上选中的数量，网格底部也会浮出一条操作栏，两处点哪个都一样。" />
+                                           Text="下面这些是没开删除模式时的单击行为；开了模式单击就是删 / 打勾，双击也不会打开大图。" />
                                 <TextBlock Style="{StaticResource HelpRow}">
                                     <Run Text="左键点一下" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　选中 1 张" /><LineBreak/>
                                     <Run Text="Ctrl + 点击" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　一张张挑，不连续也行" /><LineBreak/>
@@ -624,7 +630,7 @@
                                     <Run Text="Delete" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　或点蓝色「删除选中的 N 项」→ 确认 → 文件进回收站 → 底部 5 秒内可点「撤销」" />
                                 </TextBlock>
                                 <TextBlock Style="{StaticResource Hint}"
-                                           Text="删除不会立刻抹掉文件：先在回收站，也能从左侧「最近删除」里还原，收藏 / 标签 / 备注会一起恢复。底部操作栏还有「批量分类」和「取消选择」。" />
+                                           Text="删除不会立刻抹掉文件：先在回收站，也能从左侧「最近删除」里还原，收藏 / 标签 / 备注会一起恢复。底部操作栏还有「批量分类」和「取消选择」；退出删除模式后，单击恢复成选中、双击恢复成打开大图。" />
                             </StackPanel>
                         </Border>
 
@@ -660,6 +666,7 @@
                                 <TextBlock Style="{StaticResource HelpRow}" LineHeight="22">
                                     <Run Text="Enter / Space" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　打开内置查看器（图片）或播放器（视频）" /><LineBreak/>
                                     <Run Text="Delete" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　把选中的文件移到回收站，5 秒内可撤销" /><LineBreak/>
+                                    <Run Text="Esc" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　退出「删除模式」（开启时；也可点横幅的退出按钮）" /><LineBreak/>
                                     <Run Text="Ctrl + A" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　全选当前列表" /><LineBreak/>
                                     <Run Text="F" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　收藏 / 取消收藏（对全部选中项生效）" /><LineBreak/>
                                     <Run Text="1 ~ 5" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　打 1~5 星" /><LineBreak/>

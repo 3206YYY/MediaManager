@@ -70,6 +70,7 @@
         <Border Grid.Row="0" Background="{DynamicResource PanelBrush}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
                 Padding="10,8">
+            <StackPanel>
             <DockPanel>
                 <TextBox x:Name="SearchTextBox" DockPanel.Dock="Left" Width="240" Margin="0,0,10,0"
                          InputMethod.IsInputMethodEnabled="True"
@@ -140,15 +141,19 @@
                         ToolTip="由插件提供的扩展功能" />
                 <Button DockPanel.Dock="Right" Content="🔄 刷新" Command="{Binding RefreshCommand}" />
                 <Button DockPanel.Dock="Right" Content="🗂 去重" Click="OnFindDuplicates" />
-                <!-- 批量删除：小白用户最容易卡在「怎么一次删多张」。没选中置灰，选中后高亮并显示数量；
-                     点击走的是和 Delete 键 / 右键菜单完全相同的 BatchDeleteAsync（确认 → 回收站 → 撤销条）。
-                     图标用矢量 Path 而不是 🗑 emoji：U+1F5D1 在不少 Windows 字体里根本没有字形，
-                     实测会渲染成一个空心方框，看起来像「图标没加载出来」。
-                     AutomationProperties.Name 必须动态维护 —— Content 是自绘面板时 UIA 拿不到按钮文字。 -->
+                <!-- 批量删除：它是「启用/退出删除模式」的开关，永远可点，绝不能置灰。
+                     用户直觉是「我点了这个功能，就能点谁删谁」，而不是「先学会 Ctrl 多选才配用」。
+                       · 没选中、模式未开 → 点它 = 进入删除模式（不删任何东西）
+                       · 模式已开       → 点它 = 退出删除模式
+                       · 已选中 N 项     → 点它 = 走 Delete 键那套 BatchDeleteAsync（确认 → 回收站 → 撤销）
+                     状态由代码写进 Tag，样式触发器按 Tag 换色（DynamicResource，切主题不脱色）。
+                     图标用矢量 Path 而不是 🗑 emoji：U+1F5D1 在不少 Windows 字体里没有字形，
+                     实测会渲染成一个空心方框。Content 是自绘面板时 UIA 读不到文字，
+                     AutomationProperties.Name 必须动态维护。 -->
                 <Button x:Name="BatchDeleteButton" DockPanel.Dock="Right" Margin="0,0,10,0"
-                        IsEnabled="False" Click="OnBatchDelete"
+                        Tag="idle" Click="OnBatchDelete"
                         AutomationProperties.Name="批量删除"
-                        ToolTip="删除选中的文件（Delete）。按住 Ctrl / Shift 点击可多选，Ctrl+A 全选；删除后进回收站，5 秒内可撤销。">
+                        ToolTip="点一下开启「删除模式」：之后单击文件即可移入回收站（5 秒内可撤销）。也可以先 Ctrl / Shift 多选、Ctrl+A 全选，再点这里或按 Delete 批量删。">
                     <StackPanel Orientation="Horizontal">
                         <Viewbox Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform">
                             <Path Data="M3 6 H21 M8 6 V4 H16 V6 M5 6 L6 21 H18 L19 6 M10 10 V17 M14 10 V17"
@@ -161,10 +166,16 @@
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                             <Style.Triggers>
-                                <Trigger Property="IsEnabled" Value="True">
+                                <Trigger Property="Tag" Value="selected">
                                     <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
                                     <Setter Property="Foreground" Value="White" />
                                     <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </Trigger>
+                                <Trigger Property="Tag" Value="mode">
+                                    <Setter Property="Background" Value="#B42318" />
+                                    <Setter Property="Foreground" Value="White" />
+                                    <Setter Property="BorderBrush" Value="#B42318" />
                                     <Setter Property="FontWeight" Value="SemiBold" />
                                 </Trigger>
                             </Style.Triggers>
@@ -184,6 +195,31 @@
                             VerticalAlignment="Center" />
                 </StackPanel>
             </DockPanel>
+
+            <!-- 删除模式横幅：在工具栏里**单独占一行**，不是浮在网格上。
+                 浮在 Grid.Row=1 顶部会盖住第一排缩略图，用户看不见自己要点什么；
+                 Collapsed 时这一行不占位，主界面和原来一模一样，展开时网格自动让位。 -->
+            <Border x:Name="TapDeleteBar" HorizontalAlignment="Center" Margin="0,8,0,0"
+                    Padding="12,7" CornerRadius="9" MaxWidth="820"
+                    Background="{DynamicResource PanelBrush}"
+                    BorderBrush="#B42318" BorderThickness="1.5"
+                    Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="TapDeleteHint"
+                               Text="删除模式 · 点谁删谁（进回收站，5 秒内可撤销）"
+                               FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                               Margin="2,0,14,0" />
+                    <CheckBox x:Name="TapDeleteMarkOnly" Content="先勾选，再统一删除"
+                              VerticalAlignment="Center" Margin="0,0,12,0"
+                              Checked="OnTapDeleteOptionChanged" Unchecked="OnTapDeleteOptionChanged"
+                              ToolTip="勾上以后单击文件只打勾不删除，选好再点「删除选中的 N 项」确认" />
+                    <TextBlock x:Name="TapDeleteCount" Text="" FontSize="12" VerticalAlignment="Center"
+                               Margin="0,0,12,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Button Content="退出模式 (Esc)" Click="OnExitTapDelete" Padding="10,3"
+                            ToolTip="关掉删除模式，单击文件恢复成正常的选中 / 双击预览" />
+                </StackPanel>
+            </Border>
+            </StackPanel>
         </Border>
 
         <!-- ============ 主体三栏 ============ -->

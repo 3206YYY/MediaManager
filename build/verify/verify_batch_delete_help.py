@@ -7,9 +7,11 @@
 删除操作只针对临时目录里现造的 5 个 PNG，用户文件一个都不动。
 
 检查：
-  A. 未选中 → 顶部按钮置灰、悬浮条不出现
+  A. 未选中 → 按钮**可点**（不再置灰）、悬浮条不出现
+  A2. 点按钮 → 直接启用「删除模式」→ 单击文件就删（点谁删谁）→ 撤销还原 →
+      勾「先勾选」变成只打勾 → Esc 退出，旧的多选行为恢复
   B. 选中 5 项 → 按钮高亮且显示数量、悬浮条出现「已选中 5 项 / 批量分类 / 批量删除」
-  C. 取消选择 → 回到置灰
+  C. 取消选择 → 回到可点的「批量删除」
   D. 点按钮 → 与 Delete 键同一条链路：确认弹窗 → 回收站 → 撤销提示条 → 记录消失
   E. 状态栏「❓ 帮助与快捷键」直达帮助页，四个快捷键分组都在
   F. 深色模式配色：背景深、文字浅、没有白底大块
@@ -38,6 +40,7 @@ DB = os.path.join(DATA_DIR, "library.db")
 BAK = DB + ".batch_help_bak"
 SHOT = os.path.join(ROOT, "build", "verify", "shots_help_dark.png")
 SHOT_MAIN = os.path.join(ROOT, "build", "verify", "shots_batch_delete.png")
+SHOT_MODE = os.path.join(ROOT, "build", "verify", "shots_delete_mode.png")
 
 BASE = os.path.join(tempfile.gettempdir(), "MM_批量删除验证")
 N = 5
@@ -192,6 +195,29 @@ def click(hwnd, ctrl):
         return False
 
 
+def native_click(hwnd, ctrl):
+    """强制走真实鼠标事件。
+
+    删除模式是在 PreviewMouseLeftButtonDown 里处理的；UIA 的 Invoke / Select 是
+    程序化调用，根本不经过鼠标消息，用它「点」文件测不出点谁删谁。
+    """
+    try:
+        r = ctrl.BoundingRectangle
+        cx, cy = (r.left + r.right) // 2, (r.top + r.bottom) // 2
+        for _ in range(3):
+            user32.SetForegroundWindow(hwnd)
+            time.sleep(0.35)
+            if user32.GetForegroundWindow() == hwnd:
+                break
+        user32.SetCursorPos(cx, cy)
+        time.sleep(0.2)
+        user32.mouse_event(2, 0, 0, 0, 0)   # LEFTDOWN
+        user32.mouse_event(4, 0, 0, 0, 0)   # LEFTUP
+        return True
+    except Exception:
+        return False
+
+
 def main():
     if not os.path.exists(DB):
         print("找不到便携开发库：", DB)
@@ -234,7 +260,39 @@ def main():
 
         def batch_btn():
             return find_ctrl(win, "ButtonControl",
-                             lambda s: s == "批量删除" or s.startswith("删除选中的"))
+                             lambda s: s == "批量删除" or s.startswith("删除选中的")
+                             or s == "退出删除模式")
+
+        def grid_items():
+            """网格里可见的列表项；优先按文件名认，避开右侧详情面板的列表项。"""
+            named = [c for c in collect(win, maxd=12)
+                     if c.ControlTypeName == "ListItemControl"
+                     and name_of(c).startswith("批量测试")
+                     and not is_offscreen(c)]
+            if len(named) >= N:
+                return named[:N]
+            return [c for c in collect(win, maxd=12)
+                    if c.ControlTypeName == "ListItemControl"
+                    and not is_offscreen(c)
+                    and c.BoundingRectangle.left > 400][:N]
+
+        def mode_controls_visible():
+            """横幅真的展开了吗？看它里面的「退出模式」按钮 / 「先勾选」开关是否可见。
+
+            Collapsed 的控件仍在 UIA 树里（IsOffscreen=True），只按名字存在判断会假绿；
+            而且勾上「先勾选」后横幅文案会变，按文案找也会漏。
+            """
+            return any(c.ControlTypeName in ("ButtonControl", "CheckBoxControl")
+                       and (("退出模式" in name_of(c)) or ("先勾选" in name_of(c)))
+                       and not is_offscreen(c)
+                       for c in collect(win))
+
+        def db_count(rid):
+            con = sqlite3.connect(DB)
+            n = con.execute("SELECT COUNT(*) FROM MediaItem WHERE RootFolderId=?",
+                            (rid,)).fetchone()[0]
+            con.close()
+            return n
 
         def visible_texts():
             return [name_of(c) for c in collect(win)
@@ -256,11 +314,127 @@ def main():
         check("顶部有「批量删除」按钮", b is not None)
         if b is None:
             return
-        check("未选中时按钮置灰", not is_enabled(b), "IsEnabled=%s" % is_enabled(b))
+        check("未选中时按钮可点（不再置灰）", is_enabled(b),
+              "IsEnabled=%s" % is_enabled(b))
         check("未选中时文案是「批量删除」", name_of(b) == "批量删除", name_of(b))
 
         bar_text = find_ctrl(win, "TextControl", lambda s: s.startswith("已选中 "))
         check("未选中时悬浮操作条不显示", bar_text is None or is_offscreen(bar_text))
+
+        # ---------- A2 删除模式：没选中也能启用，启用后点谁删谁 ----------
+        # 这是用户反馈的核心：按钮灰着点不动，本该「一启用这个功能就点谁删谁」。
+        click(hwnd, b)
+        time.sleep(1.2)
+        banner = find_ctrl(win, "TextControl",
+                           lambda s: "删除模式" in s and "点谁删谁" in s)
+        check("没选中也能点「批量删除」→ 直接启用删除模式",
+              banner is not None and not is_offscreen(banner) and mode_controls_visible())
+        b = batch_btn()
+        check("模式开启后按钮变「退出删除模式」",
+              b is not None and name_of(b) == "退出删除模式",
+              name_of(b) if b is not None else "None")
+        mark = find_ctrl(win, "CheckBoxControl", lambda s: "先勾选" in s)
+        check("横幅提供「先勾选，再统一删除」安全开关", mark is not None)
+
+        # 留一张「删除模式已开启」的主界面图，方便人工核对红色横幅 / 按钮警示色
+        try:
+            from PIL import ImageGrab
+            r = win.BoundingRectangle
+            user32.SetForegroundWindow(hwnd)
+            time.sleep(0.6)
+            ImageGrab.grab(bbox=(r.left, r.top, r.right, r.bottom),
+                           all_screens=True).save(SHOT_MODE)
+            print("删除模式截图：", SHOT_MODE)
+        except Exception as e:
+            print("删除模式截图失败：", repr(e))
+
+        one = grid_items()
+        check("删除模式下能定位到待删网格项", len(one) > 0)
+        if one:
+            # 必须走真实鼠标事件：UIA Invoke / Select 不经过 PreviewMouseDown
+            native_click(hwnd, one[0])
+            time.sleep(2.5)
+            check("单击一个文件立即删掉它（点谁删谁）", db_count(root_id) == 4,
+                  "库里剩 %d 条" % db_count(root_id))
+            gone_now = sum(1 for p in files if not os.path.exists(p))
+            check("该文件真的进了回收站", gone_now == 1, "移走 %d/5" % gone_now)
+            tap_toast = visible_texts()
+            # 删完文件监视器可能紧接着触发一次刷新，把 StatusText 改写成「共 4 项 —— …」；
+            # 两种反馈都算数，真正的判据是上面那条库记录 / 磁盘文件的变化。
+            check("点删后界面同步反馈",
+                  any(("共 4 项" in t) or ("已删除 1 个" in t) for t in tap_toast),
+                  str([t for t in tap_toast if "共 " in t or "删除" in t][:4]))
+            undo = find_ctrl(win, "ButtonControl", lambda s: s == "撤销")
+            check("点删沿用同一套 5 秒撤销条", undo is not None and not is_offscreen(undo))
+            if undo is not None:
+                click(hwnd, undo)
+                time.sleep(3.5)
+            back = sum(1 for p in files if os.path.exists(p))
+            check("撤销后文件完整还原（不抹掉用户数据）", back == 5, "回来 %d/5" % back)
+            check("撤销后库记录也还原", db_count(root_id) == 5,
+                  "剩 %d 条" % db_count(root_id))
+            # 撤销会 LoadMediaAsync 重建列表，重新点一次侧栏文件夹把视图拉回来
+            folder2 = find_ctrl(win, "ListItemControl",
+                                lambda s: s == os.path.basename(BASE))
+            if folder2 is not None:
+                try:
+                    folder2.GetSelectionItemPattern().Select()
+                except Exception:
+                    click(hwnd, folder2)
+                time.sleep(2.5)
+
+        # 「先勾选」开关：单击只打勾，不删文件
+        mark = find_ctrl(win, "CheckBoxControl", lambda s: "先勾选" in s)
+        if mark is not None:
+            try:
+                mark.GetTogglePattern().Toggle()
+            except Exception:
+                native_click(hwnd, mark)
+            time.sleep(1)
+        two = grid_items()
+        for it in two[:2]:
+            native_click(hwnd, it)
+            time.sleep(0.5)
+        time.sleep(1)
+        check("勾上「先勾选」后单击只打勾、不删文件",
+              db_count(root_id) == 5 and sum(1 for p in files if os.path.exists(p)) == 5,
+              "库里 %d 条" % db_count(root_id))
+        sel2 = find_ctrl(win, "TextControl", lambda s: s == "已选中 2 项")
+        check("勾选模式复用原来的悬浮条", sel2 is not None and not is_offscreen(sel2))
+
+        # 退出：点横幅按钮 + Esc 各走一次，两种都要能关掉
+        exit_btn = find_ctrl(win, "ButtonControl", lambda s: "退出模式" in s)
+        check("横幅上有「退出模式」按钮", exit_btn is not None)
+        if exit_btn is not None:
+            click(hwnd, exit_btn)
+            time.sleep(1)
+        check("点退出按钮后横幅收起", not mode_controls_visible())
+        b = batch_btn()
+        check("退出后按钮恢复成「批量删除」且可点",
+              b is not None and name_of(b) == "批量删除" and is_enabled(b),
+              name_of(b) if b is not None else "None")
+        # Esc 也能退出
+        b = batch_btn()
+        if b is not None:
+            click(hwnd, b)
+            time.sleep(1)
+            user32.SetForegroundWindow(hwnd)
+            time.sleep(0.4)
+            user32.keybd_event(0x1B, 0, 0, 0)   # VK_ESCAPE down
+            user32.keybd_event(0x1B, 0, 2, 0)   # up
+            time.sleep(1)
+            check("按 Esc 也能退出删除模式", not mode_controls_visible())
+        # 退出后单击恢复成「选中」，绝不能还偷偷删文件
+        rest = grid_items()
+        if rest:
+            native_click(hwnd, rest[0])
+            time.sleep(1.5)
+        check("退出模式后单击不再删文件",
+              db_count(root_id) == 5 and sum(1 for p in files if os.path.exists(p)) == 5)
+        clear2 = find_ctrl(win, "ButtonControl", lambda s: s == "取消选择")
+        if clear2 is not None:
+            click(hwnd, clear2)
+            time.sleep(1)
 
         # ---------- B 全选 ----------
         items = [c for c in collect(win, maxd=12)
@@ -315,7 +489,9 @@ def main():
             click(hwnd, clear_btn)
             time.sleep(1)
         b = batch_btn()
-        check("取消选择后按钮回到置灰", b is not None and not is_enabled(b))
+        check("取消选择后按钮回到可点的「批量删除」",
+              b is not None and name_of(b) == "批量删除" and is_enabled(b),
+              name_of(b) if b is not None else "None")
         sel_text = find_ctrl(win, "TextControl", lambda s: s.startswith("已选中 "))
         check("取消选择后悬浮条收起", sel_text is None or is_offscreen(sel_text))
 
@@ -331,11 +507,14 @@ def main():
             time.sleep(0.12)
         time.sleep(1)
         b = batch_btn()
+        check("有选中时按钮仍是「删除选中的 5 项」",
+              b is not None and name_of(b) == "删除选中的 5 项",
+              name_of(b) if b is not None else "None")
         if b is not None and is_enabled(b):
             click(hwnd, b)
         time.sleep(1.5)
         dlg = find_window("确认删除")
-        check("点按钮弹出「确认删除」弹窗", len(dlg) > 0)
+        check("旧批量删除链路仍在：点按钮弹出「确认删除」弹窗", len(dlg) > 0)
         if dlg:
             dwin = uia.ControlFromHandle(dlg[0])
             ok_btn = find_ctrl(dwin, "ButtonControl", lambda s: s == "删除")
@@ -349,7 +528,9 @@ def main():
         undo = find_ctrl(win, "ButtonControl", lambda s: s == "撤销")
         check("撤销提示条带「撤销」按钮", undo is not None and not is_offscreen(undo))
         b = batch_btn()
-        check("删除后按钮自动回到置灰", b is not None and not is_enabled(b))
+        check("删除后按钮自动回到可点的「批量删除」",
+              b is not None and name_of(b) == "批量删除" and is_enabled(b),
+              name_of(b) if b is not None else "None")
         # 删除完成后 StatusText 会被写成「已删除 5 个文件」，覆盖掉「共 N 项」，
         # 这是既有行为，别拿「共 0 项」当判据。
         after = visible_texts()
@@ -400,6 +581,8 @@ def main():
         for key in ("Ctrl + A", "Delete", "Ctrl + Z", "Shift + 点击", "拖框", "Space"):
             check("帮助页列出「%s」" % key, key in blob)
         check("帮助页写明「怎么一次选中多张」", "怎么一次选中多张" in blob)
+        for word in ("删除模式", "点谁删谁", "先勾选，再统一删除", "Esc"):
+            check("帮助页写明「%s」" % word, word in blob)
 
         # ---------- F 深色配色（像素统计 + 留图人工复核） ----------
         try:
