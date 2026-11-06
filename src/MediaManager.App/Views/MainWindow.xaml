@@ -209,10 +209,13 @@
                                Text="删除模式 · 点谁删谁（进回收站，5 秒内可撤销）"
                                FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
                                Margin="2,0,14,0" />
+                    <!-- 默认勾选：进删除模式后单击只打勾，不会「点啥删啥」。
+                         想去掉这层保险（真·点谁删谁）就当场取消勾选，默认值每次进入都复位。 -->
                     <CheckBox x:Name="TapDeleteMarkOnly" Content="先勾选，再统一删除"
+                              IsChecked="True"
                               VerticalAlignment="Center" Margin="0,0,12,0"
                               Checked="OnTapDeleteOptionChanged" Unchecked="OnTapDeleteOptionChanged"
-                              ToolTip="勾上以后单击文件只打勾不删除，选好再点「删除选中的 N 项」确认" />
+                              ToolTip="默认勾选：单击文件只打勾不删除，选好再点「删除选中的 N 项」确认。想去掉这层保险就取消勾选，变成点谁删谁" />
                     <TextBlock x:Name="TapDeleteCount" Text="" FontSize="12" VerticalAlignment="Center"
                                Margin="0,0,12,0" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <Button Content="退出模式 (Esc)" Click="OnExitTapDelete" Padding="10,3"
@@ -518,14 +521,17 @@
                 </Border>
 
                 <!-- 发现页：首次提示 -->
-                <Border Grid.Row="1" Background="{DynamicResource BgBrush}"
+                <!-- Panel.ZIndex 必须比 ListBox 高：这个气泡在 XAML 里声明在网格**之前**，
+                     不给 ZIndex 就会被缩略图整片盖住，只在格子缝隙里露出一行字（v1.4.5 修）。 -->
+                <Border Grid.Row="1" Background="Transparent"
+                        Panel.ZIndex="20"
                         Visibility="{Binding DiscoveryShowHint, Converter={StaticResource BoolToVis}}"
                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                         IsHitTestVisible="False">
                     <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,16,0,0"
                             Background="{DynamicResource PanelBrush}" CornerRadius="8"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="16,10">
-                        <TextBlock Text="这是随机挑出来的 30 张。按 R 换一批，按 F 收藏喜欢的。"
+                        <TextBlock Text="{Binding DiscoveryHintText}"
                                    FontSize="14" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </Border>

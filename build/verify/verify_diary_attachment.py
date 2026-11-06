@@ -159,6 +159,11 @@ def top_windows():
     return out
 
 
+def dump_tops(tag):
+    """出错时把当前顶层窗口标题打出来（原来这里调了个不存在的函数，失败时反而抛 NameError）。"""
+    log(tag, [w.Name for w in top_windows()])
+
+
 def viewer_windows():
     """标题形如「xxx.png - 查看器」的顶层窗口。"""
     out = []

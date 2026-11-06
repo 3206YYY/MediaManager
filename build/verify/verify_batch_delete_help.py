@@ -8,8 +8,8 @@
 
 检查：
   A. 未选中 → 按钮**可点**（不再置灰）、悬浮条不出现
-  A2. 点按钮 → 直接启用「删除模式」→ 单击文件就删（点谁删谁）→ 撤销还原 →
-      勾「先勾选」变成只打勾 → Esc 退出，旧的多选行为恢复
+  A2. 点按钮 → 直接启用「删除模式」→ **默认「先勾选」**：单击只打勾不删文件 →
+      取消勾选才变点谁删谁 → 删一个 → 撤销还原 → Esc 退出，旧的多选行为恢复
   B. 选中 5 项 → 按钮高亮且显示数量、悬浮条出现「已选中 5 项 / 批量分类 / 批量删除」
   C. 取消选择 → 回到可点的「批量删除」
   D. 点按钮 → 与 Delete 键同一条链路：确认弹窗 → 回收站 → 撤销提示条 → 记录消失
@@ -321,12 +321,13 @@ def main():
         bar_text = find_ctrl(win, "TextControl", lambda s: s.startswith("已选中 "))
         check("未选中时悬浮操作条不显示", bar_text is None or is_offscreen(bar_text))
 
-        # ---------- A2 删除模式：没选中也能启用，启用后点谁删谁 ----------
-        # 这是用户反馈的核心：按钮灰着点不动，本该「一启用这个功能就点谁删谁」。
+        # ---------- A2 删除模式：没选中也能启用；默认「先勾选」，点删要手动去掉保险 ----------
+        # 用户反馈过两轮：① 按钮灰着点不动 → 没选中也要能启用；
+        # ② 一启用就点谁删谁太反直觉 → 进模式默认是打勾，取消勾选才变点删。
         click(hwnd, b)
         time.sleep(1.2)
         banner = find_ctrl(win, "TextControl",
-                           lambda s: "删除模式" in s and "点谁删谁" in s)
+                           lambda s: "删除模式" in s and "打勾" in s)
         check("没选中也能点「批量删除」→ 直接启用删除模式",
               banner is not None and not is_offscreen(banner) and mode_controls_visible())
         b = batch_btn()
@@ -335,6 +336,14 @@ def main():
               name_of(b) if b is not None else "None")
         mark = find_ctrl(win, "CheckBoxControl", lambda s: "先勾选" in s)
         check("横幅提供「先勾选，再统一删除」安全开关", mark is not None)
+        mark_on = None
+        if mark is not None:
+            try:
+                mark_on = mark.GetTogglePattern().ToggleState == uia.ToggleState.On
+            except Exception:
+                mark_on = None
+        check("「先勾选」默认就是勾上的（不会一点就删）", mark_on is True,
+              "ToggleState=%r" % (mark_on,))
 
         # 留一张「删除模式已开启」的主界面图，方便人工核对红色横幅 / 按钮警示色
         try:
@@ -348,10 +357,40 @@ def main():
         except Exception as e:
             print("删除模式截图失败：", repr(e))
 
+        # —— 默认（先勾选）状态：单击只打勾，一个文件都不许少 ——
         one = grid_items()
-        check("删除模式下能定位到待删网格项", len(one) > 0)
+        check("删除模式下能定位到网格项", len(one) > 0)
         if one:
             # 必须走真实鼠标事件：UIA Invoke / Select 不经过 PreviewMouseDown
+            for it in one[:2]:
+                native_click(hwnd, it)
+                time.sleep(0.5)
+            time.sleep(1)
+            check("默认勾选态单击只打勾、不删文件",
+                  db_count(root_id) == 5 and sum(1 for p in files if os.path.exists(p)) == 5,
+                  "库里 %d 条" % db_count(root_id))
+            sel2 = find_ctrl(win, "TextControl", lambda s: s == "已选中 2 项")
+            check("打勾复用原来的悬浮条（已选中 2 项）",
+                  sel2 is not None and not is_offscreen(sel2))
+
+        # 清掉刚才的勾选，再取消「先勾选」这层保险 → 此时才是真·点谁删谁
+        clear_sel = find_ctrl(win, "ButtonControl", lambda s: s == "取消选择")
+        if clear_sel is not None:
+            click(hwnd, clear_sel)
+            time.sleep(0.8)
+        if mark is not None:
+            try:
+                mark.GetTogglePattern().Toggle()
+            except Exception:
+                native_click(hwnd, mark)
+            time.sleep(1)
+        danger = find_ctrl(win, "TextControl",
+                           lambda s: "删除模式" in s and "点谁删谁" in s)
+        check("取消勾选后横幅变回「点谁删谁」警示文案",
+              danger is not None and not is_offscreen(danger))
+
+        one = grid_items()
+        if one:
             native_click(hwnd, one[0])
             time.sleep(2.5)
             check("单击一个文件立即删掉它（点谁删谁）", db_count(root_id) == 4,
@@ -382,25 +421,6 @@ def main():
                 except Exception:
                     click(hwnd, folder2)
                 time.sleep(2.5)
-
-        # 「先勾选」开关：单击只打勾，不删文件
-        mark = find_ctrl(win, "CheckBoxControl", lambda s: "先勾选" in s)
-        if mark is not None:
-            try:
-                mark.GetTogglePattern().Toggle()
-            except Exception:
-                native_click(hwnd, mark)
-            time.sleep(1)
-        two = grid_items()
-        for it in two[:2]:
-            native_click(hwnd, it)
-            time.sleep(0.5)
-        time.sleep(1)
-        check("勾上「先勾选」后单击只打勾、不删文件",
-              db_count(root_id) == 5 and sum(1 for p in files if os.path.exists(p)) == 5,
-              "库里 %d 条" % db_count(root_id))
-        sel2 = find_ctrl(win, "TextControl", lambda s: s == "已选中 2 项")
-        check("勾选模式复用原来的悬浮条", sel2 is not None and not is_offscreen(sel2))
 
         # 退出：点横幅按钮 + Esc 各走一次，两种都要能关掉
         exit_btn = find_ctrl(win, "ButtonControl", lambda s: "退出模式" in s)

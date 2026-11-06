@@ -1,9 +1,9 @@
-; MediaManager 安装包脚本（Inno Setup 6）
+﻿; MediaManager 安装包脚本（Inno Setup 6）
 ; 编译前先执行: dotnet publish src/MediaManager.App -c Release -r win-x64 --self-contained true -o dist/MediaManager-win-x64
 
 #define MyAppName "媒体管理器"
 #define MyAppNameEn "MediaManager"
-#define MyAppVersion "1.4.4"
+#define MyAppVersion "1.4.5"
 #define MyAppPublisher "MediaManager"
 #define MyAppExeName "MediaManager.App.exe"
 

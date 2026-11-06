@@ -296,6 +296,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _discoveryShowHint;
 
+    /// <summary>首次提示的文案。数量必须跟实际批次一致——库里只有 5 张时写死「30 张」是骗人。</summary>
+    [ObservableProperty]
+    private string _discoveryHintText = "这是随机挑出来的一批。按 R 换一批，按 F 收藏喜欢的。";
+
     /// <summary>发现页当前是否在展示（用于控制 R 换一批等）。</summary>
     [ObservableProperty]
     private bool _isDiscoveryView;
@@ -1078,13 +1082,10 @@ public partial class MainViewModel : ObservableObject
         // 首次提示（仅一次）
         if (!_discoveryOnboardingShown && MediaItems.Count > 0)
         {
-            DiscoveryShowHint = true;
+            DiscoveryHintText = $"这是随机挑出来的 {MediaItems.Count} 张。按 R 换一批，按 F 收藏喜欢的。";
+            ShowDiscoveryHintForAWhile();
             _discoveryOnboardingShown = true;
             await DbAsync(() => _repo.SetSettingAsync("DiscoveryHintShown", "1"));
-        }
-        else
-        {
-            DiscoveryShowHint = false;
         }
 
         StatusText = _discoveryFallbackToAll
@@ -1753,6 +1754,39 @@ public partial class MainViewModel : ObservableObject
 
     private List<DeletedMedia> _pendingUndo = new();
     private System.Windows.Threading.DispatcherTimer? _undoTimer;
+
+    private System.Windows.Threading.DispatcherTimer? _discoveryHintTimer;
+
+    /// <summary>
+    /// 发现页首次提示：显示 8 秒后自己收起来。
+    /// 不能再靠「下一次 LoadDiscovery 顺手关掉」——发现页会因文件监视器 / 缩略图刷新
+    /// 再加载一次，那样提示只闪一下就没了（v1.4.5 用户只看到缩略图缝里露出的半行字）。
+    /// </summary>
+    private void ShowDiscoveryHintForAWhile()
+    {
+        DiscoveryShowHint = true;
+        _discoveryHintTimer?.Stop();
+        _discoveryHintTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(8),
+        };
+        _discoveryHintTimer.Tick += (_, _) =>
+        {
+            _discoveryHintTimer?.Stop();
+            DiscoveryShowHint = false;
+        };
+        _discoveryHintTimer.Start();
+    }
+
+    /// <summary>离开发现页时把提示收掉，别让它跟着飘到别的视图上。</summary>
+    partial void OnIsDiscoveryViewChanged(bool value)
+    {
+        if (!value)
+        {
+            _discoveryHintTimer?.Stop();
+            DiscoveryShowHint = false;
+        }
+    }
 
     /// <summary>删除成功后弹出 5 秒撤销条。</summary>
     private void ShowUndoToast(IReadOnlyList<DeletedMedia> records)

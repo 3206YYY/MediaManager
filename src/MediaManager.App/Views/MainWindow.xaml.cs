@@ -1428,9 +1428,16 @@ public partial class MainWindow : Window
         if (TapDeleteBar != null)
             TapDeleteBar.Visibility = _tapDeleteMode ? Visibility.Visible : Visibility.Collapsed;
         if (TapDeleteHint != null)
-            TapDeleteHint.Text = TapDeleteMarkOnly?.IsChecked == true
-                ? "删除模式 · 单击文件打勾，选好点「删除选中的 N 项」"
+        {
+            // 横幅文案跟着实际状态走：打勾模式且已经勾了几张时，直接把数量说出来，
+            // 用户不用回头找底部悬浮条上的按钮叫什么。
+            var marked = TapDeleteMarkOnly?.IsChecked == true;
+            TapDeleteHint.Text = marked
+                ? (n > 0
+                    ? $"删除模式 · 已勾选 {n} 项，点下面「删除选中的 {n} 项」确认"
+                    : "删除模式 · 单击文件打勾，选好点下面「删除选中的 N 项」确认")
                 : "删除模式 · 点谁删谁（进回收站，5 秒内可撤销）";
+        }
     }
 
     /// <summary>进入删除模式：不删任何文件，只是把「单击」的语义换成删除 / 打勾。</summary>
@@ -1438,6 +1445,9 @@ public partial class MainWindow : Window
     {
         _tapDeleteMode = true;
         _tapDeletedCount = 0;
+        // 每次进入都回到「先勾选」这个安全默认：用户一进删除模式就点谁删谁太反直觉，
+        // 真想要点删手感就当场取消勾选（本次会话内有效，下次进来还是勾选）。
+        if (TapDeleteMarkOnly != null) TapDeleteMarkOnly.IsChecked = true;
         ThumbList.SelectedItems.Clear();
         if (TapDeleteCount != null) TapDeleteCount.Text = "";
         _viewModel.BeginTapDeleteSession();

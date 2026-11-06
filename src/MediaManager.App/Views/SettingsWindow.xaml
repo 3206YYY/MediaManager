@@ -614,9 +614,9 @@
                             <StackPanel>
                                 <TextBlock Text="怎么一次选中多张、怎么删除（最容易卡住的一步）" Style="{StaticResource SectionTitle}" />
                                 <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8"
-                                           Text="最省事：点一下顶部「批量删除」开启删除模式，之后点谁删谁（单击哪张就删哪张），连点连删。文件进系统回收站，底部 5 秒「撤销」能一次全还原；按 Esc 或点横幅上的「退出模式」随时关掉。" />
+                                           Text="最省事：点一下顶部「批量删除」开启删除模式，单击哪张就给哪张打勾，挑完点「删除选中的 N 项」确认。文件进系统回收站，底部 5 秒「撤销」能一次全还原；按 Esc 或点横幅上的「退出模式」随时关掉。" />
                                 <TextBlock Style="{StaticResource HelpRow}" Margin="0,0,0,10">
-                                    <Run Text="删除模式横幅" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　勾上「先勾选，再统一删除」就变成手机相册式：单击只打勾，选好再点「删除选中的 N 项」并确认" /><LineBreak/>
+                                    <Run Text="删除模式横幅" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　「先勾选，再统一删除」默认就是勾上的（手机相册式，不会误删）；取消勾选才变成真·点谁删谁，连点连删" /><LineBreak/>
                                     <Run Text="传统多选" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　一直都在，没被替换：Ctrl / Shift 点击、拖框、Ctrl+A，再按 Delete 或点蓝色按钮，会先弹确认框" />
                                 </TextBlock>
                                 <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,10"
