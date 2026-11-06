@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
-"""验证仓库的 Social Preview 是否已经换成「当前这版」的封面。
+"""验证仓库的 Social Preview 是否已经换成仓库里这一版封面。
 
 做法：抓仓库页面里的 og:image（GitHub 把上传的 Social Preview 挂在
 repository-images.githubusercontent.com 上），下载回来跟 docs/social-preview.png 比。
 
-⚠ 别只比整图相似度：社交预览和本地图结构完全一样，只有右下角页脚那一行
-「vX.Y.Z · NN 种格式」会变；整图缩到 64×36 一比，这点差异直接被平均成 0.000，
-于是脚本欢快地判定「已生效」—— v1.4.0 就这么漏掉过一次（线上还挂着 v1.3.2）。
-所以这里单独把页脚条带抠出来，按「文字像素掩膜」比，字形变了才算通过。
+⚠ 别只比整图相似度：社交预览和本地图结构完全一样，页脚那一行「NN 种格式」
+变的时候整图缩到 64×36 一比，这点差异直接被平均成 0.000，于是脚本欢快地判定
+「已生效」—— v1.4.0 就这么漏掉过一次（线上还挂着 v1.3.2）。所以这里单独把页脚
+条带抠出来，按「文字像素掩膜」比，字形变了才算通过。
+
+（2026-11-06 起页脚不再写版本号，这张图不再每版必换；下面这些判定留着的意义是
+「换了图但忘了去网页重传」时能抓到 —— GitHub 的 social preview 没有 API，只能手传。）
 """
 import io
 import os
@@ -85,14 +88,14 @@ def main():
     glyph = mask_diff(foot_mask(local), foot_mask(net))
 
     print(f"整图差异度 = {full:.4f}（>0.06 说明压根不是这张图）")
-    print(f"页脚字形差异 = {glyph:.3f}（>{GLYPH_LIMIT} 说明版本号那一行还没刷新）")
+    print(f"页脚字形差异 = {glyph:.3f}（>{GLYPH_LIMIT} 说明线上还是旧页脚）")
 
     if full > 0.06:
         print("结论：✗ 线上还是 GitHub 默认卡片，这张封面根本没上传")
     elif glyph > GLYPH_LIMIT:
-        print("结论：✗ 封面是同一张，但页脚版本号是旧的 —— 去 Settings → Social preview 重新上传 docs/social-preview.png")
+        print("结论：✗ 封面是同一张，但页脚还是旧的 —— 去 Settings → Social preview 重新上传 docs/social-preview.png")
     else:
-        print("结论：✓ 社交预览已换成当前版本")
+        print("结论：✓ 社交预览与仓库里的封面一致")
 
 
 if __name__ == "__main__":

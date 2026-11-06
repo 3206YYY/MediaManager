@@ -1,18 +1,23 @@
 # -*- coding: utf-8 -*-
-"""把 docs/promo/01-cover.png 右下角页脚的版本号重刷一遍。
+"""重刷 docs/promo/01-cover.png 右下角页脚那一行（格式数 / 技术栈 / 开源）。
 
-为什么要单独写脚本：这张封面是位图，版本号和格式数量都烧进像素里了，
-每发一版都得重刷。原始设计稿没留在仓库里，所以这里就地改：先把旧文字
-所在的水平条按「列」用上方的背景色填掉（背景是渐变，逐列取色才能不留痕），
-再用微软雅黑按原宽度 742px / 字高 37px 右对齐重写同一行。
+**页脚不再写版本号**（2026-11-06 起）。原来每发一版都得重刷这张位图、再去
+GitHub Settings 手动重传 Social Preview，而 GitHub 的社交预览图没有 API，
+只能人肉点，换版本号纯属自找麻烦。现在页脚只写不随版本变化的信息，
+版本号在 README / 官网 / Release 标题里已经够显眼，预览图不必再背一份。
+只有**大改版重做封面**时才需要动它。
 
-版本号和扩展名数量都从代码里现读，发新版不用改这个脚本：
-  - 版本号  ← src/MediaManager.App/MediaManager.App.csproj 的 <Version>
+为什么要单独写脚本：这张封面是位图，页脚文字烧进像素里了。原始设计稿没留在
+仓库里，所以这里就地改：先把旧文字所在的水平条按「列」用上方的背景色填掉
+（背景是渐变，逐列取色才能不留痕），再用微软雅黑按字高 37px 右对齐重写同一行。
+
+扩展名数量从代码里现读，加/删格式不用改这个脚本：
   - 扩展名数 ← MediaFormat.cs 里那 5 个 HashSet 去重后的并集大小
 
 用法：
     python build/patch_cover_version.py            # 改 01-cover.png 并重建 social-preview
     python build/patch_cover_version.py --dry-run  # 只写到 build/_cover_preview.png 看效果
+    python build/patch_cover_version.py --with-version   # 临时带上版本号（默认不带）
 """
 import os
 import re
@@ -85,7 +90,11 @@ def main():
             "  docs/promo/ 被 .gitignore 排除（宣传物料不进仓库），这张原图只在出图的机器上。\n"
             "  换机器要重刷封面时，先把 3200×1800 的原图放回 docs/promo/01-cover.png。"
         )
-    new_text = f"v{read_version()} · {read_extension_count()}{TAIL}"
+    text = f"{read_extension_count()}{TAIL}"
+    # 默认不带版本号：预览图不该跟着每一版重传（GitHub 的 social preview 只能网页手传）
+    if "--with-version" in sys.argv:
+        text = f"v{read_version()} · {text}"
+    new_text = text
 
     im = Image.open(COVER).convert("RGB")
     clear_band(im)
