@@ -554,6 +554,12 @@
                                             Click="OnCheckUpdate" Margin="0,0,8,0" />
                                     <Button Content="🌐 打开 GitHub 主页" Click="OnOpenRepository" />
                                 </StackPanel>
+
+                                <CheckBox x:Name="StartupUpdateCheckBox" Margin="0,14,0,0"
+                                          Content="启动时自动检查新版本"
+                                          ToolTip="开启后每次启动会在后台问一次 GitHub 有没有新版；关掉就只在下面手动检查" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0" TextWrapping="Wrap"
+                                           Text="只检查、只提示。本软件不会在后台下载或安装任何东西——发现新版会告诉你改了什么，去不去下载由你决定；不想被打扰可以点「跳过这个版本」，同一个版本以后不再问。" />
                             </StackPanel>
                         </Border>
 

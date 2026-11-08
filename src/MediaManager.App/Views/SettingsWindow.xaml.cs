@@ -151,6 +151,11 @@ public partial class SettingsWindow : Window
         var extStr = await Task.Run(() => _repo.GetSettingAsync("EnableExtendedFormats"));
         ExtendedFormatsCheck.IsChecked = extStr != "0";
 
+        // 启动时检查新版本：没存过就是开启（只检查、只提示，不下载不安装）
+        var updateCheckStr = await Task.Run(() => _repo.GetSettingAsync(UpdatePolicy.CheckOnStartupKey));
+        StartupUpdateCheckBox.IsChecked =
+            UpdatePolicy.ParseBool(updateCheckStr, UpdatePolicy.DefaultCheckOnStartup);
+
         // 极简模式：只有明确存了 "1" 才算开启
         var simpleStr = await Task.Run(
             () => _repo.GetSettingAsync(MainViewModel.SimpleModeSettingKey));
@@ -1154,6 +1159,10 @@ public partial class SettingsWindow : Window
             await _repo.SetSettingAsync("DiscoveryCount", discoveryTag);
             await _repo.SetSettingAsync("CloseBehavior", closeTag);
 
+            // 启动时检查新版本（只检查、只提示；本软件没有任何自动下载/安装行为）
+            await _repo.SetSettingAsync(UpdatePolicy.CheckOnStartupKey,
+                StartupUpdateCheckBox.IsChecked == true ? "1" : "0");
+
             // 极简模式：落库 + 立刻推给主视图模型（左侧导航马上跟着变，不用重启）
             var simpleMode = SimpleModeBox.IsChecked == true;
             await _repo.SetSettingAsync(MainViewModel.SimpleModeSettingKey, simpleMode ? "1" : "0");
@@ -1508,13 +1517,13 @@ public partial class SettingsWindow : Window
 
             if (result.HasUpdate)
             {
-                UpdateStatusText.Text = $"发现新版本 v{result.LatestVersion}（当前 v{result.CurrentVersion}）";
+                UpdateStatusText.Text = $"发现新版本 v{result.LatestVersion}（当前 v{result.CurrentVersion}）。";
 
-                var go = CustomMessageBox.Confirm(
-                    $"发现新版本 v{result.LatestVersion}（当前 v{result.CurrentVersion}）。\n\n"
-                    + "现在打开 GitHub 下载页吗？下载安装包覆盖安装即可，你的数据会保留。",
-                    "有新版本", confirmText: "去下载");
-                if (go) OpenUrl(result.ReleaseUrl ?? UpdateChecker.ReleasesUrl);
+                // 和启动时的提示走同一个窗口：同样的版本对比、更新说明和三个选择，
+                // 不因为「这次是手动点的」就换一套说法。
+                var choice = await StartupUpdateCheck.ShowPromptAsync(result, _repo, this);
+                if (choice == UpdateChoice.SkipThisVersion)
+                    UpdateStatusText.Text += "已跳过这个版本，以后不再提示。";
             }
             else
             {

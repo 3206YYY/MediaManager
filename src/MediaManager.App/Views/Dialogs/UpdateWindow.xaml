@@ -1,0 +1,146 @@
+<Window x:Class="MediaManager.App.Views.Dialogs.UpdateWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="发现新版本"
+        Width="580"
+        MaxHeight="560"
+        SizeToContent="Height"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        WindowStartupLocation="CenterOwner"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        KeyDown="OnWindowKeyDown">
+
+    <Window.Resources>
+        <Style x:Key="UpdatePrimaryButton" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="Padding" Value="18,7" />
+            <Setter Property="MinWidth" Value="104" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.86" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.7" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="UpdateButton" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource PanelBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="MinWidth" Value="88" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1"
+                                CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border CornerRadius="10"
+            Background="{DynamicResource PanelBrush}"
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+        <StackPanel Margin="22,18,22,18">
+
+            <TextBlock Text="发现新版本" FontSize="17" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextBrush}" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <TextBlock x:Name="CurrentVersionText" FontSize="13"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="→" FontSize="13" Margin="8,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           VerticalAlignment="Center" />
+                <TextBlock x:Name="NewVersionText" FontSize="15" FontWeight="SemiBold"
+                           Foreground="{DynamicResource PrimaryBrush}"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+
+            <TextBlock x:Name="MetaText" FontSize="12" Margin="0,6,0,0"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
+            <TextBlock Text="改了什么" FontSize="13" FontWeight="SemiBold"
+                       Margin="0,16,0,8"
+                       Foreground="{DynamicResource TextBrush}" />
+
+            <Border Background="{DynamicResource BgBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="6" Padding="14,12">
+                <ScrollViewer MaxHeight="230"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <TextBlock x:Name="SummaryText" Visibility="Collapsed"
+                                   FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
+                                   Foreground="{DynamicResource TextBrush}" />
+                        <StackPanel x:Name="BulletsPanel" />
+                        <TextBlock x:Name="MoreText" Visibility="Collapsed"
+                                   FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Opacity="0.85"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock x:Name="NoNotesText" Visibility="Collapsed"
+                                   FontSize="12.5" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="这个版本没有附带更新说明，可以点「查看完整说明」去发布页看看。" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,14,0,0" Opacity="0.85"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       Text="本软件不会在后台偷偷下载或安装任何东西。点「去下载」只会打开浏览器，装不装、什么时候装都由你决定；换新版本会保留你的库、分类和标签。" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button x:Name="DownloadButton" Content="去下载"
+                        Style="{StaticResource UpdatePrimaryButton}"
+                        IsDefault="True" Click="OnDownload" />
+                <Button x:Name="NotesButton" Content="查看完整说明"
+                        Style="{StaticResource UpdateButton}" Margin="8,0,0,0"
+                        Click="OnOpenNotes" />
+                <Button x:Name="SkipButton" Content="跳过这个版本"
+                        Style="{StaticResource UpdateButton}" Margin="8,0,0,0"
+                        Click="OnSkip" />
+                <Button x:Name="LaterButton" Content="以后再说"
+                        Style="{StaticResource UpdateButton}" Margin="8,0,0,0"
+                        Click="OnLater" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

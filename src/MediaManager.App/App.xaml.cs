@@ -236,6 +236,12 @@ public partial class App : Application
                 Log.Warning(ex, "注册全局快捷键失败");
             }
 
+            // 5.7) 检查新版本：只提示「有新版、改了什么、去哪下」，
+            //      不下载、不安装、不重启。内部先等 8 秒，让首屏缩略图和
+            //      用户第一次点击先跑完；检查失败连提示都没有。
+            _ = StartupUpdateCheck.RunOnStartupAsync(
+                provider.GetRequiredService<IMediaRepository>(), mainWindow);
+
             // 6) 补齐历史数据缺失的图片宽高（老库全是空值，界面一直显示「未知」）
             _ = Task.Run(async () =>
             {

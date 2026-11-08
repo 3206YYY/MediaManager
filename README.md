@@ -7,7 +7,7 @@
 
 **[📥 下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[🌐 官网](https://3206yyy.github.io/MediaManager/)** ｜ **[🇨🇳 Gitee 源码镜像](https://gitee.com/yyy3206/MediaManager)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
 
-> 当前版本 **v1.4.5** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
+> 当前版本 **v1.4.6** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
 >
 > 🆕 **v1.4.5**：修掉「文件夹明明有文件却显示 0 项」（添加过子目录的库启动时自动合并重复根目录，一条不丢）；顶部新增看得见的「🗑 批量删除」（默认先勾选、不会误删，也能切成点谁删谁）；设置里加了「❓ 帮助与快捷键」。详见 [更新说明](docs/changelog/v1.4.5.md)。
 
