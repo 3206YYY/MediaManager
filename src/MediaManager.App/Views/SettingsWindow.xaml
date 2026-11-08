@@ -557,6 +557,25 @@
                             </StackPanel>
                         </Border>
 
+                        <Border x:Name="LicenseCard" Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="开源许可" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                           Text="本项目以 MIT 协议开源，版权归 3206YYY。你可以自由使用、修改、分发甚至商用，保留版权声明即可。下面这些第三方组件按各自的许可分发，不影响本项目自身的协议。" />
+                                <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,0,0,10">
+                                    <Run Text="libVLC 3.0.24" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　LGPL-2.1；动态链接且未改源码，你可以用自己编译的同版本 DLL 替换" /><LineBreak/>
+                                    <Run Text="FFmpeg 9.0.2" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　GPLv3；以独立程序（tools\ffmpeg\ffmpeg.exe）被调用，不链接进本程序" /><LineBreak/>
+                                    <Run Text="ImageSharp 3.1.7" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" /><Run Text="　Six Labors 分割许可；开源项目免费使用，无需付费" />
+                                </TextBlock>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="MIT 许可全文" Click="OnOpenLicense" Margin="0,0,8,0" />
+                                    <Button Content="第三方组件声明" Click="OnOpenThirdParty" />
+                                </StackPanel>
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                           Text="两份文件也随程序存放在安装目录（LICENSE.txt 与 THIRD-PARTY-NOTICES.md），不联网也能查。" />
+                            </StackPanel>
+                        </Border>
+
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="遇到问题" Style="{StaticResource SectionTitle}" />

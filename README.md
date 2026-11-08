@@ -209,4 +209,8 @@ dotnet publish src/MediaManager.App -c Release -r win-x64 --self-contained false
 
 本项目采用 **MIT 协议**开源。你可以自由使用、修改甚至商用，但请保留原作者信息。
 
-Copyright © 2026 MediaManager
+Copyright © 2026 3206YYY
+
+程序运行时依赖的第三方组件（libVLC 为 LGPL-2.1、FFmpeg 为 GPLv3、ImageSharp 为
+Six Labors 分割许可等）按各自条款分发，详见 **[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)**。
+这些组件不影响本项目自身保持 MIT；完整声明也随安装包存放在安装目录。

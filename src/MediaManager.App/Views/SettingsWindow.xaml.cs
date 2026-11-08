@@ -1535,6 +1535,14 @@ public partial class SettingsWindow : Window
 
     private void OnOpenRepository(object sender, RoutedEventArgs e) => OpenUrl(UpdateChecker.RepositoryUrl);
 
+    // ---------- 开源许可 ----------
+    // 两个文案都指向仓库里的原文件，不另存副本：改一处就够，不会出现本地和线上不一致。
+    private void OnOpenLicense(object sender, RoutedEventArgs e) =>
+        OpenUrl(UpdateChecker.RepositoryUrl + "/blob/main/LICENSE");
+
+    private void OnOpenThirdParty(object sender, RoutedEventArgs e) =>
+        OpenUrl(UpdateChecker.RepositoryUrl + "/blob/main/THIRD-PARTY-NOTICES.md");
+
     // ---------- 遇到问题：日志 + 诊断信息 ----------
 
     /// <summary>在「关于与更新」里显示日志目录的真实路径（便携和安装模式落点不同，写死会误导人）。</summary>
