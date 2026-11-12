@@ -137,7 +137,13 @@ public static class UpdatePolicy
     /// 把 GitHub Release 正文压成「一句概括 + 几条要点」。
     /// <para>
     /// 约定：写更新说明时**开头先写一段概括**（一两句话说清这版加/改了什么），
-    /// 再列要点，细节往后放。这里扒的就是那段概括，加上前几条要点。
+    /// 紧接着**一组要点**列清改动，细节再往后放。这里扒的就是那段概括，加上第一组要点。
+    /// </para>
+    /// <para>
+    /// 为什么只认**第一组**要点：后面的小节（「更新提示长什么样」「验证」「安装」）
+    /// 里的列表和编号不是「改动」。以前一路收下来，12 条的说明会显示
+    /// 「另外还有 7 条改动」——数字没错，但那些是测试和安装说明，等于骗人点进去。
+    /// 所以第一组之后的要点一律不计入统计，要看全的点「查看完整说明」。
     /// </para>
     /// <para>
     /// 为什么不做全文显示：说明经常写成一篇博客，塞进提示框的结果是没人看，
@@ -153,6 +159,7 @@ public static class UpdatePolicy
         var summaryLines = new List<string>();
         var seenBullet = false;
         var summaryClosed = false;
+        var bulletsClosed = false;
 
         foreach (var raw in markdown.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
         {
@@ -170,6 +177,9 @@ public static class UpdatePolicy
 
             if (IsBullet(text, out var bulletText))
             {
+                // 第一组要点之后的列表属于「细节」，不参与统计
+                if (bulletsClosed) continue;
+
                 seenBullet = true;
                 summaryClosed = true;
                 var item = CleanInline(bulletText);
@@ -181,6 +191,8 @@ public static class UpdatePolicy
             if (text.StartsWith('#'))
             {
                 summaryClosed = true;
+                // 已经收过要点又遇到新小节 → 要点块结束（这里就是「细节」的边界）
+                if (seenBullet) bulletsClosed = true;
                 continue;
             }
 

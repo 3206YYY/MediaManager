@@ -133,8 +133,52 @@ public class UpdatePolicyTests
     }
 
     [Fact]
-    public void BuildDigest_小节标题不进摘要()
+    public void BuildDigest_只统计第一组要点_后面的验证小节不算改动()
     {
+        // 真实案例（v1.4.6 的说明）：第一组 5 条是「改了什么」，
+        // 后面的「更新提示长什么样」是编号列表，「验证」是小节，
+        // 以前全算进去，弹窗会说「另外还有 7 条改动」——等于骗用户点进去看测试报告。
+        var body =
+            "这一版只做一件事：让程序自己知道有没有新版。\n\n"
+            + "## 这个版本加了什么\n"
+            + "- 启动时自动检查新版本\n"
+            + "- 更新提示会列出改了什么\n"
+            + "- 「跳过这个版本」记住选择\n"
+            + "- 设置页加了开关\n"
+            + "- 手动检查也走同一个窗口\n\n"
+            + "## 更新提示长什么样\n"
+            + "窗口里只有四样东西：\n\n"
+            + "1. 当前版本 → 新版本\n2. 发布时间和体积\n"
+            + "3. 改了什么\n4. 三个选择\n\n"
+            + "## 验证\n"
+            + "- 单元测试 367 → 413 项\n- 新增两个实机脚本\n- 回归四组\n";
+
+        var d = UpdatePolicy.BuildDigest(body);
+
+        Assert.Equal("这一版只做一件事：让程序自己知道有没有新版。", d.Summary);
+        Assert.Equal(5, d.Bullets.Count);
+        Assert.Equal(5, d.TotalBullets);
+        Assert.False(d.HasMore);                       // 关键：不再冒出「还有 7 条」
+        Assert.Equal("手动检查也走同一个窗口", d.Bullets[^1]);
+    }
+
+    [Fact]
+    public void BuildDigest_第一组本身超长时才说还有几条()
+    {
+        var body =
+            "概括。\n\n## 改了什么\n"
+            + string.Join("\n", Enumerable.Range(1, 8).Select(i => $"- 第 {i} 条改动"))
+            + "\n\n## 验证\n- 这条不算\n- 这条也不算\n";
+
+        var d = UpdatePolicy.BuildDigest(body);
+
+        Assert.Equal(UpdatePolicy.MaxBullets, d.Bullets.Count);
+        Assert.Equal(8, d.TotalBullets);               // 只数第一组，不把「验证」算进去
+        Assert.True(d.HasMore);                        // 差 3 条，说的是真改动
+    }
+
+    [Fact]
+    public void BuildDigest_小节标题不进摘要()    {
         var d = UpdatePolicy.BuildDigest("## 这一版做了什么\n- 修了 bug");
         Assert.Null(d.Summary);
         Assert.Single(d.Bullets);
