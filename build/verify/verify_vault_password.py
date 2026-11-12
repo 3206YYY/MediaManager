@@ -16,6 +16,7 @@ import io
 import os
 import sqlite3
 import subprocess
+import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +37,9 @@ except Exception:
 
 import uiautomation as uia  # noqa: E402
 from PIL import ImageGrab  # noqa: E402
+
+sys.path.insert(0, HERE)
+from uiawin import force_foreground  # noqa: E402
 
 results = []
 
@@ -120,13 +124,10 @@ def activate(win):
 
     密码框没拿到焦点时 SendKeys 会打到别的窗口上，界面表现是「框还是空的 +
     提示密码至少 4 位」—— 看起来像产品 bug，其实是脚本没激活窗口。
+    直接 SetForegroundWindow 会被 Windows 前台锁拒绝（用户开着浏览器时必然失败），
+    所以走 uiawin.force_foreground。
     """
-    for fn in (lambda: user32.SetForegroundWindow(win.NativeWindowHandle),
-               lambda: win.SetActive()):
-        try:
-            fn()
-        except Exception:
-            pass
+    force_foreground(win.NativeWindowHandle)
     time.sleep(0.4)
 
 
@@ -141,19 +142,13 @@ def launch():
     if not win.Exists(30, 1):
         return None
     time.sleep(3.5)
-    try:
-        user32.SetForegroundWindow(win.NativeWindowHandle)
-    except Exception:
-        pass
+    force_foreground(win.NativeWindowHandle)
     time.sleep(0.6)
     return win
 
 
 def open_vault_via_hotkey(main):
-    try:
-        user32.SetForegroundWindow(main.NativeWindowHandle)
-    except Exception:
-        pass
+    force_foreground(main.NativeWindowHandle)
     time.sleep(0.5)
     uia.SendKeys("{Ctrl}l", waitTime=0.2)
     time.sleep(1.8)

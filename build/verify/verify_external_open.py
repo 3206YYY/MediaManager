@@ -12,6 +12,7 @@ import ctypes.wintypes as wt
 import io
 import os
 import subprocess
+import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -27,6 +28,9 @@ except Exception:
     user32.SetProcessDPIAware()
 
 import uiautomation as uia  # noqa: E402
+
+sys.path.insert(0, HERE)
+from uiawin import force_foreground  # noqa: E402
 
 results = []
 
@@ -105,10 +109,7 @@ def main():
     check("主窗口出现", True)
     time.sleep(3)
 
-    try:
-        user32.SetForegroundWindow(win.NativeWindowHandle)
-    except Exception:
-        pass
+    force_foreground(win.NativeWindowHandle)
     time.sleep(0.6)
 
     # ---- 1. 右键菜单里有「用系统默认程序打开」 ----
@@ -208,10 +209,7 @@ def main():
     win = uia.WindowControl(searchDepth=1, Name="媒体管理器")
     if win.Exists(30, 1):
         time.sleep(4)
-        try:
-            user32.SetForegroundWindow(win.NativeWindowHandle)
-        except Exception:
-            pass
+        force_foreground(win.NativeWindowHandle)
         time.sleep(0.6)
 
     builtin_ok = False

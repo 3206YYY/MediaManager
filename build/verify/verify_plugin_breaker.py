@@ -30,6 +30,9 @@ import time
 
 import uiautomation as uia
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from uiawin import force_foreground  # noqa: E402
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 APP_EXE = os.path.join(ROOT, "src", "MediaManager.App", "bin", "Debug", "net8.0-windows", "MediaManager.App.exe")
 DATA_DIR = os.path.join(ROOT, "src", "MediaManager.App", "bin", "Debug", "net8.0-windows", "Data")
@@ -191,7 +194,7 @@ def wait_and_close_dialog(seconds=6):
         hwnd = find_dialog_hwnd()
         if hwnd:
             time.sleep(0.4)  # 等它完成激活
-            user32.SetForegroundWindow(hwnd)
+            force_foreground(hwnd)
             time.sleep(0.3)
             uia.SendKeys("{Enter}", waitTime=0.3)
             time.sleep(0.8)
