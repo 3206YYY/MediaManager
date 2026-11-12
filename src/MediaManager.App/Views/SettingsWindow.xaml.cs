@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -253,6 +254,7 @@ public partial class SettingsWindow : Window
         };
 
         RefreshShellIntegrationState();
+        RefreshDesktopShortcutState();
         RefreshSnapshots();
         await LoadHotkeysAsync();
     }
@@ -848,6 +850,63 @@ public partial class SettingsWindow : Window
 
         var results = svc.Apply(_hotkeys);
         return results.Where(r => !r.Success).ToList();
+    }
+
+    // ---------- 桌面图标 ----------
+
+    /// <summary>按桌面实际状态刷新按钮文字与说明。</summary>
+    private void RefreshDesktopShortcutState()
+    {
+        try
+        {
+            var info = DesktopShortcutService.Inspect();
+            switch (info.State)
+            {
+                case ShortcutState.Current:
+                    DesktopShortcutButton.Content = "更新桌面图标";
+                    DesktopShortcutStateText.Text = "✅ 桌面上已有图标，指向当前这个程序。";
+                    break;
+
+                case ShortcutState.Stale:
+                    DesktopShortcutButton.Content = "修复桌面图标";
+                    DesktopShortcutStateText.Text = string.IsNullOrEmpty(info.Target)
+                        ? "⚠ 桌面图标存在，但读不出它指向哪儿，点右边重建一个。"
+                        : $"⚠ 桌面图标指向 {info.Target}，那儿已经没有程序了，点右边修复。";
+                    break;
+
+                default:
+                    DesktopShortcutButton.Content = "创建桌面图标";
+                    DesktopShortcutStateText.Text = "桌面上还没有本程序的图标。";
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            DesktopShortcutStateText.Text = "读不出桌面图标状态：" + ex.Message;
+        }
+    }
+
+    private void OnDesktopShortcutClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var lnk = DesktopShortcutService.Create();
+            RefreshDesktopShortcutState();
+
+            CustomMessageBox.Success(
+                $"桌面图标已就位：{Path.GetFileNameWithoutExtension(lnk)}\n\n"
+                + $"指向：{DesktopShortcutService.ExecutablePath}\n\n"
+                + "以后换了目录，只要再点一次这个按钮（或直接启动程序，它会自己修）。",
+                "已创建");
+        }
+        catch (Exception ex)
+        {
+            RefreshDesktopShortcutState();
+            CustomMessageBox.Error(
+                "创建桌面图标失败：" + ex.Message
+                + "\n\n（通常是桌面被设置成只读，或安全软件拦了快捷方式写入。）",
+                "操作失败");
+        }
     }
 
     // ---------- 资源管理器右键集成 ----------

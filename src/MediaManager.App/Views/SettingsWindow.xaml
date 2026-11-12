@@ -360,6 +360,21 @@
 
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
+                                <TextBlock Text="桌面图标" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="换目录、重新解压、或升级后被移走时，桌面那个快捷方式里存的仍是旧路径，双击会提示找不到程序。点这里重建一次，指向当前位置；程序启动时也会自动修自己那个图标。"
+                                           Style="{StaticResource Hint}" Margin="0,0,0,10" TextWrapping="Wrap" />
+                                <DockPanel LastChildFill="True">
+                                    <Button x:Name="DesktopShortcutButton" DockPanel.Dock="Right"
+                                            Content="创建桌面图标" MinWidth="132" Margin="10,0,0,0"
+                                            Click="OnDesktopShortcutClick" />
+                                    <TextBlock x:Name="DesktopShortcutStateText" Style="{StaticResource Hint}"
+                                               VerticalAlignment="Center" TextWrapping="Wrap" />
+                                </DockPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
                                 <TextBlock Text="数据目录" Style="{StaticResource SectionTitle}" />
                                 <TextBlock Text="数据库、缩略图缓存都在这儿。由便携模式决定，无法直接修改；换电脑请用「备份与迁移」里的导出/导入。"
                                            Style="{StaticResource Hint}" Margin="0,0,0,8" />

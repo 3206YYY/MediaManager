@@ -206,8 +206,9 @@ public partial class App : Application
             // 会让整个进程暂停，正好压在缩略图解码和用户第一次交互上。
             // 启动期的一次性临时对象交给运行时自然回收即可。
 
-            // 5) 右键集成路径修正 + 命令行打开文件：都不影响主界面可用
+            // 5) 右键集成路径修正 + 桌面图标自愈 + 命令行打开文件：都不影响主界面可用
             await Task.Run(ShellIntegrationService.EnsureRegistered);
+            await Task.Run(() => DesktopShortcutService.EnsureUpToDate());
             OpenFileFromCommandLine(args, mainWindow);
 
             // 5.5) 插件：后台加载，慢插件不会挡住开窗；加载失败只影响它自己
