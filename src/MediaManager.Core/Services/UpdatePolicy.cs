@@ -187,10 +187,12 @@ public static class UpdatePolicy
                 continue;
             }
 
-            // 小节标题不进摘要：它只是分组，不说明改了什么
+            // 小节标题不进摘要：它只是分组，不说明改了什么。
+            // 但**文档最开头**那个标题（"# 更新说明 · v1.4.7"）不能算「概括结束」——
+            // 否则紧接着的那段概括会被整个丢掉，弹窗里只剩要点、没有那句总述。
             if (text.StartsWith('#'))
             {
-                summaryClosed = true;
+                if (summaryLines.Count > 0 || seenBullet) summaryClosed = true;
                 // 已经收过要点又遇到新小节 → 要点块结束（这里就是「细节」的边界）
                 if (seenBullet) bulletsClosed = true;
                 continue;

@@ -178,6 +178,18 @@ public class UpdatePolicyTests
     }
 
     [Fact]
+    public void BuildDigest_开头的文档标题不吞掉概括()
+    {
+        // 说明里写个 "# 更新说明" 当标题是最自然的写法，不能因此把概括弄丢
+        var d = UpdatePolicy.BuildDigest(
+            "# 更新说明 · v1.4.7\n\n这一版只修了两个地方。\n\n## 细节\n- 桌面图标不再失效");
+
+        Assert.NotNull(d.Summary);
+        Assert.Contains("只修了两个地方", d.Summary);
+        Assert.Single(d.Bullets);
+    }
+
+    [Fact]
     public void BuildDigest_小节标题不进摘要()    {
         var d = UpdatePolicy.BuildDigest("## 这一版做了什么\n- 修了 bug");
         Assert.Null(d.Summary);
