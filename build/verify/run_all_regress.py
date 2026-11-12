@@ -34,6 +34,26 @@ def discover():
                   if f.startswith("verify_") and f.endswith(".py"))
 
 
+def cleanup():
+    """每个脚本前把上一轮残留的进程清干净：子窗口（日记 / 查看器 / 私密空间 / 设置）
+    和残留的 Notepad 会抢前台焦点，导致下一个脚本「点不动 / 窗口打不开」的假失败。"""
+    subprocess.run(["taskkill", "/F", "/IM", "MediaManager.App.exe"], capture_output=True)
+    subprocess.run(["taskkill", "/F", "/IM", "notepad.exe"], capture_output=True)
+    time.sleep(1.5)
+
+
+def run_once(path):
+    """跑一次脚本，返回 (退出码, 非空输出行, 耗时秒)。"""
+    t0 = time.time()
+    try:
+        r = subprocess.run([sys.executable, path], cwd=ROOT, capture_output=True,
+                           encoding="utf-8", errors="ignore", timeout=900)
+    except subprocess.TimeoutExpired:
+        return -9, ["TIMEOUT"], time.time() - t0
+    out = (r.stdout or "") + (r.stderr or "")
+    return r.returncode, [l for l in out.splitlines() if l.strip()], time.time() - t0
+
+
 def main(argv):
     on_disk = discover()
 
@@ -60,29 +80,26 @@ def main(argv):
         if not os.path.exists(path):
             print("SKIP missing", name, flush=True)
             continue
-        # 每个脚本前把上一轮残留的进程清干净：子窗口（日记 / 查看器 / 私密空间 / 设置）
-        # 和残留的 Notepad 会抢前台焦点，导致下一个脚本「点不动 / 窗口打不开」的假失败。
-        subprocess.run(["taskkill", "/F", "/IM", "MediaManager.App.exe"], capture_output=True)
-        subprocess.run(["taskkill", "/F", "/IM", "notepad.exe"], capture_output=True)
-        time.sleep(1.5)
-        t0 = time.time()
+        cleanup()
         print("\n===== %s =====" % name, flush=True)
-        try:
-            r = subprocess.run([sys.executable, path], cwd=ROOT, capture_output=True,
-                               encoding="utf-8", errors="ignore", timeout=900)
-            out = (r.stdout or "") + (r.stderr or "")
-            lines = [l for l in out.splitlines() if l.strip()]
-            tail = lines[-3:]
-            for l in lines:
-                if l.startswith("FAIL") or l.startswith("ERROR"):
-                    print("  " + l, flush=True)
-            print("  exit=%s  %.0fs" % (r.returncode, time.time() - t0), flush=True)
-            for l in tail:
-                print("  | " + l, flush=True)
-            summary.append((name, r.returncode, tail[-1] if tail else "", time.time() - t0))
-        except subprocess.TimeoutExpired:
-            print("  TIMEOUT", flush=True)
-            summary.append((name, -9, "TIMEOUT", time.time() - t0))
+        code, lines, dt = run_once(path)
+
+        # 脚本自己崩了（一条 FAIL 断言都没有，却是非 0 退出）多半是 uia / COM 的时序抖动
+        # ——v1.4.7 回归时 verify_batch_delete_help 就这样挂过一次，单独重跑 67/67 全过。
+        # 给一次重试机会；真正的断言失败不重试，免得把功能问题刷成「过」。
+        if code != 0 and not any(l.startswith(("FAIL", "ERROR")) for l in lines):
+            print("  脚本异常退出且无断言失败，重试一次", flush=True)
+            cleanup()
+            code, lines, dt = run_once(path)
+
+        tail = lines[-3:]
+        for l in lines:
+            if l.startswith("FAIL") or l.startswith("ERROR"):
+                print("  " + l, flush=True)
+        print("  exit=%s  %.0fs" % (code, dt), flush=True)
+        for l in tail:
+            print("  | " + l, flush=True)
+        summary.append((name, code, tail[-1] if tail else "", dt))
 
     print("\n\n========== 汇总 ==========", flush=True)
     bad = 0
