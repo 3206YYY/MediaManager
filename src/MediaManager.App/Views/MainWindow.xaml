@@ -805,8 +805,15 @@
                         <ItemsControl ItemsSource="{Binding ExifItems}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding Key, StringFormat={}{0}: }" TextWrapping="Wrap"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                                    <!-- 之前只绑了 Key（而且 Key 存的是值），面板上只剩「1080:」这种行。
+                                         现在键值都显示：键半粗、值常规，长值自动换行。
+                                         Run.Text 默认是 TwoWay，只读集合必须写 Mode=OneWay。 -->
+                                    <TextBlock TextWrapping="Wrap" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}">
+                                        <Run Text="{Binding Key, Mode=OneWay}" FontWeight="SemiBold" />
+                                        <Run Text="：" />
+                                        <Run Text="{Binding Value, Mode=OneWay}" />
+                                    </TextBlock>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
