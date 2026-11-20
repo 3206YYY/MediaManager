@@ -100,6 +100,45 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Opacity" Value="0.8" />
         </Style>
+
+        <!-- 侧栏折叠把手：贴边、垂直居中的细条，平时半透明不抢戏，指过去才亮。
+             不能用 PanelBrush 打底 —— 深色主题下 PanelBrush(#252526) 和网格底色(#1E1E1E)
+             几乎同色，第一版做出来整根把手"消失"在缩略图里（截图采样确认过）。
+             现在换成比周围亮一档的 HoverBrush + ScrollThumbBrush 勾边、TextBrush 箭头，
+             压在照片上也一眼能看见，又不至于把视线从图上拽走。 -->
+        <Style x:Key="SidebarCollapseHandle" TargetType="Button">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="96" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Opacity" Value="0.92" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" CornerRadius="8"
+                                Background="{DynamicResource HoverBrush}"
+                                BorderBrush="{DynamicResource ScrollThumbBrush}"
+                                BorderThickness="1">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.FontSize="15" TextElement.FontWeight="Bold" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush"
+                                        Value="{DynamicResource PrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -270,10 +309,12 @@
 
         <!-- ============ 主体三栏 ============ -->
         <Grid Grid.Row="1">
+            <!-- 左右两列可收起，宽度由 ApplySidebarState() 控制（收起时归零，
+                 留窄边会把缩略图挤成少一列，实测过） -->
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" />
+                <ColumnDefinition x:Name="LeftSidebarColumn" Width="220" />
                 <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="280" />
+                <ColumnDefinition x:Name="RightSidebarColumn" Width="280" />
             </Grid.ColumnDefinitions>
 
             <!-- ===== 左侧导航 ===== -->
@@ -521,7 +562,9 @@
             </Border>
 
             <!-- ===== 中间缩略图网格 ===== -->
-            <Grid Grid.Column="1" Background="{DynamicResource BgBrush}">
+            <!-- ZIndex 必须压过左右两栏：把手靠负 margin 退回到侧栏内侧，
+                 如果这一层在下面，落在侧栏上的那半个把手就点不到了（实测右侧点不动）。 -->
+            <Grid Grid.Column="1" Panel.ZIndex="10" Background="{DynamicResource BgBrush}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -770,6 +813,29 @@
                         Visibility="Collapsed"
                         IsHitTestVisible="False"
                         HorizontalAlignment="Left" VerticalAlignment="Top" />
+
+                <!-- 侧栏折叠把手：两个都浮在网格边缘，靠 Margin 在两套位置之间切换 ——
+                     展开时负 margin 16px，恰好退回侧栏内侧（不压照片）；
+                     收起时贴窗口边缘（右侧再让 20px 避开网格滚动条）。
+                     只用一个控件而不是「侧栏里一个、网格里一个」，省掉一层包裹 Grid，
+                     也省掉两套可见性状态。见 ApplySidebarState()。 -->
+                <Button x:Name="LeftCollapseHandle" Grid.RowSpan="2"
+                        Style="{StaticResource SidebarCollapseHandle}"
+                        HorizontalAlignment="Left" Margin="-16,0,0,0"
+                        Panel.ZIndex="30"
+                        Content="‹"
+                        AutomationProperties.AutomationId="LeftSidebarToggle"
+                        ToolTip="收起左侧栏，把空间让给缩略图"
+                        Click="OnToggleLeftSidebar" />
+
+                <Button x:Name="RightCollapseHandle" Grid.RowSpan="2"
+                        Style="{StaticResource SidebarCollapseHandle}"
+                        HorizontalAlignment="Right" Margin="0,0,-16,0"
+                        Panel.ZIndex="30"
+                        Content="›"
+                        AutomationProperties.AutomationId="RightSidebarToggle"
+                        ToolTip="收起右侧详情栏，把空间让给缩略图"
+                        Click="OnToggleRightSidebar" />
             </Grid>
 
             <!-- ===== 右侧详情面板 ===== -->

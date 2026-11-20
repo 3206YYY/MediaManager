@@ -149,6 +149,14 @@ public partial class MainViewModel : ObservableObject
             var simpleMode = await DbAsync(() => _repo.GetSettingAsync(SimpleModeSettingKey));
             IsSimpleMode = simpleMode == "1";
 
+            // 两侧栏上次是不是收着（读不到就当展开）。加载阶段别回写，用标志位挡一下
+            var leftCollapsed = await DbAsync(() => _repo.GetSettingAsync(LeftSidebarCollapsedKey));
+            var rightCollapsed = await DbAsync(() => _repo.GetSettingAsync(RightSidebarCollapsedKey));
+            _suppressSidebarSave = true;
+            IsLeftSidebarCollapsed = leftCollapsed == "1";
+            IsRightSidebarCollapsed = rightCollapsed == "1";
+            _suppressSidebarSave = false;
+
             await RefreshPrivateCountAsync();
 
             // 扩展格式（音频/文档/压缩包）开关：默认开启，可在 设置 → 插件扩展 关闭
@@ -243,6 +251,47 @@ public partial class MainViewModel : ObservableObject
     /// <summary>极简模式：只留最常用的入口，其余高级导航隐藏（文件本身不受任何影响）。</summary>
     [ObservableProperty]
     private bool _isSimpleMode;
+
+    // ------------------------------------------------------------------
+    //  两侧栏收起状态。纯粹是「想把缩略图放多大」的事，与库里的内容无关，
+    //  所以只在窗口层改列宽；这里只负责记住上次的选择（下次开还是收着的）。
+    //  加载时不要回写一遍库，用 _suppressSidebarSave 挡住。
+    // ------------------------------------------------------------------
+    [ObservableProperty]
+    private bool _isLeftSidebarCollapsed;
+
+    [ObservableProperty]
+    private bool _isRightSidebarCollapsed;
+
+    private bool _suppressSidebarSave;
+
+    public const string LeftSidebarCollapsedKey = "Ui.LeftSidebarCollapsed";
+    public const string RightSidebarCollapsedKey = "Ui.RightSidebarCollapsed";
+
+    partial void OnIsLeftSidebarCollapsedChanged(bool value)
+    {
+        if (!_suppressSidebarSave)
+            _ = SaveSettingAsync(LeftSidebarCollapsedKey, value ? "1" : "0");
+    }
+
+    partial void OnIsRightSidebarCollapsedChanged(bool value)
+    {
+        if (!_suppressSidebarSave)
+            _ = SaveSettingAsync(RightSidebarCollapsedKey, value ? "1" : "0");
+    }
+
+    /// <summary>写一条设置。失败只记日志：布局偏好丢了不影响用，不该打断当前操作。</summary>
+    private async Task SaveSettingAsync(string key, string value)
+    {
+        try
+        {
+            await Task.Run(() => _repo.SetSettingAsync(key, value));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "保存设置失败 {Key}", key);
+        }
+    }
 
     /// <summary>保险箱里的媒体数量（侧栏徽标）。</summary>
     [ObservableProperty]
