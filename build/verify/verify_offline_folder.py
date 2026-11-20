@@ -183,8 +183,20 @@ def main():
             click_item(normal[0])
             time.sleep(4)
             texts = [name_of(c) for c in collect(win) if c.ControlTypeName == "TextControl"]
-            ok_status = [t for t in texts if "共 27 项" in t]
-            check("正常文件夹显示共 27 项", len(ok_status) > 0, "found=%s" % ok_status[:1])
+            # 期望条数**从库里数**，不写死：演示目录的内容会变（换素材、清空重扫），
+            # 写死 27 那天就变成一条假失败 —— 它其实什么都没证明。
+            expect = 0
+            try:
+                con = sqlite3.connect(DB, timeout=5)
+                expect = con.execute(
+                    "SELECT COUNT(*) FROM MediaItem WHERE IsMissing=0 AND Path LIKE ?",
+                    ("%实拍%",)).fetchone()[0]
+                con.close()
+            except Exception as e:
+                print("  读库数失败：%r" % (e,))
+            ok_status = [t for t in texts if expect > 0 and ("共 %d 项" % expect) in t]
+            check("正常文件夹显示共 %d 项" % expect, expect > 0 and len(ok_status) > 0,
+                  "found=%s" % ok_status[:1])
             # 真判断：可达的文件夹项里不能有**可见的**离线徽标
             # （Collapsed 的徽标仍会在 UIA 树里，按文字是否存在判断会永远通过 —— 别再用那种写法）
             badges_in_normal = [c for c in collect(normal[0], maxd=4)
@@ -193,7 +205,7 @@ def main():
             check("正常文件夹无误报离线", len(badges_in_normal) == 0,
                   "visible_badge=%d" % len(badges_in_normal))
         else:
-            check("正常文件夹显示共 27 项", False, "没找到实拍项")
+            check("正常文件夹显示共 N 项", False, "没找到实拍项")
             check("正常文件夹无误报离线", False, "没找到实拍项")
 
     finally:

@@ -20,6 +20,49 @@
         Drop="OnDrop">
 
     <Window.Resources>
+        <!-- 缩略图「选中」的唯一颜色来源。普通选择是蓝，删除模式由代码换成琥珀色。
+             注意：模板触发器里的 DynamicResource 是**应用那一刻**求值，不会自己跟着变；
+             能换成功是因为进出删除模式都会先清空选择，环色总在「重新选中」时取到新值。 -->
+        <SolidColorBrush x:Key="ThumbSelectionBrush" Color="#3B82F6" />
+
+        <!-- 缩略图容器。以前这里没有样式，用的是 WPF 默认高亮：选中色只从格子四周
+             4px 的空隙里透出来，深色主题下几乎看不出区别 —— 「选了跟没选一样」的根因。
+             现在改成把 3px 描边**画在内容之上**（不吃命中测试），右上角再挂一个勾选角标。 -->
+        <Style x:Key="ThumbItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Grid>
+                            <ContentPresenter />
+                            <Border x:Name="SelRing" Margin="1" CornerRadius="8"
+                                    BorderThickness="3" BorderBrush="Transparent"
+                                    IsHitTestVisible="False" />
+                            <!-- 角标故意从左数 28px：右上角原本是收藏星标的地盘，错开才不会打架 -->
+                            <Border x:Name="SelCheck" Width="20" Height="20" CornerRadius="10"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                    Margin="0,6,28,0" Visibility="Collapsed"
+                                    IsHitTestVisible="False"
+                                    Background="{DynamicResource ThumbSelectionBrush}">
+                                <TextBlock Text="✓" Foreground="White" FontSize="12" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="SelRing" Property="BorderBrush"
+                                        Value="{DynamicResource ThumbSelectionBrush}" />
+                                <Setter TargetName="SelCheck" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- 侧边栏可折叠分组标题：库 / 文件夹 / 标签 / 分类共用同一套视觉与悬停反馈 -->
         <Style x:Key="SidebarSectionHeader" TargetType="ToggleButton">
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
@@ -550,10 +593,12 @@
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
                          ScrollViewer.CanContentScroll="True"
                          SelectionMode="Extended"
+                         ItemContainerStyle="{StaticResource ThumbItemStyle}"
                          MouseDoubleClick="OnItemDoubleClick"
                          PreviewMouseLeftButtonDown="OnThumbListMouseDown"
                          PreviewMouseMove="OnThumbListMouseMove"
                          PreviewMouseLeftButtonUp="OnThumbListMouseUp"
+                         LostMouseCapture="OnThumbLostCapture"
                          PreviewMouseWheel="OnThumbListPreviewMouseWheel"
                          SelectionChanged="OnThumbListSelectionChanged"
                          SelectedItem="{Binding SelectedItem, Mode=TwoWay}">

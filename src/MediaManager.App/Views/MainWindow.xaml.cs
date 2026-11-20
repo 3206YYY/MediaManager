@@ -45,6 +45,15 @@ public partial class MainWindow : Window
     private DispatcherTimer? _marqueeScrollTimer;
     private int _marqueeScrollDir;   // -1 向上 / 0 停 / 1 向下
 
+    /// <summary>
+    /// 本次框选是「叠加」还是「替换」。按下那一刻就定下来，中途松掉 Ctrl 也不变 ——
+    /// 之前每次移动都去读实时修饰键，按住 Ctrl 拖动途中松手会把已有的选择清掉。
+    /// </summary>
+    private bool _marqueeAdditive;
+
+    /// <summary>EndMarquee 重入保护：ReleaseMouseCapture 会同步触发 LostMouseCapture。</summary>
+    private bool _endingMarquee;
+
     /// <summary>框选拖到边缘多少像素内开始自动滚动。</summary>
     private const double MarqueeEdge = 26;
 
@@ -91,6 +100,10 @@ public partial class MainWindow : Window
         Activated += (_, _) => UpdateThemeGlyph();
 
         AttachVault();
+
+        // 列表整表重建（搜索、切视图、文件夹监视器重扫）会把选择清空。
+        // 删除模式下用户手里可能攒着一堆勾选，重建完得按 id 认回来 —— 见 RestoreSelectionByIds。
+        _viewModel.MediaItems.CollectionChanged += OnMediaItemsCollectionChanged;
 
         // XAML 加载阶段 SelectionChanged 可能早于悬浮条字段赋值触发，
         // 这里在所有控件都就绪后补一次，保证两个入口的初始状态一致。
@@ -578,6 +591,12 @@ public partial class MainWindow : Window
         // 点击落在滚动条（thumb/track/箭头）上时，交给滚动条处理，不启动框选
         if (IsOverScrollBar(e.OriginalSource as DependencyObject)) return;
 
+        // 上一次框选如果没收到收尾（鼠标在窗口外松开、捕获被别人抢走、Alt+Tab 切走），
+        // _marqueeStart 会一直停留在旧位置。这时再单击任意一张，MouseUp 就会拿
+        // 「旧起点 → 当前点」的矩形重刷一遍选择 —— 表现正是「点第三张，前面两张也一起被选上」。
+        // 所以只要它还挂着，先收干净，绝不带着脏状态往下走。
+        if (_isMarqueeSelecting) EndMarquee();
+
         var pos = e.GetPosition(ThumbList);
 
         // 删除模式下按在缩略图上：单击即「点谁删谁」（或按横幅开关只打勾），
@@ -602,6 +621,18 @@ public partial class MainWindow : Window
             // 延后到本次事件分发完再改集合：在 PreviewMouseDown 里直接 Remove 会让
             // 正在分发的视觉树 / 容器失效，偶发 COMException 和「点一下没反应」。
             var victim = tapItem;
+            // 先把「除了这张以外还勾着谁」记下来：删掉详情面板正在看的那一项时，
+            // SelectedItem 变 null 会顺着 TwoWay 绑定把整个 SelectedItems 清空，
+            // 用户手上勾好的其它几张会莫名其妙全没（v1.4.8 实测 5 → 0）。
+            var keep = ThumbList.SelectedItems.OfType<ThumbnailItemViewModel>()
+                               .Where(i => !ReferenceEquals(i, victim)).ToList();
+            // 名单要在删除**之前**挂好：MediaItems.Remove 是同步的，Selector 发现被删的正是
+            // 当前项时会立刻把整个 SelectedItems 清空，等 await 回来再挂就已经晚了。
+            if (keep.Count > 0)
+            {
+                _restoreSelectionIds = keep.Select(k => k.Id).ToHashSet();
+                _restoreSelectionAt = DateTime.UtcNow;
+            }
             Dispatcher.BeginInvoke(new Action(async () =>
             {
                 if (!_tapDeleteMode) return;   // 事件排队期间用户按了 Esc，就别再删
@@ -610,6 +641,7 @@ public partial class MainWindow : Window
                     _tapDeletedCount++;
                     if (TapDeleteCount != null)
                         TapDeleteCount.Text = $"本次已删 {_tapDeletedCount} 个";
+                    RestoreSelectionByIds();
                 }
             }));
             return;
@@ -631,15 +663,19 @@ public partial class MainWindow : Window
         _thumbDragArmed = false;
         _thumbDragItem = null;
 
-        // 不加修饰键时清空原选择；Ctrl/Shift 则叠加
-        if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control) &&
-            !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
-        {
+        // 什么时候允许清空已选：
+        //  · 普通浏览：不按修饰键 → 清空（和资源管理器一致，点空白取消选择天经地义）
+        //  · 删除模式：**一律不清空**。用户是在「勾一堆，再统一删除」，点到空白多半是点偏了
+        //    或者想接着框选，一下把辛苦勾好的 4 项清掉就是灾难。
+        //    删除模式下的框选也改成叠加（只加不减），松手不会把勾过的反选掉。
+        _marqueeAdditive = _tapDeleteMode
+                           || Keyboard.Modifiers.HasFlag(ModifierKeys.Control)
+                           || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+        if (!_marqueeAdditive)
             ThumbList.SelectedItems.Clear();
-        }
 
         _isMarqueeSelecting = true;
-        _marqueeStart = e.GetPosition(ThumbList);
+        _marqueeStart = pos;
         ThumbList.CaptureMouse();
         e.Handled = true;
     }
@@ -895,12 +931,29 @@ public partial class MainWindow : Window
 
     private void EndMarquee()
     {
-        _isMarqueeSelecting = false;
-        _marqueeScrollTimer?.Stop();
-        _marqueeScrollDir = 0;
-        SelectionRect.Visibility = Visibility.Collapsed;
-        ThumbList.ReleaseMouseCapture();
+        if (_endingMarquee) return;   // ReleaseMouseCapture 会同步回调 LostMouseCapture，别递归
+        _endingMarquee = true;
+        try
+        {
+            _isMarqueeSelecting = false;
+            _marqueeRect = Rect.Empty;
+            _marqueeScrollTimer?.Stop();
+            _marqueeScrollDir = 0;
+            SelectionRect.Visibility = Visibility.Collapsed;
+            ThumbList.ReleaseMouseCapture();
+        }
+        finally
+        {
+            _endingMarquee = false;
+        }
     }
+
+    /// <summary>
+    /// 鼠标捕获丢了（窗口失焦、别的控件抢走、指针在窗口外松开）→ 立刻收掉框选。
+    /// 以前没有这个处理，框选状态会一直挂着，后续单击就被当成「从旧起点拖到这里的框选」，
+    /// 一点第三张连前面几张一起选中。
+    /// </summary>
+    private void OnThumbLostCapture(object sender, MouseEventArgs e) => EndMarquee();
 
     private void UpdateMarqueeRect(Rect rect)
     {
@@ -928,10 +981,10 @@ public partial class MainWindow : Window
                 if (!container.IsSelected)
                     container.IsSelected = true;
             }
-            else if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control) &&
-                     !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
+            else if (!_marqueeAdditive)
             {
-                // 无修饰键时，框内不包含的项取消选择（实时反映）
+                // 替换式框选（只有普通浏览里不按修饰键时才会走到这里）：
+                // 框内不包含的项取消选择，实时反映
                 if (container.IsSelected)
                     container.IsSelected = false;
             }
@@ -1386,6 +1439,55 @@ public partial class MainWindow : Window
 
     private int _tapDeletedCount;
 
+    /// <summary>
+    /// 点删模式下「删掉一张之后还要保住的选择」，存 id 而不是对象：
+    /// 删文件会触发文件夹监视器重扫，列表整表重建（ReplaceAll→Reset），
+    /// 重建出来的是全新的 ViewModel，旧引用一个都对不上。
+    /// </summary>
+    private HashSet<long>? _restoreSelectionIds;
+    private DateTime _restoreSelectionAt;
+
+    private void OnMediaItemsCollectionChanged(object? sender,
+        System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        => RestoreSelectionByIds();
+
+    /// <summary>
+    /// 按 id 把删除前的勾选恢复回来。
+    ///
+    /// 为什么要「反复补」：删一个文件会引出两次列表变动 —— 先是 MediaItems.Remove（同步，
+    /// Selector 立刻清空选择），紧接着文件夹监视器重扫再来一次整表 ReplaceAll。
+    /// 所以名单在 3 秒内一直有效，每次变动后只在「选择确实被清空了」时补回来，
+    /// 用户自己手动取消勾选不会被打扰（那种情况选择并不为空）。
+    /// </summary>
+    private void RestoreSelectionByIds()
+    {
+        var ids = _restoreSelectionIds;
+        if (ids is null || ids.Count == 0) return;
+        if ((DateTime.UtcNow - _restoreSelectionAt).TotalSeconds > 3)
+        {
+            _restoreSelectionIds = null;
+            return;
+        }
+
+        var alive = _viewModel.MediaItems.Where(m => ids.Contains(m.Id)).ToList();
+        if (alive.Count == 0) return;          // 列表还没填回来，等下一次变动
+
+        // 不要在事件里判断「是不是已经被清空了」——Selector 的清理往往排在我们后面，
+        // 那时候看还是满的，等它清完就没人再补了。统一推到布局跑完再核对。
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_tapDeleteMode) return;
+            var alive2 = alive.Where(m => ThumbList.Items.Contains(m)).ToList();
+            if (alive2.Count == 0) return;
+            if (alive2.All(m => ThumbList.SelectedItems.Contains(m)) && ThumbList.SelectedItems.Count == alive2.Count)
+                return;                        // 已经是想要的样子，别动
+            ThumbList.SelectedItems.Clear();
+            foreach (var m in alive2)
+                ThumbList.SelectedItems.Add(m);
+        }), DispatcherPriority.Loaded);
+    }
+
+
     private void UpdateSelectionUi()
     {
         // XAML 加载期这个事件可能先于后面几个字段赋值触发，逐个判空
@@ -1440,6 +1542,29 @@ public partial class MainWindow : Window
         }
     }
 
+    private static readonly Color ThumbSelNormal = Color.FromRgb(0x3B, 0x82, 0xF6);
+    private static readonly Color ThumbSelDelete = Color.FromRgb(0xF5, 0x8C, 0x2E);
+
+    /// <summary>
+    /// 切换缩略图选中色：日常勾选是蓝，删除模式是琥珀。
+    /// 刻意**不复用蓝色** —— 删除是不可逆操作（进回收站），颜色必须和平时挑图一眼分得开；
+    /// 原来两种状态用的是同一个 WPF 默认高亮，深色主题下压根看不出选没选。
+    /// </summary>
+    private void SetThumbSelectionAccent(bool deleteMode)
+    {
+        try
+        {
+            var brush = new SolidColorBrush(deleteMode ? ThumbSelDelete : ThumbSelNormal);
+            brush.Freeze();
+            // 换的是 Window.Resources 里的条目；XAML 里那两处是 DynamicResource，会立刻重取
+            Resources["ThumbSelectionBrush"] = brush;
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "切换缩略图选中色失败");
+        }
+    }
+
     /// <summary>进入删除模式：不删任何文件，只是把「单击」的语义换成删除 / 打勾。</summary>
     private void EnterTapDeleteMode()
     {
@@ -1451,6 +1576,7 @@ public partial class MainWindow : Window
         ThumbList.SelectedItems.Clear();
         if (TapDeleteCount != null) TapDeleteCount.Text = "";
         _viewModel.BeginTapDeleteSession();
+        SetThumbSelectionAccent(deleteMode: true);
         UpdateSelectionUi();
     }
 
@@ -1460,6 +1586,7 @@ public partial class MainWindow : Window
         _tapDeleteMode = false;
         ThumbList.SelectedItems.Clear();
         _viewModel.EndTapDeleteSession();
+        SetThumbSelectionAccent(deleteMode: false);
         UpdateSelectionUi();
     }
 
