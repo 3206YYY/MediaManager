@@ -221,21 +221,23 @@
                 <Button x:Name="PluginButton" DockPanel.Dock="Right" Content="🧩 插件" Margin="10,0,0,0"
                         Visibility="Collapsed" Click="OnPluginMenuClick"
                         ToolTip="由插件提供的扩展功能" />
-                <Button DockPanel.Dock="Right" Content="🔄 刷新" Command="{Binding RefreshCommand}" />
-                <Button DockPanel.Dock="Right" Content="🗂 去重" Click="OnFindDuplicates" />
-                <!-- 批量删除：它是「启用/退出删除模式」的开关，永远可点，绝不能置灰。
-                     用户直觉是「我点了这个功能，就能点谁删谁」，而不是「先学会 Ctrl 多选才配用」。
-                       · 没选中、模式未开 → 点它 = 进入删除模式（不删任何东西）
-                       · 模式已开       → 点它 = 退出删除模式
-                       · 已选中 N 项     → 点它 = 走 Delete 键那套 BatchDeleteAsync（确认 → 回收站 → 撤销）
+                <Button DockPanel.Dock="Right" Content="🔄 刷新" Margin="0,0,8,0"
+                        Command="{Binding RefreshCommand}" />
+                <Button DockPanel.Dock="Right" Content="🗂 去重" Margin="0,0,8,0" Click="OnFindDuplicates" />
+                <!-- 批量删除：只做「进入 / 退出删除模式」这一件事，永远可点，绝不置灰。
+                     曾经它还兼管「已选中 N 项 → 直接删掉」，结果是用户一选中图片，这个按钮
+                     就变成蓝底「删除选中的 2 项」，看起来像删除模式已经被启动了 —— 实际只是
+                     换了个文案。一个按钮背三种语义，怎么解释都绕，所以拆开：
+                       · 顶部这个   = 开 / 关删除模式（开着时红底「退出删除模式」）
+                       · 底部悬浮条 = 删除当前选中的 N 项（这里才有数字，才叫「确认删除」）
                      状态由代码写进 Tag，样式触发器按 Tag 换色（DynamicResource，切主题不脱色）。
                      图标用矢量 Path 而不是 🗑 emoji：U+1F5D1 在不少 Windows 字体里没有字形，
                      实测会渲染成一个空心方框。Content 是自绘面板时 UIA 读不到文字，
                      AutomationProperties.Name 必须动态维护。 -->
-                <Button x:Name="BatchDeleteButton" DockPanel.Dock="Right" Margin="0,0,10,0"
+                <Button x:Name="BatchDeleteButton" DockPanel.Dock="Right" Margin="0,0,8,0"
                         Tag="idle" Click="OnBatchDelete"
                         AutomationProperties.Name="批量删除"
-                        ToolTip="点一下开启「删除模式」：之后单击文件即可移入回收站（5 秒内可撤销）。也可以先 Ctrl / Shift 多选、Ctrl+A 全选，再点这里或按 Delete 批量删。">
+                        ToolTip="进入删除模式：之后单击文件即可打勾 / 移入回收站（5 秒内可撤销）。再点一下退出。">
                     <StackPanel Orientation="Horizontal">
                         <Viewbox Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform">
                             <Path Data="M3 6 H21 M8 6 V4 H16 V6 M5 6 L6 21 H18 L19 6 M10 10 V17 M14 10 V17"
@@ -248,12 +250,6 @@
                     <Button.Style>
                         <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                             <Style.Triggers>
-                                <Trigger Property="Tag" Value="selected">
-                                    <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
-                                    <Setter Property="Foreground" Value="White" />
-                                    <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
-                                    <Setter Property="FontWeight" Value="SemiBold" />
-                                </Trigger>
                                 <Trigger Property="Tag" Value="mode">
                                     <Setter Property="Background" Value="#B42318" />
                                     <Setter Property="Foreground" Value="White" />
@@ -264,7 +260,8 @@
                         </Style>
                     </Button.Style>
                 </Button>
-                <Button DockPanel.Dock="Right" Content="扫描" Command="{Binding ScanAllCommand}" />
+                <Button DockPanel.Dock="Right" Content="扫描" Margin="0,0,8,0"
+                        Command="{Binding ScanAllCommand}" />
                 <Button DockPanel.Dock="Right" Content="👁 快速查看" Margin="0,0,10,0" Click="OnOpenFile"
                         ToolTip="直接打开单个文件预览，不加入媒体库（也可把文件拖进窗口）" />
                 <Button DockPanel.Dock="Right" Content="＋ 添加文件夹" Margin="0,0,10,0"
@@ -951,11 +948,11 @@
                 <Button Content="📁 批量分类" Click="OnBatchCategory" Margin="0,0,8,0"
                         ToolTip="把选中的文件一次加入某个分类" />
                 <!-- 删除按钮和顶部同款矢量图标；文字 / UIA 名称由 UpdateSelectionUi 同步 -->
-                <Button x:Name="SelectionBarDeleteButton" Click="OnBatchDelete" MinWidth="160"
+                <Button x:Name="SelectionBarDeleteButton" Click="OnDeleteSelected" MinWidth="160"
                         FontWeight="SemiBold" AutomationProperties.Name="删除选中的 0 项"
                         Background="{DynamicResource PrimaryBrush}" Foreground="White"
                         BorderBrush="{DynamicResource PrimaryBrush}"
-                        ToolTip="和顶部「批量删除」/ Delete 键完全一样：确认后进回收站，5 秒内可撤销">
+                        ToolTip="删除当前选中的文件：确认后进回收站，5 秒内可撤销（和 Delete 键一样）">
                     <StackPanel Orientation="Horizontal">
                         <Viewbox Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform">
                             <Path Data="M3 6 H21 M8 6 V4 H16 V6 M5 6 L6 21 H18 L19 6 M10 10 V17 M14 10 V17"

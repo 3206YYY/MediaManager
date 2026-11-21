@@ -864,10 +864,17 @@ public partial class SettingsWindow : Window
             {
                 case ShortcutState.Current:
                     DesktopShortcutButton.Content = "更新桌面图标";
-                    DesktopShortcutStateText.Text = "✅ 桌面上已有图标，指向当前这个程序。";
+                    // 不再写「指向当前这个程序」：从 bin\Debug 跑起来时，图标指向的是
+                    // 用户装的那一份（见 DesktopShortcutService.PreferredTarget），
+                    // 直说路径比说「当前程序」更不容易让人误会。
+                    DesktopShortcutStateText.Text = string.IsNullOrEmpty(info.Target)
+                        ? "✅ 桌面上已有图标。"
+                        : $"✅ 桌面上已有图标，指向 {info.Target}。";
                     break;
 
                 case ShortcutState.Stale:
+                    // Current 已经包含「指向任意一份真实存在的副本」，所以走到这里
+                    // 只剩两种：读不出目标，或者目标被删了 / 目录被搬走了。
                     DesktopShortcutButton.Content = "修复桌面图标";
                     DesktopShortcutStateText.Text = string.IsNullOrEmpty(info.Target)
                         ? "⚠ 桌面图标存在，但读不出它指向哪儿，点右边重建一个。"
@@ -893,9 +900,14 @@ public partial class SettingsWindow : Window
             var lnk = DesktopShortcutService.Create();
             RefreshDesktopShortcutState();
 
+            // 写进去的和「当前跑的」可能不是同一个（开发构建会优先指到安装版），
+            // 所以回读一次，别让提示框说谎
+            var target = DesktopShortcutService.ReadTarget(lnk)
+                         ?? DesktopShortcutService.ExecutablePath;
+
             CustomMessageBox.Success(
                 $"桌面图标已就位：{Path.GetFileNameWithoutExtension(lnk)}\n\n"
-                + $"指向：{DesktopShortcutService.ExecutablePath}\n\n"
+                + $"指向：{target}\n\n"
                 + "以后换了目录，只要再点一次这个按钮（或直接启动程序，它会自己修）。",
                 "已创建");
         }

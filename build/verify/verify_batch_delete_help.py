@@ -259,9 +259,10 @@ def main():
             time.sleep(3)
 
         def batch_btn():
+            # 顶部按钮在 v1.4.8 之后只有两种文案：批量删除 / 退出删除模式。
+            # 悬浮条上那个「删除选中的 N 项」是另一个按钮（真的去删），不能混进来。
             return find_ctrl(win, "ButtonControl",
-                             lambda s: s == "批量删除" or s.startswith("删除选中的")
-                             or s == "退出删除模式")
+                             lambda s: s == "批量删除" or s == "退出删除模式")
 
         def grid_items():
             """网格里可见的列表项；优先按文件名认，避开右侧详情面板的列表项。"""
@@ -481,7 +482,10 @@ def main():
 
         b = batch_btn()
         check("选中后按钮可点", b is not None and is_enabled(b))
-        check("按钮动态显示数量", b is not None and name_of(b) == "删除选中的 5 项",
+        # v1.4.8：顶部按钮不再跟着选中数量改文案。以前它一变蓝写「删除选中的 5 项」，
+        # 用户以为删除模式被自己启动了。现在数量只出现在悬浮条上。
+        check("选中后顶部按钮仍写着「批量删除」（不被选中改文案）",
+              b is not None and name_of(b) == "批量删除",
               b.Name if b is not None else "None")
         sel_text = find_ctrl(win, "TextControl", lambda s: s == "已选中 5 项")
         check("悬浮条出现「已选中 5 项」", sel_text is not None and not is_offscreen(sel_text))
@@ -515,7 +519,7 @@ def main():
         sel_text = find_ctrl(win, "TextControl", lambda s: s.startswith("已选中 "))
         check("取消选择后悬浮条收起", sel_text is None or is_offscreen(sel_text))
 
-        # ---------- D 再全选 → 点顶部按钮 → 完整删除链路 ----------
+        # ---------- D 再全选 → 点悬浮条删除 → 完整删除链路 ----------
         for idx, it in enumerate(items[:N]):
             try:
                 if idx == 0:
@@ -527,14 +531,17 @@ def main():
             time.sleep(0.12)
         time.sleep(1)
         b = batch_btn()
-        check("有选中时按钮仍是「删除选中的 5 项」",
-              b is not None and name_of(b) == "删除选中的 5 项",
+        check("有选中时顶部按钮仍是「批量删除」", b is not None and name_of(b) == "批量删除",
               name_of(b) if b is not None else "None")
-        if b is not None and is_enabled(b):
-            click(hwnd, b)
+
+        # 删除入口是底部悬浮条（顶部那个只负责开关删除模式）
+        bar_del = find_ctrl(win, "ButtonControl", lambda s: s == "删除选中的 5 项")
+        check("悬浮条上有「删除选中的 5 项」", bar_del is not None)
+        if bar_del is not None:
+            click(hwnd, bar_del)
         time.sleep(1.5)
         dlg = find_window("确认删除")
-        check("旧批量删除链路仍在：点按钮弹出「确认删除」弹窗", len(dlg) > 0)
+        check("点悬浮条删除会弹「确认删除」", len(dlg) > 0)
         if dlg:
             dwin = uia.ControlFromHandle(dlg[0])
             ok_btn = find_ctrl(dwin, "ButtonControl", lambda s: s == "删除")

@@ -67,6 +67,80 @@ public static class DesktopShortcutService
     /// <summary>当前程序路径（与右键集成共用同一套取值逻辑）。</summary>
     public static string ExecutablePath => ShellIntegrationService.ExecutablePath;
 
+    /// <summary>安装版的位置（安装包一直装到这里，和 InstallLocation 一致）。</summary>
+    public static string InstalledExe => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "Programs", "MediaManager", ExeFileName);
+
+    /// <summary>
+    /// 桌面图标该指向哪个 exe。
+    /// <para>
+    /// 开发构建（<c>bin\Debug</c>、<c>bin\Release</c>）下优先指向<b>最新的一份发布包</b>
+    /// （<c>dist\*\MediaManager.App.exe</c>），其次才是安装版，最后才退回自己。
+    /// 原因：开发目录会被 <c>dotnet clean</c>、publish 的「移走旧目录」反复搬动，
+    /// 指过去下次清理就废 —— 用户形容成「你每次改完我桌面图标就用不了了」。
+    /// 发布包是给用户用的那份，指它最稳。
+    /// </para>
+    /// <para>
+    /// 注意：这只在<b>图标已经失效</b>时才会被用到（<see cref="EnsureUpToDate"/> 里
+    /// 目标是别的还能用的副本就原样保留），所以用户自己指到哪儿不会被抢走。
+    /// 自动化验证用 <c>MM_SHORTCUT_USE_SELF=1</c> 强制指向自身。
+    /// </para>
+    /// </summary>
+    private static string PreferredTarget()
+    {
+        var exe = ExecutablePath;
+
+        if (Environment.GetEnvironmentVariable("MM_SHORTCUT_USE_SELF") == "1") return exe;
+        if (!IsDevBuild(exe)) return exe;
+
+        return FindNewestPublished() ?? (File.Exists(InstalledExe) ? InstalledExe : exe);
+    }
+
+    /// <summary>这个 exe 是不是从 bin\Debug / bin\Release 跑起来的开发构建。</summary>
+    private static bool IsDevBuild(string exe)
+    {
+        var dir = Path.GetDirectoryName(exe) ?? string.Empty;
+        return dir.Contains(@"\bin\Debug\", StringComparison.OrdinalIgnoreCase)
+            || dir.Contains(@"\bin\Release\", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 往上找 <c>dist\</c>，取里面最新的一个 MediaManager.App.exe。
+    /// 找不到返回 null（正式安装版没有 dist 目录，正常）。
+    /// </summary>
+    private static string? FindNewestPublished()
+    {
+        try
+        {
+            var dir = Path.GetDirectoryName(ExecutablePath) is { Length: > 0 } d
+                ? new DirectoryInfo(d)
+                : null;
+
+            for (var i = 0; i < 6 && dir != null; i++)
+            {
+                var dist = Path.Combine(dir.FullName, "dist");
+                if (Directory.Exists(dist))
+                {
+                    return Directory.EnumerateFiles(dist, ExeFileName, SearchOption.AllDirectories)
+                        .Select(p => new FileInfo(p))
+                        .Where(f => f.Exists)
+                        .OrderByDescending(f => f.LastWriteTimeUtc)
+                        .Select(f => f.FullName)
+                        .FirstOrDefault();
+                }
+
+                dir = dir.Parent;
+            }
+        }
+        catch
+        {
+            // 没权限 / 路径怪：当没找到
+        }
+
+        return null;
+    }
+
     /// <summary>默认快捷方式路径（桌面 + <see cref="FileName"/>）。</summary>
     public static string DefaultPath(string? desktopDir = null)
         => Path.Combine(desktopDir ?? DesktopDirectory, FileName);
@@ -78,17 +152,16 @@ public static class DesktopShortcutService
     public static ShortcutInfo Inspect(string? desktopDir = null)
     {
         var dir = desktopDir ?? DesktopDirectory;
-        var exe = ExecutablePath;
 
         try
         {
             var mine = DefaultPath(dir);
             if (File.Exists(mine))
-                return Judge(mine, exe);
+                return Judge(mine);
 
             foreach (var lnk in Directory.EnumerateFiles(dir, "*.lnk"))
             {
-                if (FindOwnShortcut(lnk, out _)) return Judge(lnk, exe);
+                if (FindOwnShortcut(lnk, out _)) return Judge(lnk);
             }
         }
         catch
@@ -121,7 +194,7 @@ public static class DesktopShortcutService
             }
         }
 
-        Write(path, ExecutablePath);
+        Write(path, PreferredTarget());
         return path;
     }
 
@@ -134,7 +207,7 @@ public static class DesktopShortcutService
         var dir = desktopDir ?? DesktopDirectory;
         if (!Directory.Exists(dir)) return false;
 
-        var exe = ExecutablePath;
+        var exe = PreferredTarget();
         var fixedAny = false;
 
         try
@@ -178,13 +251,14 @@ public static class DesktopShortcutService
 
     // ------------------------------------------------------------------ 内部
 
-    private static ShortcutInfo Judge(string lnkPath, string exe)
+    private static ShortcutInfo Judge(string lnkPath)
     {
         var target = ReadTarget(lnkPath);
-        var ok = target != null
-                 && File.Exists(target)
-                 && string.Equals(Path.GetFullPath(target), Path.GetFullPath(exe), StringComparison.OrdinalIgnoreCase);
 
+        // Current 的定义是「指向一个真实存在的本程序」，不是「等于当前正在跑的 exe」。
+        // 以前要求两者相等，结果从 bin\Debug 启动时，桌面那个指着 dist 里 1.4.7 的图标
+        // 会被判成 Stale，还在设置页写「那儿已经没有程序了」—— 而它双击明明能打开。
+        var ok = target != null && File.Exists(target);
         return new ShortcutInfo(ok ? ShortcutState.Current : ShortcutState.Stale, lnkPath, target);
     }
 

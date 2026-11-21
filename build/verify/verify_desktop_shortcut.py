@@ -36,6 +36,11 @@ BAK = DB + ".shortcut_bak"
 SHOT = os.path.join(ROOT, "build", "verify", "shots_desktop_shortcut.png")
 EXE_NAME = os.path.basename(APP)
 
+# v1.4.8：从 bin\Debug 跑起来时，程序会把桌面图标优先指到「已安装的那一份」，
+# 避免开发目录一清理图标就废。验证要的是「指向自身」，用这个开关强制回来 ——
+# 否则断言取决于这台机器上有没有装过正式版。
+os.environ["MM_SHORTCUT_USE_SELF"] = "1"
+
 FAKE_DESKTOP = tempfile.mkdtemp(prefix="mm_desktop_")
 LNK = os.path.join(FAKE_DESKTOP, "媒体管理器.lnk")
 

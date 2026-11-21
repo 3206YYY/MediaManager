@@ -58,30 +58,41 @@
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="14,10">
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="＋ 写一篇" Padding="14,6" Click="OnNewEntry" />
-                <Button x:Name="YearToggleButton" DockPanel.Dock="Right" Content="📅 年视图"
-                        Style="{StaticResource GhostButton}" Padding="12,6" Margin="8,0,0,0"
-                        Click="OnToggleYearView"
-                        ToolTip="一次看完整年 12 个月：有回忆的月份会亮起来，点一下就跳过去" />
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="📔 日记" FontSize="18" FontWeight="Bold"
                                Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" />
                     <TextBlock x:Name="TotalText" Margin="10,0,0,0" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                    <!-- 视图切换贴在日历标题这一行：它切换的是左边这栏，
+                         飞在窗口右上角会让人以为它跟「写一篇」是一伙的。 -->
+                    <Button x:Name="YearToggleButton" Content="📅 年视图"
+                            Style="{StaticResource GhostButton}" Padding="10,4" Margin="12,0,0,0"
+                            VerticalAlignment="Center"
+                            Click="OnToggleYearView"
+                            ToolTip="一次看完整年：每个月里都标出具体哪几天有回忆，点某一天直接跳过去" />
                 </StackPanel>
             </DockPanel>
         </Border>
 
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="330" />
+                <!-- 月视图 330 就够（7 列 × 42px）；年视图要放 12 个小月历，
+                     宽度由代码在 330 / 1.6* 之间切。 -->
+                <ColumnDefinition x:Name="CalendarColumn" Width="330" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <!-- 左：月历 / 年视图（共用一套翻页标题栏） -->
             <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
-                <StackPanel Margin="14,12,14,12">
-                    <DockPanel Margin="0,0,0,10">
+                <Grid Margin="14,12,14,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <!-- 年视图内容比一屏高时自己滚；月视图本来就是定高 42 格，不受影响 -->
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0,0,0,10">
                         <Button DockPanel.Dock="Right" Content="今天" Style="{StaticResource GhostButton}"
                                 Click="OnTodayClick" />
                         <Button DockPanel.Dock="Right" Content="▶" Style="{StaticResource GhostButton}"
@@ -94,7 +105,7 @@
                     </DockPanel>
 
                     <!-- 月视图 -->
-                    <StackPanel x:Name="MonthPanel">
+                    <StackPanel x:Name="MonthPanel" Grid.Row="1">
                         <UniformGrid x:Name="WeekHeader" Columns="7" Margin="0,0,0,4" />
                         <UniformGrid x:Name="DayGrid" Columns="7" Rows="6" />
 
@@ -103,15 +114,19 @@
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
 
-                    <!-- 年视图：12 个方块（3 列 × 4 行），子元素由代码生成 -->
-                    <StackPanel x:Name="YearPanel" Visibility="Collapsed">
-                        <UniformGrid x:Name="MonthGrid" Columns="3" Rows="4" />
+                    <!-- 年视图：12 个月，每个月里带一个迷你日历（具体日期由代码填） -->
+                    <ScrollViewer x:Name="YearScroll" Grid.Row="1" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="YearPanel">
+                            <UniformGrid x:Name="MonthGrid" Columns="3" />
 
-                        <TextBlock x:Name="YearHint" TextWrapping="Wrap" FontSize="11.5" Margin="2,14,2,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   Text="亮起来的月份写过回忆，数字是当月篇数。点一下跳到那个月的日历。" />
-                    </StackPanel>
-                </StackPanel>
+                            <TextBlock x:Name="YearHint" TextWrapping="Wrap" FontSize="11.5" Margin="2,14,2,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="每一天都在上面，有回忆的日期会亮起来。点某一天直接跳过去。" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
             </Border>
 
             <!-- 右：当天回忆 -->

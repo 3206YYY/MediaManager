@@ -314,10 +314,11 @@ def main():
             return (l + 30, min(b + 40, b + 120))
 
         def batch_btn():
+            # 只认顶部那个开关；底部悬浮条的「删除选中的 N 项」是另一个按钮
             for c in collect(win, maxd=16):
                 if c.ControlTypeName == "ButtonControl":
                     s = name_of(c)
-                    if s in ("批量删除", "退出删除模式") or s.startswith("删除选中的"):
+                    if s in ("批量删除", "退出删除模式"):
                         return c
             return None
 
@@ -365,8 +366,9 @@ def main():
         check("普通选中环是蓝色", b1 >= 5 and b1 > o1 * 2, "蓝 %d / 琥珀 %d" % (b1, o1))
         grab_shot(hwnd, SHOT_NORMAL)
 
-        # 先清空选择：这个按钮是三态的 —— 选中状态下点它 = 「删除选中的 N 项」，
-        # 会直接弹删除确认，根本进不了删除模式（第一次跑就是这么被骗的）。
+        # 先清空选择再点按钮，保证点下去一定是「进入删除模式」。
+        # （v1.4.8 起顶部按钮不再兼管「删选中的 N 项」，有选中也不会变文案，
+        #   但清空这一步留着，测试的行为才和用户「先挑图再开模式」的路径一致。）
         bp = blank_point()
         if bp:
             native_click(hwnd, *bp)

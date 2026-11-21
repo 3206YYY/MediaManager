@@ -386,6 +386,25 @@
                                 </DockPanel>
                             </StackPanel>
                         </Border>
+
+                        <!-- 私密空间的「能防到什么程度」从密码窗挪到这里：
+                             那句话本来就是为了讲实话，但放在每次设密码的窗口里，等于在用户
+                             正要保护自己时说「这没啥用」，观感很差。放在设置里，想了解的人
+                             会自己翻到，也随时能把文件挪去真加密工具。 -->
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="私密空间的安全性" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,8" TextWrapping="Wrap">
+                                    <Run Text="它是一道「防顺手」的门，不是加密保险箱：" /><LineBreak />
+                                    <Run Text="· 密码只在进入私密空间时校验，哈希存在本地数据库里，删掉那条记录即可绕过；" /><LineBreak />
+                                    <Run Text="· 文件本身不加密，只是被移到数据目录下的 Vault 文件夹；" /><LineBreak />
+                                    <Run Text="· 能操作这台电脑文件的人，绕开程序直接翻 Vault 目录就能拿到。" /><LineBreak />
+                                    <Run Text="所以它挡的是「别人借你电脑时随手点开」。真要防取证，请把这些文件放进 VeraCrypt 这类加密容器。" />
+                                </TextBlock>
+                                <TextBlock Style="{StaticResource Hint}" TextWrapping="Wrap"
+                                           Text="不设密码也能用：整个私密空间照旧「藏起来」，主界面、搜索、文件夹视图都看不到。忘了密码也不会丢文件 —— 去数据目录把 Vault 文件夹拷出来即可。" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
                     <!-- ================ 快捷键 ================ -->

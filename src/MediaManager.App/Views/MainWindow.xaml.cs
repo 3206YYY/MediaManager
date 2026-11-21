@@ -1572,39 +1572,32 @@ public partial class MainWindow : Window
         var n = ThumbList?.SelectedItems.Count ?? 0;
         var has = n > 0;
 
-        string caption, tag;
-        if (_tapDeleteMode)
-        {
-            caption = "退出删除模式";
-            tag = "mode";
-        }
-        else if (has)
-        {
-            caption = $"删除选中的 {n} 项";
-            tag = "selected";
-        }
-        else
-        {
-            caption = "批量删除";
-            tag = "idle";
-        }
+        // 顶部按钮只回答一个问题：删除模式开没开。
+        // 以前它还有第三个状态（有选中就变蓝、写「删除选中的 N 项」），用户看到蓝底
+        // 以为程序自己进了删除模式 —— 那只是换了个文案，但视觉上像一个被按下的开关。
+        // 现在把「删选中的 N 项」整个交给底部悬浮条，顶部永远只有两种样子。
+        var topCaption = _tapDeleteMode ? "退出删除模式" : "批量删除";
+        var topTag = _tapDeleteMode ? "mode" : "idle";
+
+        // 底部条才是「确认删除」的入口，数字只在这里出现
+        var barCaption = has ? $"删除选中的 {n} 项" : "删除选中的 0 项";
 
         if (BatchDeleteButton != null)
         {
-            BatchDeleteButton.Tag = tag;
-            if (BatchDeleteCaption != null) BatchDeleteCaption.Text = caption;
+            BatchDeleteButton.Tag = topTag;
+            if (BatchDeleteCaption != null) BatchDeleteCaption.Text = topCaption;
             // Content 是矢量图标 + TextBlock 的面板，UIA 不会自动取到文字，
             // 屏幕阅读器和实机验证脚本都靠这个名称。
-            AutomationProperties.SetName(BatchDeleteButton, caption);
+            AutomationProperties.SetName(BatchDeleteButton, topCaption);
         }
         if (SelectionBar != null)
             SelectionBar.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
         if (SelectionCountText != null)
             SelectionCountText.Text = $"已选中 {n} 项";
         if (SelectionBarDeleteCaption != null)
-            SelectionBarDeleteCaption.Text = has ? caption : "删除选中的 0 项";
+            SelectionBarDeleteCaption.Text = barCaption;
         if (SelectionBarDeleteButton != null)
-            AutomationProperties.SetName(SelectionBarDeleteButton, has ? caption : "删除选中的 0 项");
+            AutomationProperties.SetName(SelectionBarDeleteButton, barCaption);
         if (TapDeleteBar != null)
             TapDeleteBar.Visibility = _tapDeleteMode ? Visibility.Visible : Visibility.Collapsed;
         if (TapDeleteHint != null)
@@ -1678,9 +1671,9 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 顶部按钮三态：模式已开 → 退出；有选中 → 走 Delete 键那套批量删除；
-    /// 没选中 → 启用删除模式（原来的「置灰点不动」就是小白卡住的地方）。
-    /// 悬浮条 / Delete 键 / 右键菜单的删除能力全部原样保留，没有删掉任何旧功能。
+    /// 顶部按钮：只负责开 / 关删除模式，永不直接删文件。
+    /// 这样「我选中了几张图」和「删除模式开没开」彻底解耦 —— 选中不会再让按钮
+    /// 变成另一个颜色和文案，也就不会有人以为自己按到了开关。
     /// </summary>
     private void OnBatchDelete(object sender, RoutedEventArgs e)
     {
@@ -1690,13 +1683,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        EnterTapDeleteMode();
+    }
+
+    /// <summary>底部悬浮条：删除当前选中的 N 项。和 Delete 键走同一条 BatchDeleteAsync。</summary>
+    private async void OnDeleteSelected(object sender, RoutedEventArgs e)
+    {
         var items = GetSelectedItems();
-        if (items.Count == 0)
-        {
-            EnterTapDeleteMode();
-            return;
-        }
-        _ = _viewModel.BatchDeleteAsync(items);
+        if (items.Count == 0) return;
+        await _viewModel.BatchDeleteAsync(items);
     }
 
     private void OnClearSelection(object sender, RoutedEventArgs e)

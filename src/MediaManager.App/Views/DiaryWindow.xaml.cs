@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -22,7 +23,8 @@ namespace MediaManager.App.Views;
 /// 左边栏有两种视图，共用同一套翻页标题栏：
 /// <list type="bullet">
 /// <item><b>月视图</b>：42 格日历，有内容的日期带一个小圆点；</item>
-/// <item><b>年视图</b>：12 个方块，一眼看完整年概况，点某个月跳回月视图。</item>
+/// <item><b>年视图</b>：12 个月，每个月里带一个迷你日历（有回忆的日期照样点亮），
+///   点某一天直接跳回月视图那一天；左栏会临时变宽，把右侧的空白借过来用。</item>
 /// </list>
 /// </summary>
 public partial class DiaryWindow : Window
@@ -386,16 +388,17 @@ public partial class DiaryWindow : Window
         {
             var raw = await _diary.GetDateCountsAsync(from, to);
 
+            // 年视图的每个月里要画出「哪几天有回忆」，所以按天的字典也得留着
+            // （月视图那份只覆盖一屏，这里换成整年；切回月视图时 ReloadMonthAsync 会重新赋值）
+            _counts = new Dictionary<string, int>(raw);
+
             // 「某天几篇」→「某月几篇」，跨年 / 解析不了的行都在 Core 里被剔掉（有单测盯着）
             foreach (var pair in DiaryYearSummary.AggregateByMonth(raw, _year))
                 _monthCounts[pair.Key] = pair.Value;
-
-            YearHint.Text = DiaryYearSummary.Total(_monthCounts) == 0
-                ? "这一年还没有回忆。换一年看看，或者点右上角「＋ 写一篇」。"
-                : "亮起来的月份写过回忆，数字是当月篇数。点一下跳到那个月的日历。";
         }
         catch (Exception ex)
         {
+            _counts = new Dictionary<string, int>();
             YearHint.Text = "读取失败：" + ex.Message;
         }
 
@@ -407,69 +410,152 @@ public partial class DiaryWindow : Window
         var total = DiaryYearSummary.Total(_monthCounts);
         MonthTitle.Text = total > 0 ? $"{_year} 年 · 共 {total} 篇" : $"{_year} 年";
 
+        YearHint.Text = total == 0
+            ? "这一年还没有回忆。翻页换一年，或者点上面「＋ 写一篇」。"
+            : "有回忆的日期会亮起来。点某一天直接跳过去，点月份的空白处进那个月的日历。";
+
         MonthGrid.Children.Clear();
         for (var month = 1; month <= 12; month++)
             MonthGrid.Children.Add(CreateMonthCell(month));
     }
 
+    /// <summary>
+    /// 年视图里的一个月：标题（月份 + 篇数）加一个 7×6 的迷你日历。
+    /// <para>
+    /// 以前这里只有「11 月 / 3 篇」两个数字，用户反馈「年视图也得像月视图一样显示具体日期」——
+    /// 一年 12 格只标篇数，等于要挨个月点进去才知道哪天有东西。现在每个月都把 42 格画出来，
+    /// 有回忆的日期直接点亮，和月视图看到的是同一份 <see cref="_counts"/>。
+    /// </para>
+    /// </summary>
     private UIElement CreateMonthCell(int month)
     {
         var count = _monthCounts.GetValueOrDefault(month);
         var has = count > 0;
 
-        // 高亮色直接取主题主色：换主题时年视图跟着换，不用另配一套颜色
         var accent = (Brush("PrimaryBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0x25, 0x63, 0xEB);
         var accentBrush = new SolidColorBrush(accent);
+        accentBrush.Freeze();
 
-        // 有内容：主色淡淡铺一层底 + 主色描边，月份深色字、篇数主色字
-        // 没内容：透明底 + 主题边框，整体压成次要灰，一眼分得清哪些月是空的
-        var background = has
-            ? new SolidColorBrush(Color.FromArgb(0x33, accent.R, accent.G, accent.B))
-            : Brushes.Transparent;
-
-        var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-
-        stack.Children.Add(new TextBlock
+        // 标题行：左「11 月」，右「3 篇」
+        var header = new DockPanel { Margin = new Thickness(0, 0, 0, 2) };
+        var badge = new TextBlock
+        {
+            Text = has ? $"{count} 篇" : string.Empty,
+            FontSize = 10.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = has ? accentBrush : Brush("TextSecondaryBrush"),
+        };
+        DockPanel.SetDock(badge, Dock.Right);
+        header.Children.Add(badge);
+        header.Children.Add(new TextBlock
         {
             Text = $"{month} 月",
-            FontSize = 13,
+            FontSize = 12.5,
             FontWeight = has ? FontWeights.SemiBold : FontWeights.Normal,
-            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
             Foreground = has ? Brush("TextBrush") : Brush("TextSecondaryBrush"),
         });
 
-        stack.Children.Add(new TextBlock
-        {
-            Text = has ? $"{count} 篇" : "—",
-            FontSize = 11,
-            Margin = new Thickness(0, 3, 0, 0),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Foreground = has ? accentBrush : Brush("TextSecondaryBrush"),
-        });
+        var grid = new UniformGrid { Columns = 7 };
+        var first = new DateTime(_year, month, 1);
+        // 周一作为一周的第一天，和月视图一致
+        var offset = ((int)first.DayOfWeek + 6) % 7;
+        var start = first.AddDays(-offset);
+        for (var i = 0; i < 42; i++)
+            grid.Children.Add(CreateMiniDay(start.AddDays(i), month));
+
+        var stack = new StackPanel();
+        stack.Children.Add(header);
+        stack.Children.Add(grid);
 
         var cell = new Border
         {
-            Height = 68,
             Margin = new Thickness(3),
+            Padding = new Thickness(6, 4, 6, 5),
             CornerRadius = new CornerRadius(7),
-            Background = background,
+            Background = has
+                ? new SolidColorBrush(Color.FromArgb(0x1F, accent.R, accent.G, accent.B))
+                : Brushes.Transparent,
             BorderBrush = has ? accentBrush : Brush("BorderBrush"),
             BorderThickness = new Thickness(1),
             Child = stack,
             Cursor = Cursors.Hand,
-            Tag = month,
             ToolTip = has
                 ? $"{_year} 年 {month} 月 · {count} 篇回忆"
                 : $"{_year} 年 {month} 月 · 还没有回忆",
         };
 
-        // 悬停底色要能还原回去，所以先把原始底色存下来
+        var baseBackground = cell.Background;
         cell.MouseEnter += (_, _) => cell.Background = Brush("HoverBrush");
-        cell.MouseLeave += (_, _) => cell.Background = background;
+        cell.MouseLeave += (_, _) => cell.Background = baseBackground;
 
-        cell.MouseLeftButtonDown += async (_, _) => await JumpToMonthAsync((int)cell.Tag);
+        // 点在标题 / 边距上 = 进这个月的月视图；点具体日期由格子自己处理并吃掉事件
+        cell.MouseLeftButtonDown += async (_, _) => await JumpToMonthAsync(month);
 
         return cell;
+    }
+
+    /// <summary>年视图里的一格日期。有回忆的填主色、白字；今天加一圈描边。</summary>
+    private UIElement CreateMiniDay(DateTime date, int month)
+    {
+        var inMonth = date.Month == month && date.Year == _year;
+        var count = inMonth ? _counts.GetValueOrDefault(date.ToString("yyyy-MM-dd")) : 0;
+        var isToday = date.Date == DateTime.Today;
+
+        var accent = (Brush("PrimaryBrush") as SolidColorBrush)?.Color ?? Color.FromRgb(0x25, 0x63, 0xEB);
+        var accentBrush = new SolidColorBrush(accent);
+        accentBrush.Freeze();
+
+        var cell = new Border
+        {
+            // 15 + 1 的行高：12 个月 × 6 行要在一屏里放得下（720 高的窗口不留滚动条），
+            // 再高一档 12 月的最后一行就会被窗口底边切掉。
+            Height = 15,
+            Margin = new Thickness(0.5, 0.5, 0.5, 0.5),
+            CornerRadius = new CornerRadius(4),
+            // 非本月的格子留空：42 格是为了对齐星期，不是要展示上 / 下个月
+            Background = count > 0 ? accentBrush : Brushes.Transparent,
+            BorderBrush = isToday && count == 0 ? accentBrush : Brushes.Transparent,
+            BorderThickness = new Thickness(isToday && count == 0 ? 1 : 0),
+            Child = new TextBlock
+            {
+                Text = inMonth ? date.Day.ToString() : string.Empty,
+                FontSize = 9.5,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = count > 0 ? Brushes.White : Brush("TextSecondaryBrush"),
+            },
+            ToolTip = count > 0 ? $"{date:M 月 d 日} · {count} 篇" : null,
+        };
+
+        if (inMonth)
+        {
+            cell.Cursor = Cursors.Hand;
+            if (count == 0)
+            {
+                cell.MouseEnter += (_, _) => cell.Background = Brush("HoverBrush");
+                cell.MouseLeave += (_, _) => cell.Background = Brushes.Transparent;
+            }
+
+            cell.MouseLeftButtonDown += async (_, e) =>
+            {
+                // 必须吃掉：不然会继续冒泡到月份卡片，先跳这天再被「跳这个月」覆盖
+                e.Handled = true;
+                await JumpToDayAsync(date);
+            };
+        }
+
+        return cell;
+    }
+
+    /// <summary>点年视图里的某一天 → 切回月视图，并把那一天选中。</summary>
+    private async Task JumpToDayAsync(DateTime day)
+    {
+        _month = new DateTime(day.Year, day.Month, 1);
+        _selectedDate = day.Date;
+
+        SetYearMode(false);
+        await ReloadAsync();
     }
 
     /// <summary>点年视图里的某个月 → 切回月视图并把那个月摆到眼前。</summary>
@@ -494,7 +580,11 @@ public partial class DiaryWindow : Window
 
     /// <summary>
     /// 切换左边栏的月 / 年视图。标题栏、翻页箭头是共用的，所以这里只管
-    /// 两块面板的显隐和按钮文案 —— 不做「关掉再打开就回到月视图」之类的隐式跳转。
+    /// 两块面板的显隐、左栏宽度和按钮文案 —— 不做「关掉再打开就回到月视图」之类的隐式跳转。
+    /// <para>
+    /// 年视图把左栏从 330 撑到 1.6 份（右侧仍是 1 份）：12 个迷你月历挤在 330 宽里
+    /// 每格只有十几像素，日期根本没法看。右侧那片空白让出来，正好装得下。
+    /// </para>
     /// </summary>
     private void SetYearMode(bool on)
     {
@@ -502,14 +592,18 @@ public partial class DiaryWindow : Window
         if (on) _year = _month.Year;   // 进年视图先落到当前月份所在的年份
 
         MonthPanel.Visibility = on ? Visibility.Collapsed : Visibility.Visible;
-        YearPanel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        YearScroll.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+
+        CalendarColumn.Width = on
+            ? new GridLength(1.6, GridUnitType.Star)
+            : new GridLength(330);
 
         YearToggleButton.Content = on ? "📅 月视图" : "📅 年视图";
         YearToggleButton.ToolTip = on
             ? "回到月度日历"
-            : "一次看完整年 12 个月：有回忆的月份会亮起来，点一下就跳过去";
+            : "一次看完整年：每个月里都标出具体哪几天有回忆，点某一天直接跳过去";
 
-        FadeIn(on ? YearPanel : (UIElement)MonthPanel);
+        FadeIn(on ? (UIElement)YearScroll : MonthPanel);
     }
 
     /// <summary>切视图时淡入一下。160ms，够短，不挡手。</summary>
