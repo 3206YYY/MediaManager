@@ -14,6 +14,8 @@
   E. 状态刷新成「已有图标，指向当前这个程序」
   F. 把图标改成指向一个不存在的程序 → 重启 → 启动时自动改回来（不用进设置页）
   G. 同一个桌面里「别人的」快捷方式不被动
+  H. 去掉强制开关后，开发构建自愈挑的是「版本最高的发布副本」，
+     绝不会指到安装目录里那版更旧的（曾经优先安装版，dist 一清就退回去）
 """
 import ctypes
 import ctypes.wintypes as wt
@@ -36,9 +38,9 @@ BAK = DB + ".shortcut_bak"
 SHOT = os.path.join(ROOT, "build", "verify", "shots_desktop_shortcut.png")
 EXE_NAME = os.path.basename(APP)
 
-# v1.4.8：从 bin\Debug 跑起来时，程序会把桌面图标优先指到「已安装的那一份」，
-# 避免开发目录一清理图标就废。验证要的是「指向自身」，用这个开关强制回来 ——
-# 否则断言取决于这台机器上有没有装过正式版。
+# v1.4.8：从 bin\Debug 跑起来时，程序不会把桌面图标指向自己（开发目录会被 clean 搬走），
+# 而是指向「版本最高的那份已发布副本」。阶段 1–2 要验的是「点按钮 / 自愈就是指向当前 exe」，
+# 所以先强制回来；阶段 3 再把这个开关摘掉，验真实的那条分支。
 os.environ["MM_SHORTCUT_USE_SELF"] = "1"
 
 FAKE_DESKTOP = tempfile.mkdtemp(prefix="mm_desktop_")
@@ -80,6 +82,22 @@ def read_lnk(path):
     r = _ps("$s=(New-Object -ComObject WScript.Shell).CreateShortcut('%s');$s.TargetPath" % p)
     out = (r.stdout or "").strip()
     return out or None
+
+
+def file_version(path):
+    """exe 的文件版本号 → 可比较的元组（文件不存在 / 读不出返回空元组）。"""
+    if not path or not os.path.exists(path):
+        return ()
+    out = (_ps("(Get-Item '%s').VersionInfo.FileVersion" % path.replace("'", "''")).stdout or "").strip()
+    parts = []
+    for seg in out.split("."):
+        if seg.isdigit():
+            parts.append(int(seg))
+    return tuple(parts)
+
+
+INSTALLED = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs", "MediaManager",
+                         "MediaManager.App.exe")
 
 
 # ----------------------------------------------------------------- 进程控制
@@ -313,6 +331,32 @@ def main():
               "%r" % healed)
         check("别人的快捷方式没被动", read_lnk(someone) == r"C:\Windows\notepad.exe",
               "%r" % read_lnk(someone))
+
+        # ---- 阶段 3：摘掉强制开关，验「挑版本最高的一份」 ----
+        # 这台机器上安装目录可能还躺着 1.3.3（比 dist 里的 1.4.7 旧）。
+        # 旧逻辑「安装版优先」会把图标指到 1.3.3 —— 用户点开发现功能倒退。
+        kill_app()
+        make_lnk(LNK, stale)
+        os.environ.pop("MM_SHORTCUT_USE_SELF", None)   # launch() 会把环境原样带给子进程
+
+        launch()
+        main3 = wait_window()
+        check("第三次启动", main3 is not None)
+        time.sleep(3.5)
+
+        picked = read_lnk(LNK)
+        check("自愈后指向一份存在的本程序副本",
+              picked is not None and os.path.exists(picked)
+              and os.path.basename(picked).lower() == EXE_NAME.lower(),
+              "%r" % picked)
+
+        if os.path.exists(INSTALLED):
+            check("没指到版本更旧的安装版（不倒退）",
+                  file_version(picked) >= file_version(INSTALLED),
+                  "选中 %r，安装版 %r"
+                  % (file_version(picked), file_version(INSTALLED)))
+        else:
+            check("没指到版本更旧的安装版（本机未安装，跳过）", True, "安装目录不存在")
     finally:
         kill_app()
         if had_db:

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -75,11 +76,16 @@ public static class DesktopShortcutService
     /// <summary>
     /// 桌面图标该指向哪个 exe。
     /// <para>
-    /// 开发构建（<c>bin\Debug</c>、<c>bin\Release</c>）下优先指向<b>最新的一份发布包</b>
-    /// （<c>dist\*\MediaManager.App.exe</c>），其次才是安装版，最后才退回自己。
-    /// 原因：开发目录会被 <c>dotnet clean</c>、publish 的「移走旧目录」反复搬动，
-    /// 指过去下次清理就废 —— 用户形容成「你每次改完我桌面图标就用不了了」。
-    /// 发布包是给用户用的那份，指它最稳。
+    /// 从开发构建（<c>bin\Debug</c>、<c>bin\Release</c>）跑起来时，自己不是候选 ——
+    /// 开发目录会被 <c>dotnet clean</c>、publish 的「移走旧目录」反复搬动，指过去下次清理就废
+    /// （用户原话：「你每次改完我桌面图标就用不了了」）。所以候选只有<b>已经发布出去的那几份</b>：
+    /// <c>dist\*\MediaManager.App.exe</c> 和安装版，然后<b>按文件版本号挑最高的</b>。
+    /// </para>
+    /// <para>
+    /// <b>为什么必须比版本号，不能「安装版优先」也不能「修改时间最新」</b>：
+    /// 曾经优先安装版，而安装目录里躺着 1.3.3（比 dist 里的 1.4.7 还旧），
+    /// dist 一旦被清空，点「更新桌面图标」就把图标指回 1.3.3 —— 用户点开发现功能倒退，
+    /// 还以为新版本被删了。按版本号挑，最差也只是停在手上那版，不会往回走。
     /// </para>
     /// <para>
     /// 注意：这只在<b>图标已经失效</b>时才会被用到（<see cref="EnsureUpToDate"/> 里
@@ -94,7 +100,43 @@ public static class DesktopShortcutService
         if (Environment.GetEnvironmentVariable("MM_SHORTCUT_USE_SELF") == "1") return exe;
         if (!IsDevBuild(exe)) return exe;
 
-        return FindNewestPublished() ?? (File.Exists(InstalledExe) ? InstalledExe : exe);
+        var candidates = new List<string>(FindPublishedCopies());
+        if (File.Exists(InstalledExe)) candidates.Add(InstalledExe);
+
+        var best = candidates
+            .Select(p => (Path: p, Version: ReadFileVersion(p), Stamp: SafeWriteTime(p)))
+            .OrderByDescending(t => t.Version ?? new Version(0, 0))
+            .ThenByDescending(t => t.Stamp)
+            .Select(t => t.Path)
+            .FirstOrDefault();
+
+        return best ?? (File.Exists(InstalledExe) ? InstalledExe : exe);
+    }
+
+    /// <summary>读 exe 自带的文件版本（读不出返回 null）。ProductVersion 带 <c>+git哈希</c>，所以用 FileVersion。</summary>
+    private static Version? ReadFileVersion(string path)
+    {
+        try
+        {
+            var text = FileVersionInfo.GetVersionInfo(path).FileVersion;
+            return Version.TryParse(text, out var v) ? v : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static DateTime SafeWriteTime(string path)
+    {
+        try
+        {
+            return File.GetLastWriteTimeUtc(path);
+        }
+        catch
+        {
+            return DateTime.MinValue;
+        }
     }
 
     /// <summary>这个 exe 是不是从 bin\Debug / bin\Release 跑起来的开发构建。</summary>
@@ -106,10 +148,10 @@ public static class DesktopShortcutService
     }
 
     /// <summary>
-    /// 往上找 <c>dist\</c>，取里面最新的一个 MediaManager.App.exe。
-    /// 找不到返回 null（正式安装版没有 dist 目录，正常）。
+    /// 往上找 <c>dist\</c>，列出里面所有 MediaManager.App.exe（含子目录）。
+    /// 找不到返回空（正式安装版没有 dist 目录，正常）。
     /// </summary>
-    private static string? FindNewestPublished()
+    private static IEnumerable<string> FindPublishedCopies()
     {
         try
         {
@@ -123,11 +165,8 @@ public static class DesktopShortcutService
                 if (Directory.Exists(dist))
                 {
                     return Directory.EnumerateFiles(dist, ExeFileName, SearchOption.AllDirectories)
-                        .Select(p => new FileInfo(p))
-                        .Where(f => f.Exists)
-                        .OrderByDescending(f => f.LastWriteTimeUtc)
-                        .Select(f => f.FullName)
-                        .FirstOrDefault();
+                        .Where(File.Exists)
+                        .ToList();
                 }
 
                 dir = dir.Parent;
@@ -138,7 +177,7 @@ public static class DesktopShortcutService
             // 没权限 / 路径怪：当没找到
         }
 
-        return null;
+        return Array.Empty<string>();
     }
 
     /// <summary>默认快捷方式路径（桌面 + <see cref="FileName"/>）。</summary>
