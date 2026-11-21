@@ -123,12 +123,6 @@ public partial class MainWindow : Window
     private const double LeftSidebarWidth = 220;
     private const double RightSidebarWidth = 280;
 
-    /// <summary>把手宽度，与 SidebarCollapseHandle 样式里的 Width 保持一致。</summary>
-    private const double HandleWidth = 16;
-
-    /// <summary>收起右侧栏时把手离窗口右边多远：网格的滚动条占最右 14px，让开它才拖得动。</summary>
-    private const double CollapsedRightInset = 20;
-
     private void OnToggleLeftSidebar(object sender, RoutedEventArgs e)
         => SetSidebarCollapsed(left: true, collapsed: !_viewModel.IsLeftSidebarCollapsed);
 
@@ -144,11 +138,20 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 把「收起来了没」翻译成列宽 + 把手的落点。
+    /// 把「收起来了没」翻译成列宽 + 两套入口的显隐。
+    /// <para>
     /// 收起后列宽归零：中间栏的 * 会立刻吃满多出来的宽度，VirtualizingWrapPanel
     /// 随之重排成更多列 —— 这才是用户要的「空间大了点」，而不是面板视觉上消失。
     /// 不保留「16px 窄边放手」：实测留窄边刚好够把一行挤成少一列，和按这个按钮的
-    /// 目的正好相反。所以收起时把手靠负 margin 浮到窗口边缘，展开时退回侧栏内侧。
+    /// 目的正好相反。
+    /// </para>
+    /// <para>
+    /// <b>为什么是两个按钮而不是一个挪来挪去</b>：展开时按钮长在侧栏标题行里
+    /// （有留白、不压图、一眼能找到）；一旦收起，侧栏宽度归零，那个按钮跟着没了，
+    /// 必须另有入口 —— 于是浮层胶囊登场。两套互斥显隐，比让一个控件靠负 Margin
+    /// 在两处之间跳要干净得多（第一版正是那么做的，被用户吐槽「紧贴元素、粗暴覆盖在图上」）。
+    /// 两个控件共用同一个 AutomationId，自动化脚本按「取当前可见的那个」来点。
+    /// </para>
     /// </summary>
     private void ApplySidebarState()
     {
@@ -164,19 +167,11 @@ public partial class MainWindow : Window
         LeftSidebarColumn.Width = new GridLength(leftCollapsed ? 0 : LeftSidebarWidth);
         RightSidebarColumn.Width = new GridLength(rightCollapsed ? 0 : RightSidebarWidth);
 
-        // 展开：负 margin 把把手退回到侧栏内侧的留白上（不压照片）；
-        // 收起：贴窗口边缘，右侧再让 20px 给网格的滚动条。
-        LeftCollapseHandle.Margin = leftCollapsed
-            ? new Thickness(3, 0, 0, 0)
-            : new Thickness(-HandleWidth, 0, 0, 0);
-        RightCollapseHandle.Margin = rightCollapsed
-            ? new Thickness(0, 0, CollapsedRightInset, 0)
-            : new Thickness(0, 0, -HandleWidth, 0);
-
-        LeftCollapseHandle.Content = leftCollapsed ? "›" : "‹";
-        RightCollapseHandle.Content = rightCollapsed ? "‹" : "›";
-        LeftCollapseHandle.ToolTip = leftCollapsed ? "展开左侧栏" : "收起左侧栏，把空间让给缩略图";
-        RightCollapseHandle.ToolTip = rightCollapsed ? "展开右侧详情栏" : "收起右侧详情栏，把空间让给缩略图";
+        // 展开：标题行里的小按钮；收起：贴窗口边缘的浮层胶囊
+        LeftHeaderCollapse.Visibility = leftCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        RightHeaderCollapse.Visibility = rightCollapsed ? Visibility.Collapsed : Visibility.Visible;
+        LeftCollapseHandle.Visibility = leftCollapsed ? Visibility.Visible : Visibility.Collapsed;
+        RightCollapseHandle.Visibility = rightCollapsed ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

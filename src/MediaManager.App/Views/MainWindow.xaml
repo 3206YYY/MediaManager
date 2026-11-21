@@ -101,43 +101,75 @@
             <Setter Property="Opacity" Value="0.8" />
         </Style>
 
-        <!-- 侧栏折叠把手：贴边、垂直居中的细条，平时半透明不抢戏，指过去才亮。
-             不能用 PanelBrush 打底 —— 深色主题下 PanelBrush(#252526) 和网格底色(#1E1E1E)
-             几乎同色，第一版做出来整根把手"消失"在缩略图里（截图采样确认过）。
-             现在换成比周围亮一档的 HoverBrush + ScrollThumbBrush 勾边、TextBrush 箭头，
-             压在照片上也一眼能看见，又不至于把视线从图上拽走。 -->
-        <Style x:Key="SidebarCollapseHandle" TargetType="Button">
-            <Setter Property="Width" Value="16" />
-            <Setter Property="Height" Value="96" />
+        <!-- 侧栏折叠：两种形态各司其职。
+             展开时用 SidebarHeaderButton，就长在侧栏自己的标题行右侧 —— 有留白、不压图，
+             用户一眼能在它该在的地方找到（v1.4.8 第一版把把手浮在网格边缘，
+             贴着缩略图又压着图，被评价成「草台班子」）。
+             收起时侧栏宽度归零，头部按钮跟着没了，只剩 SidebarCollapseHandle
+             浮在窗口边缘当唯一入口；做成有阴影的胶囊，让它看起来是「浮起来的按钮」，
+             而不是一条挤在缝里的分隔线。
+             ⚠ 收起态**不要用 PanelBrush 打底**：深色主题下 PanelBrush(#252526) 与网格底色
+             (#1E1E1E) 几乎同色，第一版整根把手"消失"在缩略图里（截图采样确认过）。
+             用比周围亮一档的 HoverBrush + ScrollThumbBrush 勾边，压在照片上也看得见。 -->
+        <Style x:Key="SidebarHeaderButton" TargetType="Button">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="22" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="Opacity" Value="0.92" />
-            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" CornerRadius="8"
-                                Background="{DynamicResource HoverBrush}"
-                                BorderBrush="{DynamicResource ScrollThumbBrush}"
-                                BorderThickness="1">
+                        <Border x:Name="Bd" CornerRadius="6" Background="Transparent">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                              TextElement.FontSize="15" TextElement.FontWeight="Bold" />
+                                              TextElement.FontSize="14" TextElement.FontWeight="Bold" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush"
-                                        Value="{DynamicResource PrimaryBrush}" />
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource HoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
-                </Trigger>
-            </Style.Triggers>
+        </Style>
+
+        <!-- 收起态的浮层把手：胶囊 + 阴影，箭头用主题色常驻 —— 缩略图深浅不一，
+             灰箭头压在深色照片上就看不见了。默认 0.85，指上去亮满。 -->
+        <Style x:Key="SidebarCollapseHandle" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="92" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Opacity" Value="0.85" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" CornerRadius="12"
+                                Background="{DynamicResource HoverBrush}"
+                                BorderBrush="{DynamicResource ScrollThumbBrush}"
+                                BorderThickness="1.5">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="12" ShadowDepth="2"
+                                                  Opacity="0.45" Color="#000000" />
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              TextElement.FontSize="16" TextElement.FontWeight="Bold" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush"
+                                        Value="{DynamicResource PrimaryBrush}" />
+                                <Setter Property="Opacity" Value="1" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </Window.Resources>
 
@@ -319,16 +351,27 @@
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="6">
-                        <ToggleButton x:Name="NavToggle" IsChecked="True" Margin="8,8,8,4"
-                                      Click="OnToggleSection" Tag="Nav"
-                                      Style="{StaticResource SidebarSectionHeader}"
-                                      HorizontalAlignment="Left"
-                                      ToolTip="展开 / 收起库视图">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="NavChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
-                                <TextBlock Text=" 库" FontWeight="Bold" Style="{StaticResource SidebarText}" />
-                            </StackPanel>
-                        </ToggleButton>
+                        <!-- 「▼ 库」这一行的右端就是折叠按钮的家：它在侧栏里、有 8px 留白，
+                             不在缩略图上，也不紧贴任何东西 -->
+                        <DockPanel Margin="8,8,4,4" LastChildFill="False">
+                            <Button x:Name="LeftHeaderCollapse" DockPanel.Dock="Right"
+                                    Style="{StaticResource SidebarHeaderButton}"
+                                    VerticalAlignment="Center"
+                                    Content="«"
+                                    AutomationProperties.AutomationId="LeftSidebarToggle"
+                                    ToolTip="收起左侧栏，把空间让给缩略图"
+                                    Click="OnToggleLeftSidebar" />
+                            <ToggleButton x:Name="NavToggle" IsChecked="True"
+                                          Click="OnToggleSection" Tag="Nav"
+                                          Style="{StaticResource SidebarSectionHeader}"
+                                          HorizontalAlignment="Left"
+                                          ToolTip="展开 / 收起库视图">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="NavChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
+                                    <TextBlock Text=" 库" FontWeight="Bold" Style="{StaticResource SidebarText}" />
+                                </StackPanel>
+                            </ToggleButton>
+                        </DockPanel>
                         <ListBox x:Name="NavList" BorderThickness="0" Background="Transparent"
                                  ItemContainerStyle="{StaticResource SidebarItemStyle}">
                             <ListBoxItem Tag="discovery" PreviewMouseLeftButtonDown="OnNavClick" IsSelected="True">
@@ -811,27 +854,25 @@
                         IsHitTestVisible="False"
                         HorizontalAlignment="Left" VerticalAlignment="Top" />
 
-                <!-- 侧栏折叠把手：两个都浮在网格边缘，靠 Margin 在两套位置之间切换 ——
-                     展开时负 margin 16px，恰好退回侧栏内侧（不压照片）；
-                     收起时贴窗口边缘（右侧再让 20px 避开网格滚动条）。
-                     只用一个控件而不是「侧栏里一个、网格里一个」，省掉一层包裹 Grid，
-                     也省掉两套可见性状态。见 ApplySidebarState()。 -->
+                <!-- 侧栏收起后，头部那个按钮跟着侧栏一起没了，这里是唯一入口。
+                     平时隐藏（展开时用侧栏头部的按钮），只有对应侧栏收起来才显示；
+                     贴窗口边缘、垂直居中，右侧让 20px 避开网格滚动条。见 ApplySidebarState()。 -->
                 <Button x:Name="LeftCollapseHandle" Grid.RowSpan="2"
                         Style="{StaticResource SidebarCollapseHandle}"
-                        HorizontalAlignment="Left" Margin="-16,0,0,0"
-                        Panel.ZIndex="30"
-                        Content="‹"
+                        HorizontalAlignment="Left" Margin="5,0,0,0"
+                        Panel.ZIndex="30" Visibility="Collapsed"
+                        Content="›"
                         AutomationProperties.AutomationId="LeftSidebarToggle"
-                        ToolTip="收起左侧栏，把空间让给缩略图"
+                        ToolTip="展开左侧栏"
                         Click="OnToggleLeftSidebar" />
 
                 <Button x:Name="RightCollapseHandle" Grid.RowSpan="2"
                         Style="{StaticResource SidebarCollapseHandle}"
-                        HorizontalAlignment="Right" Margin="0,0,-16,0"
-                        Panel.ZIndex="30"
-                        Content="›"
+                        HorizontalAlignment="Right" Margin="0,0,20,0"
+                        Panel.ZIndex="30" Visibility="Collapsed"
+                        Content="‹"
                         AutomationProperties.AutomationId="RightSidebarToggle"
-                        ToolTip="收起右侧详情栏，把空间让给缩略图"
+                        ToolTip="展开右侧详情栏"
                         Click="OnToggleRightSidebar" />
             </Grid>
 
@@ -840,8 +881,23 @@
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0">
                 <ScrollViewer x:Name="DetailScroll" VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14">
-                        <TextBlock Text="{Binding DetailName}" FontWeight="Bold" FontSize="16"
-                                   TextWrapping="Wrap" Margin="0,0,0,10" />
+                        <!-- 文件名这一行右端放折叠按钮：右栏自己的地盘，不碰缩略图 -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{Binding DetailName}"
+                                       FontWeight="Bold" FontSize="16"
+                                       TextWrapping="Wrap" Margin="0,0,8,0" />
+                            <Button Grid.Column="1" x:Name="RightHeaderCollapse"
+                                    Style="{StaticResource SidebarHeaderButton}"
+                                    VerticalAlignment="Top"
+                                    Content="»"
+                                    AutomationProperties.AutomationId="RightSidebarToggle"
+                                    ToolTip="收起右侧详情栏，把空间让给缩略图"
+                                    Click="OnToggleRightSidebar" />
+                        </Grid>
                         <TextBlock Text="{Binding DetailMeta}" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Text="{Binding DetailDate}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
 
