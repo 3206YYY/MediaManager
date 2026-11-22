@@ -19,7 +19,7 @@
   A 主题字典结构：9 项（不许有模板、键名对齐、语义键成对、不许长回去、App.xaml 挂载顺序、
                         不许有隐式 <Style TargetType="Window">）
   B 模板层纪律：4 项（Styles 与 Controls 都不许 StaticResource 引画刷、都不许写死色值）
-  C 硬编码色台账：1 项（只许减不许增）
+  C 硬编码台账：3 项（颜色 / 字号 / 间距，全部只许减不许增）
   D 令牌不留死账：2 项（Tokens 的度量键、主题画刷键，都扫全量 XAML）
   E 功能图标：3 项（不用字符当图标、图标都被引用、矢量按钮必须有 AutomationProperties.Name）
   F 验收脚本的文本依赖：1 项（锚点直接从 verify_first_run.py 读，不手抄）
@@ -91,6 +91,59 @@ HARDCODED_BUDGET = {
     "Views/ViewerWindow.xaml": 24,
 }
 
+# 字号 / 间距欠账：口径 = 属性写法（FontSize="12"、Padding="8"）与
+# 样式写法（<Setter Property="FontSize" Value="12" />）都算。同样**只许减不许增**，
+# 迁完一个窗口就 `--update` 把数字贴回来。0 的条目直接删掉，别留一堆空账。
+FONT_SIZE_BUDGET = {
+    "Controls/FileTypeIconView.xaml": 1,
+    "Resources/Themes/Controls.xaml": 4,
+    "Views/Dialogs/BatchExportWindow.xaml": 3,
+    "Views/Dialogs/BatchRenameWindow.xaml": 5,
+    "Views/Dialogs/DialogWindow.xaml": 3,
+    "Views/Dialogs/FirstRunWindow.xaml": 5,
+    "Views/Dialogs/FolderPickerWindow.xaml": 5,
+    "Views/Dialogs/FolderPreviewWindow.xaml": 6,
+    "Views/Dialogs/MediaPickerWindow.xaml": 6,
+    "Views/Dialogs/SaveAsWindow.xaml": 6,
+    "Views/Dialogs/TextPromptWindow.xaml": 2,
+    "Views/Dialogs/UpdateWindow.xaml": 10,
+    "Views/Dialogs/VaultPasswordWindow.xaml": 6,
+    "Views/DiaryEditWindow.xaml": 7,
+    "Views/DiaryWindow.xaml": 10,
+    "Views/DuplicateWindow.xaml": 2,
+    "Views/RecentlyDeletedWindow.xaml": 8,
+    "Views/SettingsWindow.xaml": 3,
+    "Views/VaultWindow.xaml": 16,
+    "Views/VideoPlayerWindow.xaml": 19,
+    "Views/ViewerWindow.xaml": 79,
+}
+
+SPACING_BUDGET = {
+    "Resources/Themes/Controls.xaml": 14,
+    "Resources/Themes/Styles.xaml": 16,
+    "Views/Dialogs/BatchExportWindow.xaml": 15,
+    "Views/Dialogs/BatchRenameWindow.xaml": 18,
+    "Views/Dialogs/DialogWindow.xaml": 9,
+    "Views/Dialogs/FirstRunWindow.xaml": 7,
+    "Views/Dialogs/FolderPickerWindow.xaml": 12,
+    "Views/Dialogs/FolderPreviewWindow.xaml": 7,
+    "Views/Dialogs/MediaPickerWindow.xaml": 14,
+    "Views/Dialogs/SaveAsWindow.xaml": 14,
+    "Views/Dialogs/TextPromptWindow.xaml": 8,
+    "Views/Dialogs/UpdateWindow.xaml": 14,
+    "Views/Dialogs/VaultPasswordWindow.xaml": 16,
+    "Views/DiaryEditWindow.xaml": 22,
+    "Views/DiaryWindow.xaml": 21,
+    "Views/DuplicateWindow.xaml": 11,
+    "Views/MainWindow.xaml": 115,
+    "Views/RecentlyDeletedWindow.xaml": 13,
+    "Views/SettingsWindow.xaml": 96,
+    "Views/TextEditWindow.xaml": 8,
+    "Views/VaultWindow.xaml": 28,
+    "Views/VideoPlayerWindow.xaml": 25,
+    "Views/ViewerWindow.xaml": 151,
+}
+
 # 这些文件整体不参与台账。
 #  - 主题字典：写死是本职
 #  - Icons / FileTypeIconView：只有路径和"文件类型内容色"，不是 UI 色
@@ -149,6 +202,23 @@ def count_literal_colors(text):
     return len(HEX6.findall(body)) + len(HEX8_OPAQUE.findall(body)) + len(NAMED.findall(body))
 
 
+# 字号 / 间距只认"数字字面量"。写成 {StaticResource ...} 或绑定的不算欠账。
+FS_ATTR = re.compile(r'FontSize="([0-9.]+)"')
+FS_SETTER = re.compile(r'Property="FontSize"\s+Value="([0-9.]+)"')
+SP_ATTR = re.compile(r'(?:Margin|Padding)="([0-9.,\-]+)"')
+SP_SETTER = re.compile(r'Property="(?:Margin|Padding)"\s+Value="([0-9.,\-]+)"')
+
+
+def count_font_sizes(text):
+    body = strip_comments(text)
+    return len(FS_ATTR.findall(body)) + len(FS_SETTER.findall(body))
+
+
+def count_spacings(text):
+    body = strip_comments(text)
+    return len(SP_ATTR.findall(body)) + len(SP_SETTER.findall(body))
+
+
 def keys_of(text):
     return set(re.findall(r'x:Key="([^"]+)"', text))
 
@@ -162,6 +232,28 @@ def iter_xaml():
             if f.endswith(".xaml"):
                 full = os.path.join(dirpath, f)
                 yield os.path.relpath(full, APP).replace("\\", "/"), full
+
+
+def check_ledger(label, budgets, counter):
+    """按文件统计欠账，和台账逐项比。返回 current 供 --update 打印。"""
+    current = {}
+    for rel, full in iter_xaml():
+        if rel == "Resources/Themes/Tokens.xaml":
+            continue
+        n = counter(read(full))
+        if n:
+            current[rel] = n
+
+    over = []
+    for rel, n in sorted(current.items()):
+        budget = budgets.get(rel)
+        if budget is None:
+            over.append("%s 新增 %d 处（不在台账里）" % (rel, n))
+        elif n > budget:
+            over.append("%s %d 处 > 上限 %d" % (rel, n, budget))
+    check(label, not over, "；".join(over) if over else
+          "当前欠账 %d 处 / %d 个文件" % (sum(current.values()), len(current)))
+    return current
 
 
 BUTTON_ELEMENT = re.compile(r"<Button\b[^>]*?/>|<Button\b[^>]*>.*?</Button>", re.S)
@@ -268,6 +360,14 @@ def main():
     check("没有新增硬编码主题色（欠账只许减不许增）", not over, "；".join(over) if over else
           "当前欠账 %d 处 / %d 个文件" % (sum(current.values()), len(current)))
 
+    # ---------- C 字号 / 间距台账 ----------
+    # 和颜色分开计数：字号/间距迁到 Tokens.xaml 的 FontSize.* / Space.*，
+    # 每迁一个窗口就 --update 往下调，归零的条目删掉。
+    font_current = check_ledger("没有新增硬编码字号（欠账只许减不许增）",
+                                FONT_SIZE_BUDGET, count_font_sizes)
+    space_current = check_ledger("没有新增硬编码间距（欠账只许减不许增）",
+                                 SPACING_BUDGET, count_spacings)
+
     # ---------- D 令牌不留死账 ----------
     # 扫**全量 XAML**（不只 Styles.xaml）：否则阶段 B 在窗口里写 {StaticResource Radius.Md}
     # 会被判成死键，等于把令牌锁死在模板层。
@@ -334,6 +434,15 @@ def main():
         print("当前硬编码色欠账（可直接贴回 HARDCODED_BUDGET）：")
         for rel, n in sorted(current.items()):
             print('    "%s": %d,' % (rel, n))
+
+        print("\n当前硬编码字号欠账（可直接贴回 FONT_SIZE_BUDGET）：")
+        for rel, n in sorted(font_current.items()):
+            print('    "%s": %d,' % (rel, n))
+
+        print("\n当前硬编码间距欠账（可直接贴回 SPACING_BUDGET）：")
+        for rel, n in sorted(space_current.items()):
+            print('    "%s": %d,' % (rel, n))
+
         print("\n按设计豁免（不计入台账）：")
         for rel, why in sorted(THEME_INDEPENDENT.items()):
             print("    %s —— %s" % (rel, why))

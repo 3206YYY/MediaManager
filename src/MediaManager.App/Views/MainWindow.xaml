@@ -31,7 +31,7 @@
              4px 的空隙里透出来，深色主题下几乎看不出区别 —— 「选了跟没选一样」的根因。
              现在改成把 3px 描边**画在内容之上**（不吃命中测试），右上角再挂一个勾选角标。 -->
         <Style x:Key="ThumbItemStyle" TargetType="ListBoxItem">
-            <Setter Property="Padding" Value="0" />
+            <Setter Property="Padding" Value="{StaticResource Space.None}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -49,7 +49,7 @@
                                     Margin="0,6,28,0" Visibility="Collapsed"
                                     IsHitTestVisible="False"
                                     Background="{DynamicResource ThumbSelectionBrush}">
-                                <TextBlock Text="✓" Foreground="White" FontSize="12" FontWeight="Bold"
+                                <TextBlock Text="✓" Foreground="White" FontSize="{StaticResource FontSize.Body}" FontWeight="Bold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                         </Grid>
@@ -98,7 +98,7 @@
 
         <!-- 折叠箭头：紧跟标题文字，不吃宿主颜色以外的任何设定 -->
         <Style x:Key="SidebarChevron" TargetType="TextBlock" BasedOn="{StaticResource SidebarText}">
-            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.Caption}" />
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="Opacity" Value="0.8" />
         </Style>
@@ -129,7 +129,7 @@
                                 BorderBrush="{DynamicResource ScrollThumbBrush}"
                                 BorderThickness="1">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                              TextElement.FontSize="14" TextElement.FontWeight="Bold" />
+                                              TextElement.FontSize="{StaticResource FontSize.Emphasis}" TextElement.FontWeight="Bold" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -167,7 +167,7 @@
                                                   Opacity="0.45" Color="#000000" />
                             </Border.Effect>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
-                                              TextElement.FontSize="16" TextElement.FontWeight="Bold" />
+                                              TextElement.FontSize="{StaticResource FontSize.Title}" TextElement.FontWeight="Bold" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -215,7 +215,7 @@
                            IsOpen="{Binding IsChecked, ElementName=TypeFilterToggle, Mode=TwoWay}">
                         <Border Background="{DynamicResource PanelBrush}"
                                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                CornerRadius="6" Padding="12" Margin="0,4,0,0">
+                                CornerRadius="6" Padding="{StaticResource Space.Xl}" Margin="0,4,0,0">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                     <Button Content="全部" Click="OnSelectAllTypes" Margin="0,0,6,0"
@@ -256,7 +256,7 @@
                      Popup 里每一项都要 AutomationProperties.Name（同上，没有名字 UIA 找不着）。 -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
                             VerticalAlignment="Center" Margin="10,0,0,0">
-                    <ToggleButton x:Name="OverflowToggle" Content="⋯" Width="34" Height="30" Padding="0"
+                    <ToggleButton x:Name="OverflowToggle" Content="⋯" Width="34" Height="30" Padding="{StaticResource Space.None}"
                                   Style="{StaticResource FilterToggleStyle}"
                                   AutomationProperties.Name="更多操作"
                                   ToolTip="更多操作：去重、快速查看、缩略图大小" />
@@ -270,7 +270,7 @@
                            IsOpen="{Binding IsChecked, ElementName=OverflowToggle, Mode=TwoWay}">
                         <Border Background="{DynamicResource PanelBrush}"
                                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                CornerRadius="6" Padding="8" Margin="0,4,0,0" Width="190">
+                                CornerRadius="6" Padding="{StaticResource Space.Lg}" Margin="0,4,0,0" Width="190">
                             <StackPanel>
                                 <Button Content="🗂 去重" HorizontalContentAlignment="Left"
                                         Margin="0,0,0,4" Click="OnFindDuplicates"
@@ -278,7 +278,7 @@
                                 <Button Content="👁 快速查看" HorizontalContentAlignment="Left"
                                         Margin="0,0,0,8" Click="OnOpenFile"
                                         AutomationProperties.Name="快速查看" />
-                                <TextBlock Text="缩略图大小" FontSize="11.5" Margin="4,0,0,4"
+                                <TextBlock Text="缩略图大小" FontSize="{StaticResource FontSize.Meta}" Margin="4,0,0,4"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <Slider Minimum="80" Maximum="320"
                                         Value="{Binding ThumbnailSize}"
@@ -294,7 +294,7 @@
                 <!-- 最常用的设置直接放主界面：一键切深浅色（其余收进设置页侧边栏分类） -->
                 <!-- 用矢量图标而不是彩色 emoji：和旁边按钮的线条图标风格一致，
                      也不受 emoji 字形行框影响，18x18 的 Grid 里天然居中 -->
-                <Button x:Name="ThemeButton" DockPanel.Dock="Right" Width="36" Height="30" Padding="0"
+                <Button x:Name="ThemeButton" DockPanel.Dock="Right" Width="36" Height="30" Padding="{StaticResource Space.None}"
                         Margin="10,0,0,0" VerticalAlignment="Center"
                         Click="OnThemeToggleClick" ToolTip="切换深色 / 浅色模式">
                     <Grid Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -372,7 +372,7 @@
                          这里留个中性占位，免得设计器里空着。 -->
                     <TextBlock x:Name="TapDeleteHint"
                                Text="删除模式"
-                               FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                               FontSize="{StaticResource FontSize.Subtitle}" FontWeight="SemiBold" VerticalAlignment="Center"
                                Margin="2,0,14,0" />
                     <!-- 默认勾选：进删除模式后单击只打勾，不会「点啥删啥」。
                          想去掉这层保险（真·点谁删谁）就当场取消勾选，默认值每次进入都复位。 -->
@@ -381,7 +381,7 @@
                               VerticalAlignment="Center" Margin="0,0,12,0"
                               Checked="OnTapDeleteOptionChanged" Unchecked="OnTapDeleteOptionChanged"
                               ToolTip="默认勾选：单击文件只打勾不删除，选好再点「删除选中的 N 项」确认。想去掉这层保险就取消勾选，变成点谁删谁" />
-                    <TextBlock x:Name="TapDeleteCount" Text="" FontSize="12" VerticalAlignment="Center"
+                    <TextBlock x:Name="TapDeleteCount" Text="" FontSize="{StaticResource FontSize.Body}" VerticalAlignment="Center"
                                Margin="0,0,12,0" Foreground="{DynamicResource TextSecondaryBrush}" />
                     <Button Content="退出模式 (Esc)" Click="OnExitTapDelete" Padding="10,3"
                             ToolTip="关掉删除模式，单击文件恢复成正常的选中 / 双击预览" />
@@ -404,7 +404,7 @@
             <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="6">
+                    <StackPanel Margin="{StaticResource Space.Md}">
                         <!-- 「▼ 库」这一行的右端就是折叠按钮的家：有 8px 留白，
                              不在缩略图上，也不紧贴任何东西 -->
                         <DockPanel Margin="8,8,4,4" LastChildFill="False">
@@ -438,7 +438,7 @@
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="⭐ 收藏" Style="{StaticResource SidebarText}" />
                                     <TextBlock Text="{Binding DataContext.FavoriteCount, StringFormat=( {0} ), RelativeSource={RelativeSource AncestorType=Window}}"
-                                               Style="{StaticResource SidebarText}" Opacity="0.65" FontSize="11"
+                                               Style="{StaticResource SidebarText}" Opacity="0.65" FontSize="{StaticResource FontSize.Small}"
                                                VerticalAlignment="Center" Margin="4,0,0,0" />
                                 </StackPanel>
                             </ListBoxItem>
@@ -468,7 +468,7 @@
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="🔒 私密空间" Style="{StaticResource SidebarText}" />
                                     <TextBlock Text="{Binding PrivateCount, StringFormat=( {0} )}"
-                                               Opacity="0.65" FontSize="11"
+                                               Opacity="0.65" FontSize="{StaticResource FontSize.Small}"
                                                VerticalAlignment="Center" Margin="4,0,0,0">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock" BasedOn="{StaticResource SidebarText}">
@@ -497,7 +497,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock x:Name="CategoryChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
                                 <TextBlock Text=" 分类" FontWeight="Bold" Style="{StaticResource SidebarText}" />
-                                <TextBlock Text="{Binding CategoryCount, StringFormat=( {0} )}" FontSize="11"
+                                <TextBlock Text="{Binding CategoryCount, StringFormat=( {0} )}" FontSize="{StaticResource FontSize.Small}"
                                            Style="{StaticResource SidebarText}" Opacity="0.65"
                                            VerticalAlignment="Center" Margin="4,0,0,0" />
                             </StackPanel>
@@ -562,7 +562,7 @@
                                              收成 0 宽，没有子目录的根目录标题就会比有子目录的
                                              左移 16px，看着像缩进错乱 -->
                                         <Button x:Name="Expander" Grid.Column="0" Content="▸" Width="16" Height="16"
-                                                Padding="0" Margin="0,0,3,0" FontSize="10" Opacity="0.75"
+                                                Padding="{StaticResource Space.None}" Margin="0,0,3,0" FontSize="{StaticResource FontSize.Caption}" Opacity="0.75"
                                                 Background="Transparent" BorderThickness="0"
                                                 VerticalAlignment="Center"
                                                 Command="{Binding DataContext.ToggleFolderNodeCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
@@ -573,11 +573,11 @@
                                             <TextBlock x:Name="TitleText" Text="{Binding Title}" TextTrimming="CharacterEllipsis"
                                                        Style="{StaticResource SidebarText}" />
                                             <TextBlock Text="{Binding SubTitle}" TextTrimming="CharacterEllipsis"
-                                                       FontSize="10" Opacity="0.55" Margin="0,1,0,0"
+                                                       FontSize="{StaticResource FontSize.Caption}" Opacity="0.55" Margin="0,1,0,0"
                                                        Style="{StaticResource SidebarText}" />
                                             <!-- 离线标记：移动硬盘没插 / 盘符变了时提前告知，
                                                  别让用户点进去看到「共 0 项」还以为是软件坏了 -->
-                                            <TextBlock x:Name="OfflineBadge" Text="⛔ 离线" FontSize="10"
+                                            <TextBlock x:Name="OfflineBadge" Text="⛔ 离线" FontSize="{StaticResource FontSize.Caption}"
                                                        Foreground="{DynamicResource DangerBrush}" FontWeight="Bold"
                                                        Margin="0,2,0,0" Visibility="Collapsed" />
                                         </StackPanel>
@@ -618,7 +618,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock x:Name="TagChevron" Text="▼" Style="{StaticResource SidebarChevron}" />
                                 <TextBlock Text=" 标签" FontWeight="Bold" Style="{StaticResource SidebarText}" />
-                                <TextBlock Text="{Binding TagCount, StringFormat=( {0} )}" FontSize="11"
+                                <TextBlock Text="{Binding TagCount, StringFormat=( {0} )}" FontSize="{StaticResource FontSize.Small}"
                                            Style="{StaticResource SidebarText}" Opacity="0.65"
                                            VerticalAlignment="Center" Margin="4,0,0,0" />
                             </StackPanel>
@@ -685,17 +685,17 @@
                              状态栏还承载离线 / 分页这些诊断句子，解析字符串迟早错位。 -->
                         <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding ViewTitle}" FontSize="13" FontWeight="SemiBold"
+                                <TextBlock Text="{Binding ViewTitle}" FontSize="{StaticResource FontSize.Subtitle}" FontWeight="SemiBold"
                                            VerticalAlignment="Center" />
-                                <TextBlock Text=" · " FontSize="12" VerticalAlignment="Center"
+                                <TextBlock Text=" · " FontSize="{StaticResource FontSize.Body}" VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <TextBlock Text="{Binding ResultCountText}" FontSize="12"
+                                <TextBlock Text="{Binding ResultCountText}" FontSize="{StaticResource FontSize.Body}"
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </StackPanel>
                             <TextBlock Text="{Binding BreadcrumbText}"
                                        ToolTip="{Binding BreadcrumbTooltip}"
-                                       FontSize="11.5" TextTrimming="CharacterEllipsis"
+                                       FontSize="{StaticResource FontSize.Meta}" TextTrimming="CharacterEllipsis"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        Visibility="{Binding HasBreadcrumb, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
@@ -760,10 +760,10 @@
                         Background="{DynamicResource BgBrush}"
                         Visibility="{Binding IsCenterEmptyVisible, Converter={StaticResource BoolToVis}}">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
-                                MaxWidth="560" Margin="24">
-                        <TextBlock Text="{Binding CenterEmptyTitle}" FontSize="17" FontWeight="SemiBold"
+                                MaxWidth="560" Margin="{StaticResource Space.Xxl}">
+                        <TextBlock Text="{Binding CenterEmptyTitle}" FontSize="{StaticResource FontSize.PageTitle}" FontWeight="SemiBold"
                                    TextWrapping="Wrap" TextAlignment="Center" />
-                        <TextBlock Text="{Binding CenterEmptyText}" FontSize="12.5" Margin="0,8,0,0"
+                        <TextBlock Text="{Binding CenterEmptyText}" FontSize="{StaticResource FontSize.BodyLarge}" Margin="0,8,0,0"
                                    TextWrapping="Wrap" TextAlignment="Center"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                         <Button Content="刷新" Command="{Binding RefreshCommand}"
@@ -789,13 +789,13 @@
                         Visibility="{Binding DiscoveryShowWelcome, Converter={StaticResource BoolToVis}}"
                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="👋 欢迎使用媒体管理器" FontSize="28" FontWeight="Bold"
+                        <TextBlock Text="👋 欢迎使用媒体管理器" FontSize="{StaticResource FontSize.Hero}" FontWeight="Bold"
                                    HorizontalAlignment="Center" Margin="0,0,0,12" />
                         <TextBlock Text="先添加一个媒体文件夹，开始整理你的图片和视频"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center" Margin="0,0,0,20" />
                         <Button Content="＋ 添加文件夹" HorizontalAlignment="Center" Padding="20,8"
-                                FontSize="14" Command="{Binding AddFolderCommand}" />
+                                FontSize="{StaticResource FontSize.Emphasis}" Command="{Binding AddFolderCommand}" />
                     </StackPanel>
                 </Border>
 
@@ -811,7 +811,7 @@
                             Background="{DynamicResource PanelBrush}" CornerRadius="8"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="16,10">
                         <TextBlock Text="{Binding DiscoveryHintText}"
-                                   FontSize="14" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                   FontSize="{StaticResource FontSize.Emphasis}" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Border>
                 </Border>
 
@@ -878,15 +878,15 @@
                                   MinHeight="{Binding DataContext.ThumbnailSize, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                   MaxWidth="{Binding DataContext.ThumbnailSize, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                   MaxHeight="{Binding DataContext.ThumbnailSize, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                  Margin="4">
+                                  Margin="{StaticResource Space.Sm}">
                                 <Grid.ToolTip>
                                     <ToolTip>
                                         <StackPanel>
                                             <TextBlock Text="{Binding FileName}" FontWeight="Bold" />
-                                            <TextBlock Text="{Binding ResolutionDisplay}" Foreground="#BBBBBB" FontSize="11" />
-                                            <TextBlock Text="{Binding SizeDisplay}" Foreground="#BBBBBB" FontSize="11" />
+                                            <TextBlock Text="{Binding ResolutionDisplay}" Foreground="#BBBBBB" FontSize="{StaticResource FontSize.Small}" />
+                                            <TextBlock Text="{Binding SizeDisplay}" Foreground="#BBBBBB" FontSize="{StaticResource FontSize.Small}" />
                                             <TextBlock Text="{Binding Note, StringFormat=备注：{0}}"
-                                                       TextWrapping="Wrap" MaxWidth="260" FontSize="11"
+                                                       TextWrapping="Wrap" MaxWidth="260" FontSize="{StaticResource FontSize.Small}"
                                                        Visibility="{Binding Note, Converter={StaticResource StringToVis}}" />
                                         </StackPanel>
                                     </ToolTip>
@@ -921,7 +921,7 @@
                                                RenderOptions.BitmapScalingMode="LowQuality" />
                                         <Border Background="#22000000"
                                                 Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="▶" Foreground="White" FontSize="28"
+                                            <TextBlock Text="▶" Foreground="White" FontSize="{StaticResource FontSize.Hero}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                                        Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}" />
                                         </Border>
@@ -941,14 +941,14 @@
                                                 VerticalAlignment="Top" CornerRadius="0,0,0,8"
                                                 Padding="5,1"
                                                 Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="★" FontSize="13" Foreground="White" FontWeight="Bold" />
+                                            <TextBlock Text="★" FontSize="{StaticResource FontSize.Subtitle}" Foreground="White" FontWeight="Bold" />
                                         </Border>
                                         <Border Background="#2E7DD1" HorizontalAlignment="Left"
                                                 VerticalAlignment="Top" CornerRadius="0,0,8,0"
                                                 Padding="5,1"
                                                 ToolTip="{Binding CategoryNames, StringFormat=分类：{0}}"
                                                 Visibility="{Binding IsCategorized, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="📁" FontSize="12" Foreground="White" />
+                                            <TextBlock Text="📁" FontSize="{StaticResource FontSize.Body}" Foreground="White" />
                                         </Border>
                                     </Grid>
                                 </Border>
@@ -967,9 +967,9 @@
                                             <GradientStop Color="#A6000000" Offset="1" />
                                         </LinearGradientBrush>
                                     </Border.Background>
-                                    <TextBlock Text="{Binding FileName}" FontSize="11" Foreground="White"
+                                    <TextBlock Text="{Binding FileName}" FontSize="{StaticResource FontSize.Small}" Foreground="White"
                                                HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                                               Margin="4" TextTrimming="CharacterEllipsis" />
+                                               Margin="{StaticResource Space.Sm}" TextTrimming="CharacterEllipsis" />
                                 </Border>
                                 <!-- 悬停快捷操作条。
                                      这里原来有三个按钮，其中 🏷（加标签）和 📁（加分类）**没有 Command**，
@@ -978,7 +978,7 @@
                                      不如只留真实可用的 ⭐。要加标签就右键。 -->
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                                             VerticalAlignment="Bottom" Margin="0,0,4,4" Opacity="0">
-                                    <Button Width="24" Height="24" Padding="0" Margin="2"
+                                    <Button Width="24" Height="24" Padding="{StaticResource Space.None}" Margin="{StaticResource Space.Xs}"
                                             ToolTip="收藏 / 取消收藏"
                                             AutomationProperties.Name="收藏 / 取消收藏"
                                             Command="{Binding DataContext.ToggleFavoriteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
@@ -1008,7 +1008,7 @@
                         Content="{Binding LoadMoreText}"
                         Command="{Binding LoadMoreCommand}"
                         HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                        Margin="0,0,0,20" Padding="18,8" FontSize="13"
+                        Margin="0,0,0,20" Padding="18,8" FontSize="{StaticResource FontSize.Subtitle}"
                         Panel.ZIndex="20" Opacity="0.95"
                         Visibility="{Binding CanLoadMore, Converter={StaticResource BoolToVis}}"
                         ToolTip="加载下一页（每页 2000 项）" />
@@ -1060,13 +1060,13 @@
                                     ToolTip="收起右侧详情栏，把空间让给缩略图"
                                     Click="OnToggleRightSidebar" />
                             <Grid VerticalAlignment="Center">
-                                <TextBlock Text="{Binding DetailName}" FontWeight="Bold" FontSize="16"
+                                <TextBlock Text="{Binding DetailName}" FontWeight="Bold" FontSize="{StaticResource FontSize.Title}"
                                            TextWrapping="Wrap" VerticalAlignment="Center"
                                            Visibility="{Binding IsDetailSingle, Converter={StaticResource BoolToVis}}" />
-                                <TextBlock Text="{Binding SelectionSummaryText}" FontWeight="Bold" FontSize="16"
+                                <TextBlock Text="{Binding SelectionSummaryText}" FontWeight="Bold" FontSize="{StaticResource FontSize.Title}"
                                            VerticalAlignment="Center"
                                            Visibility="{Binding IsDetailMultiple, Converter={StaticResource BoolToVis}}" />
-                                <TextBlock Text="未选择文件" FontWeight="Bold" FontSize="16"
+                                <TextBlock Text="未选择文件" FontWeight="Bold" FontSize="{StaticResource FontSize.Title}"
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextSecondaryBrush}"
                                            Visibility="{Binding IsDetailEmpty, Converter={StaticResource BoolToVis}}" />
@@ -1076,17 +1076,17 @@
                         <!-- 空选态 -->
                         <StackPanel Visibility="{Binding IsDetailEmpty, Converter={StaticResource BoolToVis}}">
                             <TextBlock Text="点一张缩略图看详情；按住 Ctrl / Shift 可以多选。"
-                                       TextWrapping="Wrap" FontSize="12.5"
+                                       TextWrapping="Wrap" FontSize="{StaticResource FontSize.BodyLarge}"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
 
                         <!-- 多选态：操作复用底部 SelectionBar（同一套入口），这里只给摘要和指路 -->
                         <StackPanel Visibility="{Binding IsDetailMultiple, Converter={StaticResource BoolToVis}}">
                             <TextBlock Text="{Binding SelectionPreviewText}" TextWrapping="Wrap"
-                                       FontSize="12.5"
+                                       FontSize="{StaticResource FontSize.BodyLarge}"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                             <TextBlock Text="批量删除 / 批量分类 / 收藏都在窗口底部那条操作条里；Esc 也能退出选择。"
-                                       TextWrapping="Wrap" FontSize="12.5" Margin="0,8,0,0"
+                                       TextWrapping="Wrap" FontSize="{StaticResource FontSize.BodyLarge}" Margin="0,8,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                             <Button Content="取消选择" Click="OnClearSelection"
                                     HorizontalAlignment="Left" Margin="0,12,0,0" />
@@ -1109,7 +1109,7 @@
                             <TextBlock DockPanel.Dock="Left" Text="所属分类" FontWeight="Bold"
                                        VerticalAlignment="Center" />
                             <Button DockPanel.Dock="Right" Content="＋ 加入" MinWidth="58" Padding="8,1"
-                                    FontSize="11.5"
+                                    FontSize="{StaticResource FontSize.Meta}"
                                     ToolTip="把当前文件加入一个或多个分类（可连续勾选）"
                                     Click="OnDetailAddCategoryClick" />
                         </DockPanel>
@@ -1117,7 +1117,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <DockPanel Margin="0,2">
-                                        <Button Width="20" Height="20" Padding="0" DockPanel.Dock="Right"
+                                        <Button Width="20" Height="20" Padding="{StaticResource Space.None}" DockPanel.Dock="Right"
                                                 ToolTip="移出该分类"
                                                 AutomationProperties.Name="移出该分类"
                                                 Command="{Binding DataContext.RemoveCategoryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -1135,7 +1135,7 @@
                         </ItemsControl>
 
                         <!-- 一个都没加时给个提示，避免「空一块」看着像坏了 -->
-                        <TextBlock Text="还没有归入任何分类" FontSize="11.5" Margin="0,2,0,0"
+                        <TextBlock Text="还没有归入任何分类" FontSize="{StaticResource FontSize.Meta}" Margin="0,2,0,0"
                                    Foreground="{DynamicResource TextSecondaryBrush}">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
@@ -1175,7 +1175,7 @@
                                     <!-- 之前只绑了 Key（而且 Key 存的是值），面板上只剩「1080:」这种行。
                                          现在键值都显示：键半粗、值常规，长值自动换行。
                                          Run.Text 默认是 TwoWay，只读集合必须写 Mode=OneWay。 -->
-                                    <TextBlock TextWrapping="Wrap" FontSize="12"
+                                    <TextBlock TextWrapping="Wrap" FontSize="{StaticResource FontSize.Body}"
                                                Foreground="{DynamicResource TextSecondaryBrush}">
                                         <Run Text="{Binding Key, Mode=OneWay}" FontWeight="SemiBold" />
                                         <Run Text="：" />
@@ -1201,7 +1201,7 @@
                 Visibility="Collapsed">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock x:Name="SelectionCountText" Text="已选中 0 项"
-                           FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                           FontSize="{StaticResource FontSize.Subtitle}" FontWeight="SemiBold" VerticalAlignment="Center"
                            Margin="4,0,16,0" />
                 <Button Content="取消选择" Click="OnClearSelection" Margin="0,0,8,0"
                         ToolTip="清空当前选择（Esc 之外最直观的退出方式）" />
@@ -1237,10 +1237,10 @@
                 Visibility="{Binding IsNewFilesToastVisible, Converter={StaticResource BoolToVis}}">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="📥" FontSize="15" VerticalAlignment="Center" />
+                    <TextBlock Text="📥" FontSize="{StaticResource FontSize.Section}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding NewFilesToastText}" VerticalAlignment="Center"
-                               Margin="8,0,8,0" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap" />
-                    <TextBlock VerticalAlignment="Center" FontSize="11"
+                               Margin="8,0,8,0" FontSize="{StaticResource FontSize.Subtitle}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock VerticalAlignment="Center" FontSize="{StaticResource FontSize.Small}"
                                Foreground="{DynamicResource TextSecondaryBrush}">
                         <Run Text="{Binding NewFilesSecondsLeft, Mode=OneWay}" /><Run Text=" 秒后自动加入" />
                     </TextBlock>
@@ -1263,7 +1263,7 @@
                 BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="1"
                 IsHitTestVisible="False"
                 Visibility="{Binding IsActionToastVisible, Converter={StaticResource BoolToVis}}">
-            <TextBlock Text="{Binding ActionToastText}" FontSize="12.5" />
+            <TextBlock Text="{Binding ActionToastText}" FontSize="{StaticResource FontSize.BodyLarge}" />
         </Border>
 
         <Border Grid.Row="1" Panel.ZIndex="900"
@@ -1273,10 +1273,10 @@
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                 Visibility="{Binding IsUndoToastVisible, Converter={StaticResource BoolToVis}}">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="🗑" FontSize="15" VerticalAlignment="Center" />
+                <TextBlock Text="🗑" FontSize="{StaticResource FontSize.Section}" VerticalAlignment="Center" />
                 <TextBlock Text="{Binding UndoToastText}" VerticalAlignment="Center"
-                           Margin="8,0,10,0" FontSize="13" />
-                <TextBlock VerticalAlignment="Center" FontSize="12"
+                           Margin="8,0,10,0" FontSize="{StaticResource FontSize.Subtitle}" />
+                <TextBlock VerticalAlignment="Center" FontSize="{StaticResource FontSize.Body}"
                            Foreground="{DynamicResource TextSecondaryBrush}">
                     <Run Text="{Binding UndoSecondsLeft, Mode=OneWay}" /><Run Text=" 秒" />
                 </TextBlock>
@@ -1296,7 +1296,7 @@
 
                 <!-- 帮助入口常驻状态栏：小白不用先猜「设置里哪一页」才知道怎么多选、怎么删 -->
                 <Button DockPanel.Dock="Right" Content="❓ 帮助与快捷键" Click="OnOpenHelp"
-                        Padding="8,2" Margin="0,0,4,0" FontSize="11.5"
+                        Padding="8,2" Margin="0,0,4,0" FontSize="{StaticResource FontSize.Meta}"
                         ToolTip="打开快速上手指南与快捷键列表（设置 → 帮助与快捷键）" />
 
                 <!-- 缩略图加载指示：队列清空后自动隐藏。
@@ -1307,13 +1307,13 @@
                     <ProgressBar Width="68" Height="6" Maximum="100" VerticalAlignment="Center"
                                  Margin="0,0,7,0" Value="{Binding ThumbLoading.Progress, Mode=OneWay}" />
                     <TextBlock Text="{Binding ThumbLoading.StatusText}" VerticalAlignment="Center"
-                               FontSize="12" TextTrimming="CharacterEllipsis"
+                               FontSize="{StaticResource FontSize.Body}" TextTrimming="CharacterEllipsis"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
 
                 <!-- 调试帧率：启动前设环境变量 MM_FPS=1 才显示，正常用户看不到 -->
                 <TextBlock DockPanel.Dock="Right" Text="{Binding ThumbLoading.FpsText}"
-                           VerticalAlignment="Center" Margin="0,0,10,0" FontSize="12"
+                           VerticalAlignment="Center" Margin="0,0,10,0" FontSize="{StaticResource FontSize.Body}"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            Visibility="{Binding ThumbLoading.ShowFps, Converter={StaticResource BoolToVis}}" />
 
@@ -1334,7 +1334,7 @@
                     Background="#E64A90D9"
                     CornerRadius="6" Padding="10,5"
                     Visibility="Collapsed">
-                <TextBlock x:Name="ReorderTipText" Text="↕ 拖动排序" FontSize="13" FontWeight="Bold"
+                <TextBlock x:Name="ReorderTipText" Text="↕ 拖动排序" FontSize="{StaticResource FontSize.Subtitle}" FontWeight="Bold"
                            Foreground="White" />
             </Border>
         </Canvas>

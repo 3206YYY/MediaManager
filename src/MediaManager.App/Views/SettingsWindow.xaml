@@ -20,7 +20,7 @@
                         <Border x:Name="bd" CornerRadius="7" Background="Transparent"
                                 Padding="{TemplateBinding Padding}">
                             <TextBlock x:Name="txt" Text="{TemplateBinding Content}"
-                                       FontSize="13" VerticalAlignment="Center"
+                                       FontSize="{StaticResource FontSize.Subtitle}" VerticalAlignment="Center"
                                        Foreground="{DynamicResource TextBrush}" />
                         </Border>
                         <ControlTemplate.Triggers>
@@ -40,7 +40,7 @@
 
         <!-- 每个设置块的标题 -->
         <Style x:Key="SectionTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.Subtitle}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             <Setter Property="Margin" Value="0,0,0,5" />
@@ -48,7 +48,7 @@
 
         <!-- 说明小字 -->
         <Style x:Key="Hint" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.Meta}" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
@@ -84,7 +84,7 @@
         <Style x:Key="HotkeyCapsule" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="0" />
+            <Setter Property="Padding" Value="{StaticResource Space.None}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -104,7 +104,7 @@
         </Style>
 
         <Style x:Key="PageSubtitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.Body}" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="Margin" Value="0,0,0,18" />
@@ -113,14 +113,14 @@
         <!-- 帮助页排版：显式 Style 会顶掉隐式 TextBlock 样式，所以这里必须自己再写一遍
              DynamicResource 的 Foreground，否则深色主题下整页退回黑字看不见。 -->
         <Style x:Key="HelpRow" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.BodyLarge}" />
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="LineHeight" Value="20" />
             <Setter Property="Margin" Value="0,0,0,7" />
         </Style>
         <Style x:Key="HelpGroup" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.Emphasis}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
             <Setter Property="Margin" Value="0,0,0,10" />
@@ -146,7 +146,7 @@
                     <TextBlock DockPanel.Dock="Top" Text="设置" FontSize="19" FontWeight="Bold"
                                Margin="20,20,20,12" />
                     <TextBlock DockPanel.Dock="Bottom" x:Name="SidebarVersionText"
-                               Margin="20,10,20,16" FontSize="11"
+                               Margin="20,10,20,16" FontSize="{StaticResource FontSize.Small}"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
 
                     <ListBox x:Name="NavList" BorderThickness="0" Background="Transparent"
@@ -825,7 +825,7 @@
                     <Button Content="取消" Width="104" Margin="8,0,0,0" Click="OnCancel" />
                 </StackPanel>
                 <TextBlock x:Name="FooterHint" VerticalAlignment="Center"
-                           FontSize="11.5" TextWrapping="Wrap"
+                           FontSize="{StaticResource FontSize.Meta}" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="主题立即生效；其余设置保存后生效。" />
             </DockPanel>
@@ -840,7 +840,7 @@
                     HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel Width="320">
                     <TextBlock Text="正在恢复数据，请勿关闭软件…"
-                               FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"
+                               FontSize="{StaticResource FontSize.Section}" FontWeight="SemiBold" TextWrapping="Wrap"
                                HorizontalAlignment="Center" TextAlignment="Center" />
                     <ProgressBar IsIndeterminate="True" Height="6" Margin="0,16,0,12" />
                     <TextBlock x:Name="RestoreStepText" Text="准备中…"

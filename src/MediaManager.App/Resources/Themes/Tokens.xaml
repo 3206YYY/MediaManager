@@ -1,11 +1,11 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
     <!--
         度量令牌：**与主题无关**，深浅两套共用。
         颜色不在这里 —— 颜色是随主题变的赋值，一律放 Light.xaml / Dark.xaml。
-        这个文件只装"数字"。字号刻度、间距刻度等阶段 B 迁移窗口时再补，
-        现在只放已经被 Styles.xaml 真正用到的圆角档位，不留没人引用的空令牌。
+        这个文件只装"数字"。
         守门：build/verify/verify_design_tokens.py
     -->
 
@@ -14,5 +14,35 @@
     <CornerRadius x:Key="Radius.Md">4</CornerRadius>
     <CornerRadius x:Key="Radius.Lg">6</CornerRadius>
     <CornerRadius x:Key="Radius.Pill">14</CornerRadius>
+
+    <!--
+        字号刻度。不是"设计稿上理想的 7 档"，而是**先按现有窗口的真实取值建档**，
+        迁移时逐位对齐、肉眼零变化；11 / 11.5、12 / 12.5 这种半档是历史遗留，
+        要合并得单独做一轮视觉验收，别在迁移里顺手改。
+    -->
+    <sys:Double x:Key="FontSize.Caption">10</sys:Double>
+    <sys:Double x:Key="FontSize.Small">11</sys:Double>
+    <sys:Double x:Key="FontSize.Meta">11.5</sys:Double>
+    <sys:Double x:Key="FontSize.Body">12</sys:Double>
+    <sys:Double x:Key="FontSize.BodyLarge">12.5</sys:Double>
+    <sys:Double x:Key="FontSize.Subtitle">13</sys:Double>
+    <sys:Double x:Key="FontSize.Emphasis">14</sys:Double>
+    <sys:Double x:Key="FontSize.Section">15</sys:Double>
+    <sys:Double x:Key="FontSize.Title">16</sys:Double>
+    <sys:Double x:Key="FontSize.PageTitle">17</sys:Double>
+    <sys:Double x:Key="FontSize.Hero">28</sys:Double>
+
+    <!--
+        间距刻度。存成 Thickness 而不是 double：Margin / Padding 只能整体赋值，
+        XAML 里没有四则运算，所以这里只收**单值**（四边相同）的档位；
+        0,0,0,8 这类不对称留白属于具体布局，等有语义化需求再单独立条目。
+    -->
+    <Thickness x:Key="Space.None">0</Thickness>
+    <Thickness x:Key="Space.Xs">2</Thickness>
+    <Thickness x:Key="Space.Sm">4</Thickness>
+    <Thickness x:Key="Space.Md">6</Thickness>
+    <Thickness x:Key="Space.Lg">8</Thickness>
+    <Thickness x:Key="Space.Xl">12</Thickness>
+    <Thickness x:Key="Space.Xxl">24</Thickness>
 
 </ResourceDictionary>
