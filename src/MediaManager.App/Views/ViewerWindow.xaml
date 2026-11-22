@@ -123,7 +123,7 @@
 
         <!-- 分类面板里的小标题 -->
         <Style x:Key="SectionTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.Small}" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="Margin" Value="0,14,0,5" />
         </Style>
@@ -188,7 +188,7 @@
                             Style="{StaticResource ChipButton}" Margin="0,0,6,0"
                             ToolTip="撤销上一步（Ctrl+Z）">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="↶" FontSize="15" Margin="0,0,5,0" VerticalAlignment="Center" />
+                            <TextBlock Text="↶" FontSize="{StaticResource FontSize.Section}" Margin="0,0,5,0" VerticalAlignment="Center" />
                             <TextBlock Text="撤销" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
@@ -196,7 +196,7 @@
                             Style="{StaticResource ChipButton}" Margin="0,0,12,0"
                             ToolTip="重做（Ctrl+Y）">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="↷" FontSize="15" Margin="0,0,5,0" VerticalAlignment="Center" />
+                            <TextBlock Text="↷" FontSize="{StaticResource FontSize.Section}" Margin="0,0,5,0" VerticalAlignment="Center" />
                             <TextBlock Text="重做" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
@@ -258,7 +258,7 @@
                 </StackPanel>
 
                 <TextBlock x:Name="ToolHint" VerticalAlignment="Center" Margin="14,0"
-                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="{StaticResource FontSize.Body}"
                            TextTrimming="CharacterEllipsis"
                            Text="提示：右侧选择分类与工具，Ctrl+Z 撤销，按住 \ 看原图" />
             </DockPanel>
@@ -358,10 +358,10 @@
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                                     Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
                             <TextBlock Text="⏳" FontSize="40" Foreground="#888888" HorizontalAlignment="Center" />
-                            <TextBlock Text="{Binding LoadStatusText}" Foreground="#BBBBBB" FontSize="14"
+                            <TextBlock Text="{Binding LoadStatusText}" Foreground="#BBBBBB" FontSize="{StaticResource FontSize.Emphasis}"
                                        HorizontalAlignment="Center" Margin="0,8,0,0" />
                         </StackPanel>
-                        <TextBlock Text="{Binding LoadStatusText}" Foreground="#DD6666" FontSize="14"
+                        <TextBlock Text="{Binding LoadStatusText}" Foreground="#DD6666" FontSize="{StaticResource FontSize.Emphasis}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
                                    Visibility="{Binding LoadStatusText, Converter={StaticResource StringToVis}}"
                                    TextWrapping="Wrap" MaxWidth="420" />
@@ -375,7 +375,7 @@
                         BorderThickness="1" CornerRadius="8" Padding="12,8">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock x:Name="CropSizeText" VerticalAlignment="Center" Margin="0,0,14,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="{StaticResource FontSize.Body}" />
                         <Button Content="取消" Style="{StaticResource ChipButton}" Click="OnCancelCrop" />
                         <Button Content="✅ 确认裁剪" Click="OnConfirmCrop" Margin="8,0,0,0"
                                 Background="{DynamicResource PrimaryBrush}" Foreground="White"
@@ -402,12 +402,12 @@
 
                         <StackPanel VerticalAlignment="Center">
                             <TextBlock x:Name="SaveResultTitle" Text="已保存为新文件（原图未修改）"
-                                       FontWeight="Bold" FontSize="13"
+                                       FontWeight="Bold" FontSize="{StaticResource FontSize.Subtitle}"
                                        Foreground="{DynamicResource TextBrush}" />
-                            <TextBlock x:Name="SaveResultName" Text="" FontWeight="Bold" FontSize="13"
+                            <TextBlock x:Name="SaveResultName" Text="" FontWeight="Bold" FontSize="{StaticResource FontSize.Subtitle}"
                                        Foreground="#16A34A" TextTrimming="CharacterEllipsis"
                                        MaxWidth="420" Margin="0,3,0,0" />
-                            <TextBlock x:Name="SaveResultDetail" Text="" FontSize="11"
+                            <TextBlock x:Name="SaveResultDetail" Text="" FontSize="{StaticResource FontSize.Small}"
                                        Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
                         </StackPanel>
                     </DockPanel>
@@ -417,7 +417,7 @@
                 <Border x:Name="ToastBar" Visibility="Collapsed"
                         HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,74"
                         Background="#E6000000" CornerRadius="6" Padding="14,7">
-                    <TextBlock x:Name="ToastText" Foreground="White" FontSize="12" />
+                    <TextBlock x:Name="ToastText" Foreground="White" FontSize="{StaticResource FontSize.Body}" />
                 </Border>
             </Grid>
 
@@ -441,7 +441,7 @@
                                      Checked="OnCategoryChecked" ToolTip="旋转、翻转、拉直、输出尺寸">
                             <StackPanel>
                                 <TextBlock Text="⚙" FontSize="20" HorizontalAlignment="Center" />
-                                <TextBlock Text="基础" FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                                <TextBlock Text="基础" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="CatCrop" GroupName="EditorCat" Tag="crop"
@@ -449,7 +449,7 @@
                                      Checked="OnCategoryChecked" ToolTip="裁剪比例与裁剪框">
                             <StackPanel>
                                 <TextBlock Text="✂" FontSize="20" HorizontalAlignment="Center" />
-                                <TextBlock Text="裁剪" FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                                <TextBlock Text="裁剪" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="CatColor" GroupName="EditorCat" Tag="color"
@@ -457,7 +457,7 @@
                                      Checked="OnCategoryChecked" ToolTip="亮度、对比度、饱和度与滤镜">
                             <StackPanel>
                                 <TextBlock Text="🎨" FontSize="20" HorizontalAlignment="Center" />
-                                <TextBlock Text="调色" FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                                <TextBlock Text="调色" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="CatText" GroupName="EditorCat" Tag="text"
@@ -465,7 +465,7 @@
                                      Checked="OnCategoryChecked" ToolTip="文字、文字水印、斜放角度">
                             <StackPanel>
                                 <TextBlock Text="🔤" FontSize="20" HorizontalAlignment="Center" />
-                                <TextBlock Text="文字" FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                                <TextBlock Text="文字" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="CatDraw" GroupName="EditorCat" Tag="draw"
@@ -473,7 +473,7 @@
                                      Checked="OnCategoryChecked" ToolTip="涂鸦与矩形 / 箭头 / 椭圆标注">
                             <StackPanel>
                                 <TextBlock Text="✏" FontSize="20" HorizontalAlignment="Center" />
-                                <TextBlock Text="标注" FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                                <TextBlock Text="标注" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="CatPrivacy" GroupName="EditorCat" Tag="privacy"
@@ -481,7 +481,7 @@
                                      Checked="OnCategoryChecked" ToolTip="马赛克 / 高斯模糊打码">
                             <StackPanel>
                                 <TextBlock Text="▦" FontSize="20" HorizontalAlignment="Center" />
-                                <TextBlock Text="打码" FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                                <TextBlock Text="打码" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
                         <RadioButton x:Name="CatMark" GroupName="EditorCat" Tag="mark"
@@ -489,7 +489,7 @@
                                      Checked="OnCategoryChecked" ToolTip="平铺水印与图片水印（Logo）">
                             <StackPanel>
                                 <TextBlock Text="💧" FontSize="20" HorizontalAlignment="Center" />
-                                <TextBlock Text="水印" FontSize="11" HorizontalAlignment="Center" Margin="0,3,0,0" />
+                                <TextBlock Text="水印" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
                     </StackPanel>
@@ -519,9 +519,9 @@
                                                ToolTip="微调并自动纠正倾斜的画面" />
                                     <DockPanel Margin="0,0,0,2" ToolTip="微调并自动纠正倾斜的画面；旋转后自动裁掉四角">
                                         <TextBlock x:Name="StraightenText" DockPanel.Dock="Right" Text="0°"
-                                                   Width="44" TextAlignment="Right" FontSize="11"
+                                                   Width="44" TextAlignment="Right" FontSize="{StaticResource FontSize.Small}"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Text="旋转并自动裁掉四角" FontSize="11"
+                                        <TextBlock Text="旋转并自动裁掉四角" FontSize="{StaticResource FontSize.Small}"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </DockPanel>
                                     <Slider x:Name="StraightenSlider" Width="238" Minimum="-15" Maximum="15"
@@ -548,7 +548,7 @@
                                         <Button Content="应用" Style="{StaticResource ChipButton}" Margin="8,0,0,0"
                                                 Click="OnApplyCustomSize" />
                                     </WrapPanel>
-                                    <TextBlock x:Name="OutputSizeText" FontSize="11" TextWrapping="Wrap"
+                                    <TextBlock x:Name="OutputSizeText" FontSize="{StaticResource FontSize.Small}" TextWrapping="Wrap"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </StackPanel>
 
@@ -568,7 +568,7 @@
                                                   Content="✂ 开始裁剪" Click="OnCropToolClick"
                                                   HorizontalAlignment="Stretch" Margin="0,0,0,6"
                                                   ToolTip="拖动边框调整，框内可移动；确认后生效" />
-                                    <TextBlock Text="拖动 8 个手柄改变范围，拖动框内移动位置。" FontSize="11"
+                                    <TextBlock Text="拖动 8 个手柄改变范围，拖动框内移动位置。" FontSize="{StaticResource FontSize.Small}"
                                                TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </StackPanel>
 
@@ -579,9 +579,9 @@
 
                                     <DockPanel Margin="0,6,0,2">
                                         <TextBlock x:Name="FilterStrengthText" DockPanel.Dock="Right" Text="100%"
-                                                   Width="44" TextAlignment="Right" FontSize="11"
+                                                   Width="44" TextAlignment="Right" FontSize="{StaticResource FontSize.Small}"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Text="滤镜强度" FontSize="11"
+                                        <TextBlock Text="滤镜强度" FontSize="{StaticResource FontSize.Small}"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </DockPanel>
                                     <Slider x:Name="FilterStrengthSlider" Width="238" Minimum="0" Maximum="100"
@@ -592,7 +592,7 @@
                                     <TextBlock Text="亮度" Style="{StaticResource SectionTitle}" />
                                     <DockPanel>
                                         <TextBlock x:Name="BrightnessText" DockPanel.Dock="Right" Text="0"
-                                                   Width="34" TextAlignment="Right" FontSize="11"
+                                                   Width="34" TextAlignment="Right" FontSize="{StaticResource FontSize.Small}"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <Slider x:Name="BrightnessSlider" Width="238" Minimum="-100" Maximum="100"
                                                 IsSnapToTickEnabled="True" TickFrequency="1"
@@ -602,7 +602,7 @@
                                     <TextBlock Text="对比度" Style="{StaticResource SectionTitle}" Margin="0,8,0,5" />
                                     <DockPanel>
                                         <TextBlock x:Name="ContrastText" DockPanel.Dock="Right" Text="0"
-                                                   Width="34" TextAlignment="Right" FontSize="11"
+                                                   Width="34" TextAlignment="Right" FontSize="{StaticResource FontSize.Small}"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <Slider x:Name="ContrastSlider" Width="238" Minimum="-100" Maximum="100"
                                                 IsSnapToTickEnabled="True" TickFrequency="1"
@@ -612,7 +612,7 @@
                                     <TextBlock Text="饱和度" Style="{StaticResource SectionTitle}" Margin="0,8,0,5" />
                                     <DockPanel>
                                         <TextBlock x:Name="SaturationText" DockPanel.Dock="Right" Text="0"
-                                                   Width="34" TextAlignment="Right" FontSize="11"
+                                                   Width="34" TextAlignment="Right" FontSize="{StaticResource FontSize.Small}"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <Slider x:Name="SaturationSlider" Width="238" Minimum="-100" Maximum="100"
                                                 IsSnapToTickEnabled="True" TickFrequency="1"
@@ -621,7 +621,7 @@
 
                                     <Button Content="重置调色" Click="OnResetAdjustments" Style="{StaticResource ChipButton}"
                                             HorizontalAlignment="Left" Margin="0,12,0,0" />
-                                    <TextBlock Text="拖动即时预览；松手后记入一次撤销。" FontSize="11"
+                                    <TextBlock Text="拖动即时预览；松手后记入一次撤销。" FontSize="{StaticResource FontSize.Small}"
                                                TextWrapping="Wrap" Margin="0,10,0,0"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />
 
@@ -635,7 +635,7 @@
                                         <Button Content="删除" Click="OnDeletePresetClick" Style="{StaticResource ChipButton}"
                                                 Margin="0,0,0,6" />
                                     </WrapPanel>
-                                    <TextBlock Text="预设保存调色参数与文字水印，可一键套到多张图上。" FontSize="11"
+                                    <TextBlock Text="预设保存调色参数与文字水印，可一键套到多张图上。" FontSize="{StaticResource FontSize.Small}"
                                                TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </StackPanel>
 
@@ -652,8 +652,8 @@
                                         <DockPanel Margin="0,0,0,2">
                                             <TextBlock DockPanel.Dock="Right" x:Name="TextAngleText" Text="0°"
                                                        Width="44" TextAlignment="Right"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
-                                            <TextBlock Text="斜放角度（水印 / 文字）" FontSize="11"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="{StaticResource FontSize.Small}" />
+                                            <TextBlock Text="斜放角度（水印 / 文字）" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </DockPanel>
                                         <Slider x:Name="TextAngleSlider" Minimum="-180" Maximum="180" Value="0"
@@ -661,17 +661,17 @@
                                                 ValueChanged="OnTextAngleChanged"
                                                 ToolTip="−180° ~ +180°，正值顺时针；水印可任意角度斜放" />
                                         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                            <TextBlock Text="旋转角度" FontSize="11" VerticalAlignment="Center"
+                                            <TextBlock Text="旋转角度" FontSize="{StaticResource FontSize.Small}" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                             <TextBox x:Name="TextAngleInput" Width="52" Margin="6,0,4,0"
-                                                     Padding="4,2" FontSize="11" Text="0" TextAlignment="Right"
+                                                     Padding="4,2" FontSize="{StaticResource FontSize.Small}" Text="0" TextAlignment="Right"
                                                      LostFocus="OnTextAngleInputCommitted"
                                                      KeyDown="OnTextAngleInputKeyDown"
                                                      ToolTip="可直接输入 0-360°（360° 等同于 0°），与上方滑块联动。" />
-                                            <TextBlock Text="°（0-360）" FontSize="11" VerticalAlignment="Center"
+                                            <TextBlock Text="°（0-360）" FontSize="{StaticResource FontSize.Small}" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </StackPanel>
-                                        <TextBlock Text="作用于当前选中的文字；没有选中时作用于最后一段。" FontSize="11"
+                                        <TextBlock Text="作用于当前选中的文字；没有选中时作用于最后一段。" FontSize="{StaticResource FontSize.Small}"
                                                    TextWrapping="Wrap" Margin="0,2,0,8"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </StackPanel>
@@ -679,17 +679,17 @@
                                     <StackPanel x:Name="TextProps" Visibility="Collapsed" Margin="0,2,0,8">
                                         <DockPanel Margin="0,0,0,8">
                                             <Button DockPanel.Dock="Right" Content="删除" Click="OnDeleteTextClick"
-                                                    Padding="8,2" FontSize="11" />
+                                                    Padding="8,2" FontSize="{StaticResource FontSize.Small}" />
                                             <Button DockPanel.Dock="Right" Content="✓ 完成" Click="OnFinishTextClick"
-                                                    Padding="10,2" FontSize="11" Margin="0,0,6,0"
+                                                    Padding="10,2" FontSize="{StaticResource FontSize.Small}" Margin="0,0,6,0"
                                                     Background="{DynamicResource PrimaryBrush}" Foreground="White"
                                                     BorderBrush="{DynamicResource PrimaryBrush}"
                                                     ToolTip="结束这段文字的编辑（也可以按 Esc 或点画面空白处）" />
-                                            <TextBlock Text="正在编辑这段文字" VerticalAlignment="Center" FontSize="11"
+                                            <TextBlock Text="正在编辑这段文字" VerticalAlignment="Center" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </DockPanel>
 
-                                        <TextBlock Text="字体" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBlock Text="字体" FontSize="{StaticResource FontSize.Small}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <ComboBox x:Name="FontCombo" Margin="0,4,0,8" SelectionChanged="OnFontChanged">
                                             <ComboBoxItem Content="微软雅黑" Tag="Microsoft YaHei" />
                                             <ComboBoxItem Content="黑体" Tag="SimHei" />
@@ -701,26 +701,26 @@
 
                                         <DockPanel Margin="0,0,0,2">
                                             <TextBlock DockPanel.Dock="Right" x:Name="FontSizeText" Text="32"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" />
-                                            <TextBlock Text="字号" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="{StaticResource FontSize.Small}" />
+                                            <TextBlock Text="字号" FontSize="{StaticResource FontSize.Small}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </DockPanel>
                                         <Slider x:Name="FontSizeSlider" Minimum="12" Maximum="140" Value="32"
                                                 Width="238" IsSnapToTickEnabled="True" TickFrequency="1" Margin="0,2,0,8"
                                                 ValueChanged="OnFontSizeChanged" />
 
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                            <TextBlock Text="缩放比例" FontSize="11" VerticalAlignment="Center"
+                                            <TextBlock Text="缩放比例" FontSize="{StaticResource FontSize.Small}" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                             <TextBox x:Name="TextScaleInput" Width="52" Margin="6,0,4,0"
-                                                     Padding="4,2" FontSize="11" Text="100" TextAlignment="Right"
+                                                     Padding="4,2" FontSize="{StaticResource FontSize.Small}" Text="100" TextAlignment="Right"
                                                      LostFocus="OnTextScaleInputCommitted"
                                                      KeyDown="OnTextScaleInputKeyDown"
                                                      ToolTip="相对默认字号（48px）的百分比：100% = 48px，范围 20%-300%。" />
-                                            <TextBlock Text="%（20-300）" FontSize="11" VerticalAlignment="Center"
+                                            <TextBlock Text="%（20-300）" FontSize="{StaticResource FontSize.Small}" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </StackPanel>
 
-                                        <TextBlock Text="颜色" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                        <TextBlock Text="颜色" FontSize="{StaticResource FontSize.Small}" Foreground="{DynamicResource TextSecondaryBrush}"
                                                    Margin="0,0,0,4" />
                                         <WrapPanel x:Name="TextColorPanel" Margin="0,0,0,8" />
 
@@ -777,8 +777,8 @@
                                     <WrapPanel x:Name="InkColorPanel" Margin="0,0,0,4" />
                                     <DockPanel Margin="0,0,0,4">
                                         <TextBlock DockPanel.Dock="Right" x:Name="InkWidthText" Text="4"
-                                                   FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Text="粗细" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                   FontSize="{StaticResource FontSize.Small}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBlock Text="粗细" FontSize="{StaticResource FontSize.Small}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </DockPanel>
                                     <Slider x:Name="InkWidthSlider" Minimum="1" Maximum="24" Value="4"
                                             Width="238" IsSnapToTickEnabled="True" TickFrequency="1"
@@ -796,7 +796,7 @@
                                                       Style="{StaticResource CompactToggle}" Click="OnShapeToolClick"
                                                       Margin="0,0,0,6" />
                                     </WrapPanel>
-                                    <TextBlock Text="在画面上按住拖动绘制；颜色与粗细沿用上方涂鸦设置。" FontSize="11"
+                                    <TextBlock Text="在画面上按住拖动绘制；颜色与粗细沿用上方涂鸦设置。" FontSize="{StaticResource FontSize.Small}"
                                                TextWrapping="Wrap" Margin="0,0,0,4"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />
 
@@ -822,8 +822,8 @@
                                     </ComboBox>
                                     <DockPanel Margin="0,0,0,4">
                                         <TextBlock DockPanel.Dock="Right" x:Name="PrivacyWidthText" Text="40"
-                                                   FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Text="画笔大小" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                   FontSize="{StaticResource FontSize.Small}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBlock Text="画笔大小" FontSize="{StaticResource FontSize.Small}" Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </DockPanel>
                                     <Slider x:Name="PrivacyWidthSlider" Minimum="8" Maximum="160" Value="40"
                                             Width="238" IsSnapToTickEnabled="True" TickFrequency="1"
@@ -831,15 +831,15 @@
                                     <DockPanel Margin="0,6,0,4">
                                         <TextBlock DockPanel.Dock="Right" x:Name="PrivacyBlockText" Text="17"
                                                    Width="34" TextAlignment="Right"
-                                                   FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Text="颗粒（越大越粗）" FontSize="11"
+                                                   FontSize="{StaticResource FontSize.Small}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBlock Text="颗粒（越大越粗）" FontSize="{StaticResource FontSize.Small}"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </DockPanel>
                                     <Slider x:Name="PrivacyBlockSlider" Minimum="4" Maximum="40" Value="17"
                                             Width="238" IsSnapToTickEnabled="True" TickFrequency="1"
                                             ValueChanged="OnPrivacyBlockChanged"
                                             ToolTip="马赛克方块大小 / 模糊半径；人脸和证件可以用不同粒度" />
-                                    <TextBlock Text="在画面上按住拖动即可涂抹；可撤销。" FontSize="11"
+                                    <TextBlock Text="在画面上按住拖动即可涂抹；可撤销。" FontSize="{StaticResource FontSize.Small}"
                                                TextWrapping="Wrap" Margin="0,8,0,0"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </StackPanel>
@@ -852,16 +852,16 @@
                                             Style="{StaticResource WideButton}" />
 
                                     <StackPanel x:Name="TileProps" Visibility="Collapsed">
-                                        <TextBlock Text="水印文字" FontSize="11"
+                                        <TextBlock Text="水印文字" FontSize="{StaticResource FontSize.Small}"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <TextBox x:Name="TileTextBox" Text="© 你的署名" Margin="0,4,0,8"
                                                  Padding="5,4" TextChanged="OnTileTextChanged" />
 
                                         <DockPanel Margin="0,0,0,2">
                                             <TextBlock DockPanel.Dock="Right" x:Name="TileSizeText" Text="4.5%"
-                                                       Width="44" TextAlignment="Right" FontSize="11"
+                                                       Width="44" TextAlignment="Right" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
-                                            <TextBlock Text="字号（占画面宽度）" FontSize="11"
+                                            <TextBlock Text="字号（占画面宽度）" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </DockPanel>
                                         <Slider x:Name="TileSizeSlider" Minimum="1.5" Maximum="12" Value="4.5"
@@ -870,9 +870,9 @@
 
                                         <DockPanel Margin="0,0,0,2">
                                             <TextBlock DockPanel.Dock="Right" x:Name="TileAngleText" Text="-30°"
-                                                       Width="44" TextAlignment="Right" FontSize="11"
+                                                       Width="44" TextAlignment="Right" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
-                                            <TextBlock Text="斜放角度" FontSize="11"
+                                            <TextBlock Text="斜放角度" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </DockPanel>
                                         <Slider x:Name="TileAngleSlider" Minimum="-180" Maximum="180" Value="-30"
@@ -881,9 +881,9 @@
 
                                         <DockPanel Margin="0,0,0,2">
                                             <TextBlock DockPanel.Dock="Right" x:Name="TileGapText" Text="1.6×"
-                                                       Width="44" TextAlignment="Right" FontSize="11"
+                                                       Width="44" TextAlignment="Right" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
-                                            <TextBlock Text="疏密（间距）" FontSize="11"
+                                            <TextBlock Text="疏密（间距）" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </DockPanel>
                                         <Slider x:Name="TileGapSlider" Minimum="0.4" Maximum="4" Value="1.6"
@@ -892,9 +892,9 @@
 
                                         <DockPanel Margin="0,0,0,2">
                                             <TextBlock DockPanel.Dock="Right" x:Name="TileOpacityText" Text="18%"
-                                                       Width="44" TextAlignment="Right" FontSize="11"
+                                                       Width="44" TextAlignment="Right" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
-                                            <TextBlock Text="不透明度" FontSize="11"
+                                            <TextBlock Text="不透明度" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </DockPanel>
                                         <Slider x:Name="TileOpacitySlider" Minimum="4" Maximum="60" Value="18"
@@ -902,7 +902,7 @@
                                                 ValueChanged="OnTileOpacityChanged" Margin="0,2,0,8" />
 
                                         <WrapPanel Margin="0,0,0,8">
-                                            <TextBlock Text="颜色" FontSize="11" VerticalAlignment="Center"
+                                            <TextBlock Text="颜色" FontSize="{StaticResource FontSize.Small}" VerticalAlignment="Center"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                                        Margin="0,0,8,0" />
                                             <ComboBox x:Name="TileColorCombo" Width="110" Height="26"
@@ -919,23 +919,23 @@
                                                 Style="{StaticResource WideButton}" Margin="0,2,0,0" />
                                     </StackPanel>
 
-                                    <TextBlock Text="一段文字按固定角度、间距重复铺满整张图，适合版权 / 出处。" FontSize="11"
+                                    <TextBlock Text="一段文字按固定角度、间距重复铺满整张图，适合版权 / 出处。" FontSize="{StaticResource FontSize.Small}"
                                                TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"
                                                Margin="0,0,0,8" />
 
                                     <TextBlock Text="图片水印（Logo）" Style="{StaticResource SectionTitle}" />
                                     <Button Content="🖼 选择 PNG 图片（Logo）" Click="OnPickImageWatermark"
                                             Style="{StaticResource WideButton}" />
-                                    <TextBlock Text="支持透明 PNG；添加后可拖动位置、拖右下角改大小。" FontSize="11"
+                                    <TextBlock Text="支持透明 PNG；添加后可拖动位置、拖右下角改大小。" FontSize="{StaticResource FontSize.Small}"
                                                TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
 
                                     <StackPanel x:Name="MarkProps" Visibility="Collapsed" Margin="0,10,0,0">
-                                        <TextBlock x:Name="MarkName" FontSize="11" TextTrimming="CharacterEllipsis"
+                                        <TextBlock x:Name="MarkName" FontSize="{StaticResource FontSize.Small}" TextTrimming="CharacterEllipsis"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,4" />
                                         <DockPanel Margin="0,0,0,2">
                                             <TextBlock DockPanel.Dock="Right" x:Name="MarkOpacityText" Text="80%"
-                                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                            <TextBlock Text="不透明度" FontSize="11"
+                                                       FontSize="{StaticResource FontSize.Small}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="不透明度" FontSize="{StaticResource FontSize.Small}"
                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </DockPanel>
                                         <Slider x:Name="MarkOpacitySlider" Minimum="10" Maximum="100" Value="80"
@@ -969,7 +969,7 @@
                     <Button Content="−" Click="OnZoomOut" Width="28" Style="{StaticResource ChipButton}"
                             Padding="0" Margin="0,0,4,0" ToolTip="缩小（滚轮向下）" />
                     <TextBlock x:Name="ZoomText" Text="适应窗口" MinWidth="62" TextAlignment="Center"
-                               VerticalAlignment="Center" Margin="0,0,4,0" FontSize="12"
+                               VerticalAlignment="Center" Margin="0,0,4,0" FontSize="{StaticResource FontSize.Body}"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                     <Button Content="＋" Click="OnZoomIn" Width="28" Style="{StaticResource ChipButton}"
                             Padding="0" Margin="0,0,10,0" ToolTip="放大（滚轮向上）" />

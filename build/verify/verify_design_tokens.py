@@ -115,7 +115,7 @@ FONT_SIZE_BUDGET = {
     "Views/SettingsWindow.xaml": 3,
     "Views/VaultWindow.xaml": 16,
     "Views/VideoPlayerWindow.xaml": 19,
-    "Views/ViewerWindow.xaml": 79,
+    "Views/ViewerWindow.xaml": 10,
 }
 
 SPACING_BUDGET = {
