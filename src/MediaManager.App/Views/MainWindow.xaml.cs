@@ -167,11 +167,22 @@ public partial class MainWindow : Window
         LeftSidebarColumn.Width = new GridLength(leftCollapsed ? 0 : LeftSidebarWidth);
         RightSidebarColumn.Width = new GridLength(rightCollapsed ? 0 : RightSidebarWidth);
 
-        // 展开：标题行里的小按钮；收起：贴窗口边缘的浮层胶囊
+        // 展开态：左栏按钮在「▼ 库」行右端、右栏按钮在文件名左侧，各在自己栏里，
+        // 所以各自只看自己那一栏收没收起
         LeftHeaderCollapse.Visibility = leftCollapsed ? Visibility.Collapsed : Visibility.Visible;
         RightHeaderCollapse.Visibility = rightCollapsed ? Visibility.Collapsed : Visibility.Visible;
+
+        // 收起态：贴边的胶囊浮出来，接管入口
         LeftCollapseHandle.Visibility = leftCollapsed ? Visibility.Visible : Visibility.Collapsed;
         RightCollapseHandle.Visibility = rightCollapsed ? Visibility.Visible : Visibility.Collapsed;
+
+        // 箭头永远朝「点下去侧栏往哪边动」：右栏收着时是「展开」，箭头朝左。
+        var rightText = rightCollapsed ? "‹" : "»";
+        var rightTip = rightCollapsed ? "展开右侧详情栏" : "收起右侧详情栏，把空间让给缩略图";
+        RightHeaderCollapse.Content = rightText;
+        RightHeaderCollapse.ToolTip = rightTip;
+        RightCollapseHandle.Content = rightText;
+        RightCollapseHandle.ToolTip = rightTip;
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)

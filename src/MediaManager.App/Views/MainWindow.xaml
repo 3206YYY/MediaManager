@@ -102,25 +102,30 @@
         </Style>
 
         <!-- 侧栏折叠：两种形态各司其职。
-             展开时用 SidebarHeaderButton，就长在侧栏自己的标题行右侧 —— 有留白、不压图，
-             用户一眼能在它该在的地方找到（v1.4.8 第一版把把手浮在网格边缘，
-             贴着缩略图又压着图，被评价成「草台班子」）。
+             展开时用 SidebarHeaderButton，成对排在左栏「▼ 库」行右端 —— 有留白、不压图，
+             一眼能找到（v1.4.8 第一版把把手浮在网格边缘，贴着缩略图又压着图，
+             被评价成「草台班子」；第二版把右栏那个单独挂在右栏顶部，孤零零悬在空白处，
+             用户要求挪到左边来，凑成一组布局按钮）。
              收起时侧栏宽度归零，头部按钮跟着没了，只剩 SidebarCollapseHandle
-             浮在窗口边缘当唯一入口；做成有阴影的胶囊，让它看起来是「浮起来的按钮」，
+             浮在窗口边缘当入口；做成有阴影的胶囊，让它看起来是「浮起来的按钮」，
              而不是一条挤在缝里的分隔线。
              ⚠ 收起态**不要用 PanelBrush 打底**：深色主题下 PanelBrush(#252526) 与网格底色
              (#1E1E1E) 几乎同色，第一版整根把手"消失"在缩略图里（截图采样确认过）。
-             用比周围亮一档的 HoverBrush + ScrollThumbBrush 勾边，压在照片上也看得见。 -->
+             用比周围亮一档的 HoverBrush + ScrollThumbBrush 勾边，压在照片上也看得见。
+             ⚠ 头部按钮必须带边框：不加框就是一个灰箭头浮在标题旁边，看不出能点。 -->
         <Style x:Key="SidebarHeaderButton" TargetType="Button">
-            <Setter Property="Width" Value="26" />
-            <Setter Property="Height" Value="22" />
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="24" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" CornerRadius="6" Background="Transparent">
+                        <Border x:Name="Bd" CornerRadius="6"
+                                Background="Transparent"
+                                BorderBrush="{DynamicResource ScrollThumbBrush}"
+                                BorderThickness="1">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
                                               TextElement.FontSize="14" TextElement.FontWeight="Bold" />
                         </Border>
@@ -128,6 +133,8 @@
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="Bd" Property="Background"
                                         Value="{DynamicResource HoverBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush"
+                                        Value="{DynamicResource PrimaryBrush}" />
                                 <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -351,7 +358,7 @@
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="6">
-                        <!-- 「▼ 库」这一行的右端就是折叠按钮的家：它在侧栏里、有 8px 留白，
+                        <!-- 「▼ 库」这一行的右端就是折叠按钮的家：有 8px 留白，
                              不在缩略图上，也不紧贴任何东西 -->
                         <DockPanel Margin="8,8,4,4" LastChildFill="False">
                             <Button x:Name="LeftHeaderCollapse" DockPanel.Dock="Right"
@@ -881,23 +888,19 @@
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0">
                 <ScrollViewer x:Name="DetailScroll" VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="14">
-                        <!-- 文件名这一行右端放折叠按钮：右栏自己的地盘，不碰缩略图 -->
-                        <Grid Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding DetailName}"
-                                       FontWeight="Bold" FontSize="16"
-                                       TextWrapping="Wrap" Margin="0,0,8,0" />
-                            <Button Grid.Column="1" x:Name="RightHeaderCollapse"
+                        <!-- 折叠按钮贴右栏自己的左端（文件名左侧），和左栏右上角那个成对：
+                             两个都靠中间网格、各在自己栏里，留 8px 间距不贴着文字 -->
+                        <DockPanel Margin="0,0,0,10" LastChildFill="True">
+                            <Button x:Name="RightHeaderCollapse" DockPanel.Dock="Left"
                                     Style="{StaticResource SidebarHeaderButton}"
-                                    VerticalAlignment="Top"
+                                    VerticalAlignment="Top" Margin="0,0,8,0"
                                     Content="»"
                                     AutomationProperties.AutomationId="RightSidebarToggle"
                                     ToolTip="收起右侧详情栏，把空间让给缩略图"
                                     Click="OnToggleRightSidebar" />
-                        </Grid>
+                            <TextBlock Text="{Binding DetailName}" FontWeight="Bold" FontSize="16"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" />
+                        </DockPanel>
                         <TextBlock Text="{Binding DetailMeta}" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Text="{Binding DetailDate}" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
 
