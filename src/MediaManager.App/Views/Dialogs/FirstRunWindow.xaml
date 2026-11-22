@@ -50,13 +50,13 @@
         </Style>
 
         <Style x:Key="CardTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="14.5" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.EmphasisLarge}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
         </Style>
 
         <Style x:Key="CardDesc" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.Body}" />
             <Setter Property="Margin" Value="0,4,0,0" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="LineHeight" Value="18" />
@@ -76,10 +76,10 @@
 
         <StackPanel Margin="26,22,26,20">
             <TextBlock Text="先问一句，以后不烦你"
-                       FontSize="17" FontWeight="SemiBold"
+                       FontSize="{StaticResource FontSize.PageTitle}" FontWeight="SemiBold"
                        Foreground="{DynamicResource TextBrush}" />
 
-            <TextBlock Margin="0,7,0,18" TextWrapping="Wrap" LineHeight="20" FontSize="12.5"
+            <TextBlock Margin="0,7,0,18" TextWrapping="Wrap" LineHeight="20" FontSize="{StaticResource FontSize.BodyLarge}"
                        Foreground="{DynamicResource TextSecondaryBrush}"
                        Text="你主要用媒体管理器做什么？左边侧栏留几项，你自己定。选完随时能在「设置 → 界面」里改回来。" />
 
@@ -101,7 +101,7 @@
                 </StackPanel>
             </Button>
 
-            <TextBlock Margin="2,8,2,0" TextWrapping="Wrap" LineHeight="18" FontSize="11.5"
+            <TextBlock Margin="2,8,2,0" TextWrapping="Wrap" LineHeight="18" FontSize="{StaticResource FontSize.Meta}"
                        Opacity="0.75"
                        Foreground="{DynamicResource TextSecondaryBrush}"
                        Text="拿不准就选第一个：其它功能只是藏起来，不是删掉，教程和多出来的选项都不会消失。" />

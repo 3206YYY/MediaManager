@@ -75,9 +75,9 @@
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
 
         <StackPanel Margin="18,16,18,16">
-            <TextBlock Text="批量导出" FontSize="16" FontWeight="SemiBold"
+            <TextBlock Text="批量导出" FontSize="{StaticResource FontSize.Title}" FontWeight="SemiBold"
                        Foreground="{DynamicResource TextBrush}" />
-            <TextBlock x:Name="CountText" FontSize="12" Margin="0,4,0,14" TextWrapping="Wrap"
+            <TextBlock x:Name="CountText" FontSize="{StaticResource FontSize.Body}" Margin="0,4,0,14" TextWrapping="Wrap"
                        Foreground="{DynamicResource TextSecondaryBrush}" />
 
             <TextBlock Text="导出到" Margin="0,0,0,6" Foreground="{DynamicResource TextBrush}" />
@@ -106,7 +106,7 @@
             </ComboBox>
 
             <TextBlock Text="原图不会被修改或删除，导出的是副本；同名文件会自动加 (2)(3) 避免覆盖。视频暂不参与尺寸/压缩。"
-                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="{StaticResource FontSize.Small}" TextWrapping="Wrap"
                        Margin="0,0,0,4" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">

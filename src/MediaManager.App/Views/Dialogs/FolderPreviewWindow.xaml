@@ -13,9 +13,9 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,10">
-            <TextBlock x:Name="PathText" FontWeight="Bold" TextWrapping="Wrap" FontSize="15" />
+            <TextBlock x:Name="PathText" FontWeight="Bold" TextWrapping="Wrap" FontSize="{StaticResource FontSize.Section}" />
             <TextBlock x:Name="SummaryText" Foreground="{DynamicResource TextSecondaryBrush}"
-                       Margin="0,4,0,0" FontSize="13" />
+                       Margin="0,4,0,0" FontSize="{StaticResource FontSize.Subtitle}" />
         </StackPanel>
 
         <!-- 缩略图预览：让用户确认里面到底是什么 -->
@@ -43,7 +43,7 @@
                                         </Style>
                                     </Image.Style>
                                 </Image>
-                                <TextBlock Text="{Binding Glyph}" FontSize="52"
+                                <TextBlock Text="{Binding Glyph}" FontSize="{StaticResource FontSize.IconHuge}"
                                            HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
@@ -59,9 +59,9 @@
                             </Grid>
                         </Border>
                         <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
-                                   Margin="0,6,0,0" FontSize="13" HorizontalAlignment="Center" />
+                                   Margin="0,6,0,0" FontSize="{StaticResource FontSize.Subtitle}" HorizontalAlignment="Center" />
                         <TextBlock Text="{Binding TypeName}" Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="12" HorizontalAlignment="Center" />
+                                   FontSize="{StaticResource FontSize.Body}" HorizontalAlignment="Center" />
                     </StackPanel>
                 </DataTemplate>
             </ListBox.ItemTemplate>
@@ -74,7 +74,7 @@
                 <Button Content="重新选择" Width="100" Margin="8,0,0,0" Click="OnCancel" />
             </StackPanel>
             <TextBlock x:Name="HintText" VerticalAlignment="Center"
-                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                       Foreground="{DynamicResource TextSecondaryBrush}" FontSize="{StaticResource FontSize.Body}" />
         </DockPanel>
     </Grid>
 </Window>

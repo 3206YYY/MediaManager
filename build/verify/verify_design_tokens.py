@@ -94,29 +94,7 @@ HARDCODED_BUDGET = {
 # 字号 / 间距欠账：口径 = 属性写法（FontSize="12"、Padding="8"）与
 # 样式写法（<Setter Property="FontSize" Value="12" />）都算。同样**只许减不许增**，
 # 迁完一个窗口就 `--update` 把数字贴回来。0 的条目直接删掉，别留一堆空账。
-FONT_SIZE_BUDGET = {
-    "Controls/FileTypeIconView.xaml": 1,
-    "Resources/Themes/Controls.xaml": 4,
-    "Views/Dialogs/BatchExportWindow.xaml": 3,
-    "Views/Dialogs/BatchRenameWindow.xaml": 5,
-    "Views/Dialogs/DialogWindow.xaml": 3,
-    "Views/Dialogs/FirstRunWindow.xaml": 5,
-    "Views/Dialogs/FolderPickerWindow.xaml": 5,
-    "Views/Dialogs/FolderPreviewWindow.xaml": 6,
-    "Views/Dialogs/MediaPickerWindow.xaml": 6,
-    "Views/Dialogs/SaveAsWindow.xaml": 6,
-    "Views/Dialogs/TextPromptWindow.xaml": 2,
-    "Views/Dialogs/UpdateWindow.xaml": 10,
-    "Views/Dialogs/VaultPasswordWindow.xaml": 6,
-    "Views/DiaryEditWindow.xaml": 7,
-    "Views/DiaryWindow.xaml": 10,
-    "Views/DuplicateWindow.xaml": 2,
-    "Views/RecentlyDeletedWindow.xaml": 8,
-    "Views/SettingsWindow.xaml": 3,
-    "Views/VaultWindow.xaml": 16,
-    "Views/VideoPlayerWindow.xaml": 19,
-    "Views/ViewerWindow.xaml": 10,
-}
+FONT_SIZE_BUDGET = {}
 
 SPACING_BUDGET = {
     "Resources/Themes/Controls.xaml": 14,

@@ -75,9 +75,9 @@
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
 
         <StackPanel Margin="18,14,18,16">
-            <TextBlock x:Name="TitleText" FontSize="15" FontWeight="SemiBold"
+            <TextBlock x:Name="TitleText" FontSize="{StaticResource FontSize.Section}" FontWeight="SemiBold"
                        Margin="0,0,0,10" Foreground="{DynamicResource TextBrush}" />
-            <TextBlock x:Name="MessageText" FontSize="12.5" TextWrapping="Wrap"
+            <TextBlock x:Name="MessageText" FontSize="{StaticResource FontSize.BodyLarge}" TextWrapping="Wrap"
                        Margin="0,0,0,10" Foreground="{DynamicResource TextSecondaryBrush}" />
             <TextBox x:Name="InputBox" MinHeight="30" MaxLength="60" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">

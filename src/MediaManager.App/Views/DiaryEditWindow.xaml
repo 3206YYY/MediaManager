@@ -14,7 +14,7 @@
 
     <Window.Resources>
         <Style x:Key="MoodButton" TargetType="Button">
-            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.Heading}" />
             <Setter Property="Width" Value="34" />
             <Setter Property="Height" Value="34" />
             <Setter Property="Margin" Value="0,0,4,0" />
@@ -51,19 +51,19 @@
         <!-- 日期 + 心情 -->
         <DockPanel Grid.Row="0" Margin="0,0,0,14">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                <TextBlock Text="心情" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12.5"
+                <TextBlock Text="心情" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="{StaticResource FontSize.BodyLarge}"
                            Foreground="{DynamicResource TextSecondaryBrush}" />
                 <StackPanel x:Name="MoodPanel" Orientation="Horizontal" />
             </StackPanel>
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="日期" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12.5"
+                <TextBlock Text="日期" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="{StaticResource FontSize.BodyLarge}"
                            Foreground="{DynamicResource TextSecondaryBrush}" />
                 <DatePicker x:Name="DateBox" Width="150" />
             </StackPanel>
         </DockPanel>
 
         <TextBox x:Name="TitleBox" Grid.Row="1" MinHeight="34" Padding="8,5"
-                 FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10"
+                 FontSize="{StaticResource FontSize.Section}" FontWeight="SemiBold" Margin="0,0,0,10"
                  ToolTip="给这篇回忆起个标题（可留空）" />
 
         <TextBox x:Name="ContentBox" Grid.Row="2" Height="140" Padding="8,6"
@@ -80,7 +80,7 @@
                     <Button Content="📁 从电脑" Padding="10,4" Margin="6,0,0,0" Click="OnPickFromDisk"
                             ToolTip="从磁盘选照片 / 视频（会自动加入媒体库）" />
                 </StackPanel>
-                <TextBlock x:Name="MediaHeader" Text="照片 / 视频" FontSize="12.5"
+                <TextBlock x:Name="MediaHeader" Text="照片 / 视频" FontSize="{StaticResource FontSize.BodyLarge}"
                            VerticalAlignment="Center"
                            Foreground="{DynamicResource TextSecondaryBrush}" />
             </DockPanel>
@@ -126,14 +126,14 @@
                         BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="2">
                     <TextBlock Text="松开，加进这篇日记"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
-                               FontSize="14" FontWeight="SemiBold"
+                               FontSize="{StaticResource FontSize.Emphasis}" FontWeight="SemiBold"
                                Foreground="{DynamicResource PrimaryBrush}" />
                 </Border>
             </Grid>
         </DockPanel>
 
         <TextBlock x:Name="HintText" Grid.Row="4" Margin="0,8,0,0" TextWrapping="Wrap"
-                   FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                   FontSize="{StaticResource FontSize.Meta}" Foreground="{DynamicResource TextSecondaryBrush}"
                    Text="也可以直接把照片 / 视频拖到这里；从电脑拖进来的文件会先加入媒体库。" />
 
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">

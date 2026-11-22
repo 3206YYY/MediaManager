@@ -20,17 +20,29 @@
         迁移时逐位对齐、肉眼零变化；11 / 11.5、12 / 12.5 这种半档是历史遗留，
         要合并得单独做一轮视觉验收，别在迁移里顺手改。
     -->
+    <sys:Double x:Key="FontSize.Micro">8</sys:Double>
     <sys:Double x:Key="FontSize.Caption">10</sys:Double>
     <sys:Double x:Key="FontSize.Small">11</sys:Double>
     <sys:Double x:Key="FontSize.Meta">11.5</sys:Double>
     <sys:Double x:Key="FontSize.Body">12</sys:Double>
     <sys:Double x:Key="FontSize.BodyLarge">12.5</sys:Double>
     <sys:Double x:Key="FontSize.Subtitle">13</sys:Double>
+    <sys:Double x:Key="FontSize.SubtitleLarge">13.5</sys:Double>
     <sys:Double x:Key="FontSize.Emphasis">14</sys:Double>
+    <sys:Double x:Key="FontSize.EmphasisLarge">14.5</sys:Double>
     <sys:Double x:Key="FontSize.Section">15</sys:Double>
+    <sys:Double x:Key="FontSize.SectionLarge">15.5</sys:Double>
     <sys:Double x:Key="FontSize.Title">16</sys:Double>
     <sys:Double x:Key="FontSize.PageTitle">17</sys:Double>
+    <sys:Double x:Key="FontSize.Heading">18</sys:Double>
+    <sys:Double x:Key="FontSize.Subheading">19</sys:Double>
+    <sys:Double x:Key="FontSize.PanelTitle">20</sys:Double>
+    <sys:Double x:Key="FontSize.Display">22</sys:Double>
+    <sys:Double x:Key="FontSize.OverlayTitle">26</sys:Double>
     <sys:Double x:Key="FontSize.Hero">28</sys:Double>
+    <sys:Double x:Key="FontSize.IconLarge">40</sys:Double>
+    <sys:Double x:Key="FontSize.IconXLarge">46</sys:Double>
+    <sys:Double x:Key="FontSize.IconHuge">52</sys:Double>
 
     <!--
         间距刻度。存成 Thickness 而不是 double：Margin / Padding 只能整体赋值，

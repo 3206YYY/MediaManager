@@ -139,7 +139,7 @@
         <Style x:Key="NavArrowButton" TargetType="Button">
             <Setter Property="Width" Value="46" />
             <Setter Property="Height" Value="96" />
-            <Setter Property="FontSize" Value="26" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.OverlayTitle}" />
             <Setter Property="Foreground" Value="#FFFFFFFF" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
@@ -357,7 +357,7 @@
                         <!-- 加载状态 -->
                         <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                                     Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
-                            <TextBlock Text="⏳" FontSize="40" Foreground="#888888" HorizontalAlignment="Center" />
+                            <TextBlock Text="⏳" FontSize="{StaticResource FontSize.IconLarge}" Foreground="#888888" HorizontalAlignment="Center" />
                             <TextBlock Text="{Binding LoadStatusText}" Foreground="#BBBBBB" FontSize="{StaticResource FontSize.Emphasis}"
                                        HorizontalAlignment="Center" Margin="0,8,0,0" />
                         </StackPanel>
@@ -390,7 +390,7 @@
                         BorderBrush="#22C55E" BorderThickness="1.5"
                         CornerRadius="10" Padding="16,12" MaxWidth="760">
                     <DockPanel>
-                        <TextBlock Text="✅" FontSize="22" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <TextBlock Text="✅" FontSize="{StaticResource FontSize.Display}" VerticalAlignment="Center" Margin="0,0,12,0" />
 
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
                                     VerticalAlignment="Center" Margin="16,0,0,0">
@@ -440,7 +440,7 @@
                                      Style="{StaticResource RailItem}" IsChecked="True"
                                      Checked="OnCategoryChecked" ToolTip="旋转、翻转、拉直、输出尺寸">
                             <StackPanel>
-                                <TextBlock Text="⚙" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Text="⚙" FontSize="{StaticResource FontSize.PanelTitle}" HorizontalAlignment="Center" />
                                 <TextBlock Text="基础" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
@@ -448,7 +448,7 @@
                                      Style="{StaticResource RailItem}"
                                      Checked="OnCategoryChecked" ToolTip="裁剪比例与裁剪框">
                             <StackPanel>
-                                <TextBlock Text="✂" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Text="✂" FontSize="{StaticResource FontSize.PanelTitle}" HorizontalAlignment="Center" />
                                 <TextBlock Text="裁剪" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
@@ -456,7 +456,7 @@
                                      Style="{StaticResource RailItem}"
                                      Checked="OnCategoryChecked" ToolTip="亮度、对比度、饱和度与滤镜">
                             <StackPanel>
-                                <TextBlock Text="🎨" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Text="🎨" FontSize="{StaticResource FontSize.PanelTitle}" HorizontalAlignment="Center" />
                                 <TextBlock Text="调色" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
@@ -464,7 +464,7 @@
                                      Style="{StaticResource RailItem}"
                                      Checked="OnCategoryChecked" ToolTip="文字、文字水印、斜放角度">
                             <StackPanel>
-                                <TextBlock Text="🔤" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Text="🔤" FontSize="{StaticResource FontSize.PanelTitle}" HorizontalAlignment="Center" />
                                 <TextBlock Text="文字" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
@@ -472,7 +472,7 @@
                                      Style="{StaticResource RailItem}"
                                      Checked="OnCategoryChecked" ToolTip="涂鸦与矩形 / 箭头 / 椭圆标注">
                             <StackPanel>
-                                <TextBlock Text="✏" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Text="✏" FontSize="{StaticResource FontSize.PanelTitle}" HorizontalAlignment="Center" />
                                 <TextBlock Text="标注" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
@@ -480,7 +480,7 @@
                                      Style="{StaticResource RailItem}"
                                      Checked="OnCategoryChecked" ToolTip="马赛克 / 高斯模糊打码">
                             <StackPanel>
-                                <TextBlock Text="▦" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Text="▦" FontSize="{StaticResource FontSize.PanelTitle}" HorizontalAlignment="Center" />
                                 <TextBlock Text="打码" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>
@@ -488,7 +488,7 @@
                                      Style="{StaticResource RailItem}"
                                      Checked="OnCategoryChecked" ToolTip="平铺水印与图片水印（Logo）">
                             <StackPanel>
-                                <TextBlock Text="💧" FontSize="20" HorizontalAlignment="Center" />
+                                <TextBlock Text="💧" FontSize="{StaticResource FontSize.PanelTitle}" HorizontalAlignment="Center" />
                                 <TextBlock Text="水印" FontSize="{StaticResource FontSize.Small}" HorizontalAlignment="Center" Margin="0,3,0,0" />
                             </StackPanel>
                         </RadioButton>

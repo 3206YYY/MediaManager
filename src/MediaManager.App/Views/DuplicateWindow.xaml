@@ -63,9 +63,9 @@
                                                    Stretch="UniformToFill" VerticalAlignment="Center" />
                                             <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="8,0">
                                                 <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" MaxWidth="420" />
-                                                <TextBlock Text="{Binding Path}" Foreground="Gray" FontSize="11"
+                                                <TextBlock Text="{Binding Path}" Foreground="Gray" FontSize="{StaticResource FontSize.Small}"
                                                            TextTrimming="CharacterEllipsis" MaxWidth="420" />
-                                                <TextBlock Text="{Binding SizeDisplay}" Foreground="Gray" FontSize="11" />
+                                                <TextBlock Text="{Binding SizeDisplay}" Foreground="Gray" FontSize="{StaticResource FontSize.Small}" />
                                             </StackPanel>
                                         </Grid>
                                     </DataTemplate>

@@ -78,25 +78,25 @@
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
         <StackPanel Margin="22,18,22,18">
 
-            <TextBlock Text="发现新版本" FontSize="17" FontWeight="SemiBold"
+            <TextBlock Text="发现新版本" FontSize="{StaticResource FontSize.PageTitle}" FontWeight="SemiBold"
                        Foreground="{DynamicResource TextBrush}" />
 
             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                <TextBlock x:Name="CurrentVersionText" FontSize="13"
+                <TextBlock x:Name="CurrentVersionText" FontSize="{StaticResource FontSize.Subtitle}"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            VerticalAlignment="Center" />
-                <TextBlock Text="→" FontSize="13" Margin="8,0"
+                <TextBlock Text="→" FontSize="{StaticResource FontSize.Subtitle}" Margin="8,0"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            VerticalAlignment="Center" />
-                <TextBlock x:Name="NewVersionText" FontSize="15" FontWeight="SemiBold"
+                <TextBlock x:Name="NewVersionText" FontSize="{StaticResource FontSize.Section}" FontWeight="SemiBold"
                            Foreground="{DynamicResource PrimaryBrush}"
                            VerticalAlignment="Center" />
             </StackPanel>
 
-            <TextBlock x:Name="MetaText" FontSize="12" Margin="0,6,0,0"
+            <TextBlock x:Name="MetaText" FontSize="{StaticResource FontSize.Body}" Margin="0,6,0,0"
                        Foreground="{DynamicResource TextSecondaryBrush}" />
 
-            <TextBlock Text="改了什么" FontSize="13" FontWeight="SemiBold"
+            <TextBlock Text="改了什么" FontSize="{StaticResource FontSize.Subtitle}" FontWeight="SemiBold"
                        Margin="0,16,0,8"
                        Foreground="{DynamicResource TextBrush}" />
 
@@ -108,22 +108,22 @@
                               HorizontalScrollBarVisibility="Disabled">
                     <StackPanel>
                         <TextBlock x:Name="SummaryText" Visibility="Collapsed"
-                                   FontSize="12.5" TextWrapping="Wrap" LineHeight="19"
+                                   FontSize="{StaticResource FontSize.BodyLarge}" TextWrapping="Wrap" LineHeight="19"
                                    Foreground="{DynamicResource TextBrush}" />
                         <StackPanel x:Name="BulletsPanel" />
                         <TextBlock x:Name="MoreText" Visibility="Collapsed"
-                                   FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   FontSize="{StaticResource FontSize.Meta}" TextWrapping="Wrap" Margin="0,6,0,0"
                                    Opacity="0.85"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock x:Name="NoNotesText" Visibility="Collapsed"
-                                   FontSize="12.5" TextWrapping="Wrap"
+                                   FontSize="{StaticResource FontSize.BodyLarge}" TextWrapping="Wrap"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    Text="这个版本没有附带更新说明，可以点「查看完整说明」去发布页看看。" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>
 
-            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,14,0,0" Opacity="0.85"
+            <TextBlock FontSize="{StaticResource FontSize.Meta}" TextWrapping="Wrap" Margin="0,14,0,0" Opacity="0.85"
                        Foreground="{DynamicResource TextSecondaryBrush}"
                        Text="本软件不会在后台偷偷下载或安装任何东西。点「去下载」只会打开浏览器，装不装、什么时候装都由你决定；换新版本会保留你的库、分类和标签。" />
 

@@ -59,10 +59,10 @@
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="＋ 写一篇" Padding="14,6" Click="OnNewEntry" />
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="📔 日记" FontSize="18" FontWeight="Bold"
+                    <TextBlock Text="📔 日记" FontSize="{StaticResource FontSize.Heading}" FontWeight="Bold"
                                Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" />
                     <TextBlock x:Name="TotalText" Margin="10,0,0,0" VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="{StaticResource FontSize.Body}" />
                     <!-- 视图切换贴在日历标题这一行：它切换的是左边这栏，
                          飞在窗口右上角会让人以为它跟「写一篇」是一伙的。 -->
                     <Button x:Name="YearToggleButton" Content="📅 年视图"
@@ -112,7 +112,7 @@
                                   IsHitTestVisible="False" />
                         </Button>
                         <TextBlock x:Name="MonthTitle" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   FontSize="14" FontWeight="SemiBold"
+                                   FontSize="{StaticResource FontSize.Emphasis}" FontWeight="SemiBold"
                                    Foreground="{DynamicResource TextBrush}" />
                     </DockPanel>
 
@@ -122,7 +122,7 @@
                         <UniformGrid x:Name="DayGrid" Columns="7" Rows="6" />
 
                         <TextBlock Text="有内容的日期会亮起来，点一下看那天的回忆。"
-                                   TextWrapping="Wrap" FontSize="11.5" Margin="2,14,2,0"
+                                   TextWrapping="Wrap" FontSize="{StaticResource FontSize.Meta}" Margin="2,14,2,0"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
 
@@ -133,7 +133,7 @@
                         <StackPanel x:Name="YearPanel">
                             <UniformGrid x:Name="MonthGrid" Columns="3" />
 
-                            <TextBlock x:Name="YearHint" TextWrapping="Wrap" FontSize="11.5" Margin="2,14,2,0"
+                            <TextBlock x:Name="YearHint" TextWrapping="Wrap" FontSize="{StaticResource FontSize.Meta}" Margin="2,14,2,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        Text="每一天都在上面，有回忆的日期会亮起来。点某一天直接跳过去。" />
                         </StackPanel>
@@ -149,7 +149,7 @@
                 </Grid.RowDefinitions>
 
                 <TextBlock x:Name="DayTitle" Grid.Row="0" Margin="18,16,18,8"
-                           FontSize="16" FontWeight="Bold"
+                           FontSize="{StaticResource FontSize.Title}" FontWeight="Bold"
                            Foreground="{DynamicResource TextBrush}" />
 
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="18,0,18,18">
@@ -167,9 +167,9 @@
                                                             Tag="{Binding}" Click="OnDeleteEntryClick" />
                                                 </StackPanel>
                                                 <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{Binding Mood}" FontSize="16"
+                                                    <TextBlock Text="{Binding Mood}" FontSize="{StaticResource FontSize.Title}"
                                                                VerticalAlignment="Center" Margin="0,0,6,0" />
-                                                    <TextBlock Text="{Binding Title}" FontSize="14.5" FontWeight="SemiBold"
+                                                    <TextBlock Text="{Binding Title}" FontSize="{StaticResource FontSize.EmphasisLarge}" FontWeight="SemiBold"
                                                                VerticalAlignment="Center"
                                                                Foreground="{DynamicResource TextBrush}" />
                                                 </StackPanel>
@@ -219,10 +219,10 @@
                         <!-- 空状态 -->
                         <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" Margin="0,60,0,0"
                                     Visibility="Collapsed">
-                            <TextBlock Text="这一天还没有回忆" FontSize="15" HorizontalAlignment="Center"
+                            <TextBlock Text="这一天还没有回忆" FontSize="{StaticResource FontSize.Section}" HorizontalAlignment="Center"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                             <TextBlock Text="点右上角「写一篇」，或者把照片 / 视频直接拖进这个窗口。"
-                                       FontSize="12" Margin="0,8,0,0" HorizontalAlignment="Center"
+                                       FontSize="{StaticResource FontSize.Body}" Margin="0,8,0,0" HorizontalAlignment="Center"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                     </StackPanel>

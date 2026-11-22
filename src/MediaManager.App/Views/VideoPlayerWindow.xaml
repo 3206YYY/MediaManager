@@ -18,7 +18,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="7,4" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.Body}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Focusable" Value="False" />
             <Setter Property="SnapsToDevicePixels" Value="True" />
@@ -51,7 +51,7 @@
              实心蓝按钮一悬停反而变淡，看起来像被禁用。 -->
         <Style x:Key="CenterActionButton" TargetType="Button" BasedOn="{StaticResource OverlayButton}">
             <Setter Property="Foreground" Value="#FFFFFFFF" />
-            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.BodyLarge}" />
             <Setter Property="Padding" Value="20,9" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -172,7 +172,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="14,7" />
-            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.BodyLarge}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Focusable" Value="False" />
@@ -218,10 +218,10 @@
                             </Border.Background>
                             <Grid>
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TitleText" Text="" FontSize="13.5"
+                                    <TextBlock x:Name="TitleText" Text="" FontSize="{StaticResource FontSize.SubtitleLarge}"
                                                FontWeight="SemiBold" Foreground="#F2FFFFFF"
                                                TextTrimming="CharacterEllipsis" MaxWidth="640" />
-                                    <TextBlock x:Name="PlaylistIndexText" Text="" FontSize="11.5"
+                                    <TextBlock x:Name="PlaylistIndexText" Text="" FontSize="{StaticResource FontSize.Meta}"
                                                Foreground="#8FFFFFFF" Margin="10,1,0,0"
                                                VerticalAlignment="Center" />
                                 </StackPanel>
@@ -264,17 +264,17 @@
                                             Click="OnPlayPauseClick" ToolTip="播放 / 暂停（空格）">
                                         <TextBlock x:Name="PlayPauseGlyph" FontFamily="Segoe MDL2 Assets"
                                                    Foreground="#121316"
-                                                   Text="&#xE768;" FontSize="13" />
+                                                   Text="&#xE768;" FontSize="{StaticResource FontSize.Subtitle}" />
                                     </Button>
 
                                     <StackPanel Grid.Column="1" Orientation="Horizontal"
                                                 VerticalAlignment="Center" Margin="0,0,14,0">
-                                        <TextBlock x:Name="TimeText" Text="00:00" FontSize="12.5"
+                                        <TextBlock x:Name="TimeText" Text="00:00" FontSize="{StaticResource FontSize.BodyLarge}"
                                                    FontWeight="SemiBold" Foreground="#F2FFFFFF"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock Text=" / " FontSize="12.5" Foreground="#70FFFFFF"
+                                        <TextBlock Text=" / " FontSize="{StaticResource FontSize.BodyLarge}" Foreground="#70FFFFFF"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock x:Name="TotalText" Text="00:00" FontSize="12.5"
+                                        <TextBlock x:Name="TotalText" Text="00:00" FontSize="{StaticResource FontSize.BodyLarge}"
                                                    Foreground="#A8FFFFFF" VerticalAlignment="Center" />
                                     </StackPanel>
 
@@ -283,11 +283,11 @@
                                             Click="OnModeButtonClick" ToolTip="播放结束后的行为">
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8EE;"
-                                                       FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                            <TextBlock x:Name="ModeText" Text="播完暂停" FontSize="12" Foreground="#F2FFFFFF"
+                                                       FontSize="{StaticResource FontSize.Body}" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                            <TextBlock x:Name="ModeText" Text="播完暂停" FontSize="{StaticResource FontSize.Body}" Foreground="#F2FFFFFF"
                                                        VerticalAlignment="Center" />
                                             <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE70D;"
-                                                       FontSize="8" VerticalAlignment="Center"
+                                                       FontSize="{StaticResource FontSize.Micro}" VerticalAlignment="Center"
                                                        Margin="6,0,0,0" Foreground="#80FFFFFF" />
                                         </StackPanel>
                                     </Button>
@@ -296,7 +296,7 @@
                                     <Button x:Name="VolumeButton" Grid.Column="4" Style="{StaticResource OverlayButton}"
                                             Click="OnMuteClick" ToolTip="静音（M）">
                                         <TextBlock x:Name="VolumeGlyph" FontFamily="Segoe MDL2 Assets" Foreground="#F2FFFFFF"
-                                                   Text="&#xE767;" FontSize="14" />
+                                                   Text="&#xE767;" FontSize="{StaticResource FontSize.Emphasis}" />
                                     </Button>
                                     <Slider x:Name="VolumeSlider" Grid.Column="5" Style="{StaticResource VolumeSlider}"
                                             Minimum="0" Maximum="100" Value="80"
@@ -308,10 +308,10 @@
                                             Click="OnSpeedButtonClick" ToolTip="播放速度"
                                             Margin="0,0,2,0">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock x:Name="SpeedText" Text="1.0x" FontSize="12" Foreground="#F2FFFFFF"
+                                            <TextBlock x:Name="SpeedText" Text="1.0x" FontSize="{StaticResource FontSize.Body}" Foreground="#F2FFFFFF"
                                                        VerticalAlignment="Center" />
                                             <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE70D;"
-                                                       FontSize="8" VerticalAlignment="Center"
+                                                       FontSize="{StaticResource FontSize.Micro}" VerticalAlignment="Center"
                                                        Margin="5,0,0,0" Foreground="#80FFFFFF" />
                                         </StackPanel>
                                     </Button>
@@ -320,7 +320,7 @@
                                             Click="OnFullScreenClick" ToolTip="全屏 / 退出全屏（F）"
                                             Margin="2,0,0,0">
                                         <TextBlock x:Name="FullScreenGlyph" FontFamily="Segoe MDL2 Assets" Foreground="#F2FFFFFF"
-                                                   Text="&#xE740;" FontSize="14" />
+                                                   Text="&#xE740;" FontSize="{StaticResource FontSize.Emphasis}" />
                                     </Button>
                                 </Grid>
                             </Grid>
@@ -330,7 +330,7 @@
                         <Border x:Name="ActionToast" VerticalAlignment="Bottom" HorizontalAlignment="Center"
                                 Margin="0,0,0,96" Background="#CC000000" CornerRadius="16"
                                 Padding="16,7" Opacity="0" IsHitTestVisible="False">
-                            <TextBlock x:Name="ActionToastText" Text="" FontSize="12.5"
+                            <TextBlock x:Name="ActionToastText" Text="" FontSize="{StaticResource FontSize.BodyLarge}"
                                        Foreground="#F2FFFFFF" />
                         </Border>
                     </Grid>
@@ -345,11 +345,11 @@
                             Padding="30,24" MaxWidth="560">
                         <StackPanel>
                             <TextBlock x:Name="CenterTitle" Text="无法播放此视频"
-                                       FontSize="15.5" FontWeight="SemiBold"
+                                       FontSize="{StaticResource FontSize.SectionLarge}" FontWeight="SemiBold"
                                        Foreground="#FFFFFFFF" TextAlignment="Center"
                                        TextWrapping="Wrap" />
                             <TextBlock x:Name="CenterDetail" Text=""
-                                       FontSize="12.5" Foreground="#D6FFFFFF"
+                                       FontSize="{StaticResource FontSize.BodyLarge}" Foreground="#D6FFFFFF"
                                        TextAlignment="Center" TextWrapping="Wrap"
                                        LineHeight="19"
                                        Margin="0,9,0,0" />

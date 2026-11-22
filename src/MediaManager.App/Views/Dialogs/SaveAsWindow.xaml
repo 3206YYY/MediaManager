@@ -74,10 +74,10 @@
             Background="{DynamicResource PanelBrush}"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
         <StackPanel Margin="18,14,18,16">
-            <TextBlock Text="另存为" FontSize="15" FontWeight="SemiBold"
+            <TextBlock Text="另存为" FontSize="{StaticResource FontSize.Section}" FontWeight="SemiBold"
                        Margin="0,0,0,12" Foreground="{DynamicResource TextBrush}" />
 
-            <TextBlock Text="保存到" FontSize="11" Margin="0,0,0,4"
+            <TextBlock Text="保存到" FontSize="{StaticResource FontSize.Small}" Margin="0,0,0,4"
                        Foreground="{DynamicResource TextSecondaryBrush}" />
             <DockPanel Margin="0,0,0,10">
                 <Button DockPanel.Dock="Right" Content="浏览…" Style="{StaticResource SaveButton}"
@@ -85,7 +85,7 @@
                 <TextBox x:Name="PathBox" MinHeight="30" VerticalContentAlignment="Center" />
             </DockPanel>
 
-            <TextBlock Text="格式" FontSize="11" Margin="0,0,0,4"
+            <TextBlock Text="格式" FontSize="{StaticResource FontSize.Small}" Margin="0,0,0,4"
                        Foreground="{DynamicResource TextSecondaryBrush}" />
             <ComboBox x:Name="FormatCombo" Margin="0,0,0,10" SelectionChanged="OnFormatChanged">
                 <ComboBoxItem Content="PNG（无损，支持透明）" Tag="png" />
@@ -96,16 +96,16 @@
 
             <DockPanel Margin="0,0,0,2">
                 <TextBlock x:Name="QualityText" DockPanel.Dock="Right" Text="92"
-                           Width="34" TextAlignment="Right" FontSize="11"
+                           Width="34" TextAlignment="Right" FontSize="{StaticResource FontSize.Small}"
                            Foreground="{DynamicResource TextSecondaryBrush}" />
-                <TextBlock Text="质量（仅 JPEG / WebP）" FontSize="11"
+                <TextBlock Text="质量（仅 JPEG / WebP）" FontSize="{StaticResource FontSize.Small}"
                            Foreground="{DynamicResource TextSecondaryBrush}" />
             </DockPanel>
             <Slider x:Name="QualitySlider" Minimum="1" Maximum="100" Value="92"
                     IsSnapToTickEnabled="True" TickFrequency="1" Margin="0,0,0,6"
                     ValueChanged="OnQualityChanged" />
 
-            <TextBlock Text="编辑结果会写成新文件，原图不会被修改。" FontSize="11" TextWrapping="Wrap"
+            <TextBlock Text="编辑结果会写成新文件，原图不会被修改。" FontSize="{StaticResource FontSize.Small}" TextWrapping="Wrap"
                        Foreground="{DynamicResource TextSecondaryBrush}" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">

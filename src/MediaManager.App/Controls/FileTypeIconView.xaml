@@ -22,7 +22,7 @@
             <Path Data="M0,0 L34,0 L0,34 Z" Fill="#3DFFFFFF"
                   HorizontalAlignment="Right" VerticalAlignment="Top" />
 
-            <TextBlock x:Name="Label" Foreground="White" FontSize="26" FontWeight="Bold"
+            <TextBlock x:Name="Label" Foreground="White" FontSize="{StaticResource FontSize.OverlayTitle}" FontWeight="Bold"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Grid>
     </Viewbox>

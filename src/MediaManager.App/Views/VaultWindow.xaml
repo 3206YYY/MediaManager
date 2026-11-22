@@ -63,10 +63,10 @@
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="12,8">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="🔒 私密空间" FontSize="17" FontWeight="Bold"
+                    <TextBlock Text="🔒 私密空间" FontSize="{StaticResource FontSize.PageTitle}" FontWeight="Bold"
                                Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding CountText}" Margin="12,0,0,0" VerticalAlignment="Center"
-                               FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                               FontSize="{StaticResource FontSize.Body}" Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
 
                 <Button DockPanel.Dock="Right" Content="🔒 关闭" Style="{StaticResource GhostButton}"
@@ -113,7 +113,7 @@
                                   ToolTip="只看收藏" />
                     <StackPanel Orientation="Horizontal" Margin="12,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="大小：" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="{StaticResource FontSize.Body}" />
                         <Slider x:Name="SizeSlider" Width="92" Minimum="80" Maximum="320" Value="170"
                                 VerticalAlignment="Center" ValueChanged="OnSizeChanged" />
                     </StackPanel>
@@ -136,7 +136,7 @@
                             Style="{StaticResource GhostButton}" Click="OnNewSectionClick"
                             ToolTip="建一个分区，把东西分门别类放（分区只是盒子，不会动文件）" />
 
-                    <TextBlock DockPanel.Dock="Top" Text="分区" FontWeight="Bold" FontSize="12"
+                    <TextBlock DockPanel.Dock="Top" Text="分区" FontWeight="Bold" FontSize="{StaticResource FontSize.Body}"
                                Margin="14,12,10,6"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
 
@@ -155,9 +155,9 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="{Binding DisplayName}"
-                                               TextTrimming="CharacterEllipsis" FontSize="12.5"
+                                               TextTrimming="CharacterEllipsis" FontSize="{StaticResource FontSize.BodyLarge}"
                                                ToolTip="{Binding ToolTipText}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding CountText}" FontSize="11"
+                                    <TextBlock Grid.Column="1" Text="{Binding CountText}" FontSize="{StaticResource FontSize.Small}"
                                                Opacity="0.6" Margin="6,0,0,0" VerticalAlignment="Center" />
                                 </Grid>
                             </DataTemplate>
@@ -251,8 +251,8 @@
                                     <ToolTip>
                                         <StackPanel>
                                             <TextBlock Text="{Binding FileName}" FontWeight="Bold" />
-                                            <TextBlock Text="{Binding ResolutionDisplay}" Foreground="#BBBBBB" FontSize="11" />
-                                            <TextBlock Text="{Binding SizeDisplay}" Foreground="#BBBBBB" FontSize="11" />
+                                            <TextBlock Text="{Binding ResolutionDisplay}" Foreground="#BBBBBB" FontSize="{StaticResource FontSize.Small}" />
+                                            <TextBlock Text="{Binding SizeDisplay}" Foreground="#BBBBBB" FontSize="{StaticResource FontSize.Small}" />
                                         </StackPanel>
                                     </ToolTip>
                                 </Grid.ToolTip>
@@ -282,7 +282,7 @@
                                                RenderOptions.BitmapScalingMode="LowQuality" />
                                         <Border Background="#22000000"
                                                 Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="▶" Foreground="White" FontSize="28"
+                                            <TextBlock Text="▶" Foreground="White" FontSize="{StaticResource FontSize.Hero}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Border>
                                         <ctl:FileTypeIconView Icon="{Binding FileIcon}"
@@ -298,11 +298,11 @@
                                             <GradientStop Color="#A6000000" Offset="1" />
                                         </LinearGradientBrush>
                                     </Border.Background>
-                                    <TextBlock Text="{Binding FileName}" FontSize="11" Foreground="White"
+                                    <TextBlock Text="{Binding FileName}" FontSize="{StaticResource FontSize.Small}" Foreground="White"
                                                HorizontalAlignment="Center" VerticalAlignment="Bottom"
                                                Margin="4" TextTrimming="CharacterEllipsis" />
                                 </Border>
-                                <TextBlock Text="⭐" FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                <TextBlock Text="⭐" FontSize="{StaticResource FontSize.Subtitle}" HorizontalAlignment="Right" VerticalAlignment="Top"
                                            Margin="0,4,6,0"
                                            Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}" />
                             </Grid>
@@ -312,11 +312,11 @@
 
                 <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center"
                             IsHitTestVisible="False" Visibility="Collapsed">
-                    <TextBlock x:Name="EmptyTitle" Text="🔒 这里是空的" FontSize="17" FontWeight="Bold"
+                    <TextBlock x:Name="EmptyTitle" Text="🔒 这里是空的" FontSize="{StaticResource FontSize.PageTitle}" FontWeight="Bold"
                                HorizontalAlignment="Center"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock x:Name="EmptyHint" Text="从主界面右键「移入私密空间」，或把文件直接拖进这个窗口。"
-                               FontSize="13" Margin="0,10,0,0" HorizontalAlignment="Center"
+                               FontSize="{StaticResource FontSize.Subtitle}" Margin="0,10,0,0" HorizontalAlignment="Center"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
 
@@ -324,7 +324,7 @@
                     <Border HorizontalAlignment="Center" VerticalAlignment="Center"
                             Background="{DynamicResource PanelBrush}" CornerRadius="10"
                             BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="2" Padding="26,16">
-                        <TextBlock Text="松开，移入私密空间" FontSize="16" FontWeight="Bold"
+                        <TextBlock Text="松开，移入私密空间" FontSize="{StaticResource FontSize.Title}" FontWeight="Bold"
                                    Foreground="{DynamicResource TextBrush}" />
                     </Border>
                 </Border>
@@ -336,9 +336,9 @@
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Padding="12,5">
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="打开保险箱文件夹" Click="OnOpenVaultFolderClick"
-                        Style="{StaticResource GhostButton}" Padding="8,3" FontSize="11"
+                        Style="{StaticResource GhostButton}" Padding="8,3" FontSize="{StaticResource FontSize.Small}"
                         ToolTip="用资源管理器打开数据目录下的 Vault（不加密，懂电脑的人翻到还是能打开）" />
-                <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="12"
+                <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="{StaticResource FontSize.Body}"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="选中文件后拖到左侧分区即可归类；关闭窗口或 5 分钟无操作会自动退出" />
             </DockPanel>

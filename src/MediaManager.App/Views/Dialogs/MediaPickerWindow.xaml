@@ -18,7 +18,7 @@
         <!-- 顶部：搜索 -->
         <DockPanel Grid.Row="0" Margin="0,0,0,12">
             <TextBlock x:Name="CountText" DockPanel.Dock="Right" VerticalAlignment="Center"
-                       Margin="12,0,0,0" FontSize="12"
+                       Margin="12,0,0,0" FontSize="{StaticResource FontSize.Body}"
                        Foreground="{DynamicResource TextSecondaryBrush}" />
 
             <Grid MaxWidth="420" HorizontalAlignment="Left">
@@ -27,7 +27,7 @@
                          ToolTip="按文件名搜索；留空 = 最近添加的照片和视频" />
                 <!-- 占位提示：TextBox 没有原生 placeholder，用一条只在空文本时可见的文本顶上 -->
                 <TextBlock Text="搜索文件名…" IsHitTestVisible="False" Margin="11,0,0,0"
-                           VerticalAlignment="Center" FontSize="12.5"
+                           VerticalAlignment="Center" FontSize="{StaticResource FontSize.BodyLarge}"
                            Foreground="{DynamicResource TextSecondaryBrush}">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
@@ -81,14 +81,14 @@
                                                         HorizontalAlignment="Left" VerticalAlignment="Top"
                                                         Margin="4" Padding="4,0"
                                                         Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
-                                                    <TextBlock Text="▶" FontSize="10" Foreground="White" />
+                                                    <TextBlock Text="▶" FontSize="{StaticResource FontSize.Caption}" Foreground="White" />
                                                 </Border>
                                                 <!-- 选中勾选角标 -->
                                                 <Border x:Name="tick" Width="20" Height="20" CornerRadius="10"
                                                         Background="{DynamicResource PrimaryBrush}"
                                                         HorizontalAlignment="Right" VerticalAlignment="Top"
                                                         Margin="4" Visibility="Collapsed">
-                                                    <TextBlock Text="✓" FontSize="11" Foreground="White"
+                                                    <TextBlock Text="✓" FontSize="{StaticResource FontSize.Small}" Foreground="White"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                 </Border>
                                             </Grid>
@@ -112,7 +112,7 @@
                 </ListBox>
 
                 <TextBlock x:Name="EmptyText" HorizontalAlignment="Center" VerticalAlignment="Center"
-                           FontSize="13" IsHitTestVisible="False"
+                           FontSize="{StaticResource FontSize.Subtitle}" IsHitTestVisible="False"
                            Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="没有找到照片或视频" Visibility="Collapsed" />
             </Grid>
@@ -126,7 +126,7 @@
                 <Button Content="＋ 加入日记" MinWidth="104" Padding="16,6" Margin="8,0,0,0"
                         IsDefault="True" Click="OnConfirm" />
             </StackPanel>
-            <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="12"
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="{StaticResource FontSize.Body}"
                        Foreground="{DynamicResource TextSecondaryBrush}" />
         </DockPanel>
     </Grid>

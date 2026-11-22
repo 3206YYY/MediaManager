@@ -75,9 +75,9 @@
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
 
         <StackPanel Margin="18,16,18,16">
-            <TextBlock Text="批量重命名" FontSize="16" FontWeight="SemiBold"
+            <TextBlock Text="批量重命名" FontSize="{StaticResource FontSize.Title}" FontWeight="SemiBold"
                        Foreground="{DynamicResource TextBrush}" />
-            <TextBlock x:Name="CountText" FontSize="12" Margin="0,4,0,14"
+            <TextBlock x:Name="CountText" FontSize="{StaticResource FontSize.Body}" Margin="0,4,0,14"
                        Foreground="{DynamicResource TextSecondaryBrush}" />
 
             <Grid>
@@ -122,14 +122,14 @@
             <Border Background="{DynamicResource SidebarBrush}" BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1" CornerRadius="6" Padding="12,10" Margin="0,14,0,0">
                 <StackPanel>
-                    <TextBlock Text="预览" FontSize="12" FontWeight="SemiBold" Margin="0,0,0,6"
+                    <TextBlock Text="预览" FontSize="{StaticResource FontSize.Body}" FontWeight="SemiBold" Margin="0,0,0,6"
                                Foreground="{DynamicResource TextBrush}" />
-                    <TextBlock x:Name="PreviewText" FontSize="12" TextWrapping="Wrap"
+                    <TextBlock x:Name="PreviewText" FontSize="{StaticResource FontSize.Body}" TextWrapping="Wrap"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
             </Border>
 
-            <TextBlock x:Name="WarnText" FontSize="11.5" TextWrapping="Wrap" Margin="0,10,0,0"
+            <TextBlock x:Name="WarnText" FontSize="{StaticResource FontSize.Meta}" TextWrapping="Wrap" Margin="0,10,0,0"
                        Foreground="#C0392B" Visibility="Collapsed" />
 
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">

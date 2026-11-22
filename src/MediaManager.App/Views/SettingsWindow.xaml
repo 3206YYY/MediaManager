@@ -96,7 +96,7 @@
         </Style>
 
         <Style x:Key="PageTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontSize" Value="{StaticResource FontSize.PanelTitle}" />
             <Setter Property="FontWeight" Value="Bold" />
             <!-- 显式写 Foreground：显式 Style 会覆盖隐式 TextBlock 样式，不写就退回黑色，深色主题下几乎看不见 -->
             <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
@@ -143,7 +143,7 @@
             <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="设置" FontSize="19" FontWeight="Bold"
+                    <TextBlock DockPanel.Dock="Top" Text="设置" FontSize="{StaticResource FontSize.Subheading}" FontWeight="Bold"
                                Margin="20,20,20,12" />
                     <TextBlock DockPanel.Dock="Bottom" x:Name="SidebarVersionText"
                                Margin="20,10,20,16" FontSize="{StaticResource FontSize.Small}"
@@ -592,7 +592,7 @@
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="版本" Style="{StaticResource SectionTitle}" />
-                                <TextBlock x:Name="VersionText" FontSize="22" FontWeight="Bold" Margin="0,0,0,4" />
+                                <TextBlock x:Name="VersionText" FontSize="{StaticResource FontSize.Display}" FontWeight="Bold" Margin="0,0,0,4" />
                                 <TextBlock x:Name="UpdateStatusText" Style="{StaticResource Hint}"
                                            Margin="0,0,0,12" Text="点击下方按钮检查 GitHub 上有没有新版本。" />
                                 <StackPanel Orientation="Horizontal">
