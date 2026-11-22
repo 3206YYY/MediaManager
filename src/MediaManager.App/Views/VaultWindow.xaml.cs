@@ -977,18 +977,20 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
         var items = GetSelectedList();
         if (items.Count == 0) return;
 
-        var confirm = CustomMessageBox.Confirm(
-            DeletePolicy.ConfirmMessage(_config.DeleteBehavior, items.Count),
-            "删除", confirmText: "删除", danger: true);
-        if (!confirm) return;
+        // 私密空间没有底部撤销条、也不写「最近删除」快照 ——
+        // 确认框只能说「可以在系统回收站里还原」，不能照抄主窗口那句「5 秒内可撤销」。
+        var chosen = DeletePrompt.Ask(_config.DeleteBehavior, items.Count,
+            undoOffer: DeleteUndoOffer.RecycledOnly);
+        if (chosen is null) return;
+        var behavior = chosen.Value;
 
         var failures = new List<string>();
         foreach (var vm in items)
         {
             try
             {
-                await DeletePolicy.DeleteAsync(_fileOps, vm.Media.Path, _config.DeleteBehavior);
-                await _opLog.LogAsync(DeletePolicy.LogAction(_config.DeleteBehavior), vm.Media.Path, null);
+                await DeletePolicy.DeleteAsync(_fileOps, vm.Media.Path, behavior);
+                await _opLog.LogAsync(DeletePolicy.LogAction(behavior), vm.Media.Path, null);
                 await _repo.DeleteMediaAsync(vm.Id);
                 _thumbs.Invalidate(vm.Id);
                 _items.Remove(vm);

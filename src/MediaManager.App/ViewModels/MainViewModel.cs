@@ -300,6 +300,13 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private long _privateCount;
 
+    /// <summary>
+    /// 设置里的删除方式（回收站 / 永久删除 / 每次询问）。
+    /// 界面文案要跟着它走（见 DeletePolicy），所以暴露出来给窗口读；
+    /// 别在 XAML 里写死「5 秒内可撤销」——执行端可能已经是永久删除了。
+    /// </summary>
+    public DeleteBehavior DeleteBehavior => _config.DeleteBehavior;
+
     /// <summary>极简模式的设置键。</summary>
     public const string SimpleModeSettingKey = "Ui.SimpleMode";
 

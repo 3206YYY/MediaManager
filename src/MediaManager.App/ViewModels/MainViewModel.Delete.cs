@@ -9,6 +9,7 @@ using MediaManager.Core.Media;
 using MediaManager.Core.Models;
 using MediaManager.Core.Services;
 using MediaManager.App.Collections;
+using MediaManager.App.Services;
 using MediaManager.App.Views.Dialogs;
 using MediaManager.Infrastructure.FileSystem;
 using Microsoft.Extensions.Logging;
@@ -212,25 +213,19 @@ public partial class MainViewModel
         EnsureThumbnails(MediaItems.Select(v => v.Media).ToList());
     }
 
-    /// <summary>设置页那个「删除方式」是不是「永久删除」（真值来源见 <see cref="DeletePolicy"/>）。</summary>
-    private bool IsPermanentDelete => DeletePolicy.IsPermanent(_config.DeleteBehavior);
-
-    /// <summary>按设置里的删除方式删。所有删除入口都走这里，别再各写一份写死的回收站删除。</summary>
-    private Task DeleteFileAsync(string path)
-        => DeletePolicy.DeleteAsync(_fileOps, path, _config.DeleteBehavior);
-
-    /// <summary>操作日志里该怎么记这一笔。</summary>
-    private string DeleteLogAction => DeletePolicy.LogAction(_config.DeleteBehavior);
-
-    /// <summary>永久删除没有撤销可言 —— 不写最近删除快照、不弹撤销条。</summary>
-    private bool CanUndoDelete => DeletePolicy.CanUndo(_config.DeleteBehavior);
+    /// <summary>按指定的删除方式删。所有删除入口都走这里，别再各写一份写死的回收站删除。</summary>
+    private Task DeleteFileAsync(string path, DeleteBehavior behavior)
+        => DeletePolicy.DeleteAsync(_fileOps, path, behavior);
 
     public async Task BatchDeleteAsync(IReadOnlyList<ThumbnailItemViewModel> items)
     {
         if (items.Count == 0) return;
-        var confirm = CustomMessageBox.ConfirmDanger(
-            DeletePolicy.ConfirmMessage(_config.DeleteBehavior, items.Count), "确认删除");
-        if (!confirm) return;
+
+        // 文案与「要不要问」全由 DeletePolicy / DeletePrompt 决定：
+        // 永久删除时正文写「无法恢复」，设置了「每次询问」就当场三选一。
+        var chosen = DeletePrompt.Ask(_config.DeleteBehavior, items.Count);
+        if (chosen is null) return;
+        var behavior = chosen.Value;
 
         var deleted = new List<ThumbnailItemViewModel>();
         var failures = new List<(string Path, Exception Error)>();
@@ -241,12 +236,12 @@ public partial class MainViewModel
         {
             try
             {
-                await DeleteFileAsync(item.Path);
-                await _opLog.LogAsync(DeleteLogAction, item.Path, null);
+                await DeleteFileAsync(item.Path, behavior);
+                await _opLog.LogAsync(DeletePolicy.LogAction(behavior), item.Path, null);
 
                 // 快照要在删库之前抓，否则标签/分类关联已经没了。
                 // 永久删除不留快照：文件回不来了，留个「已删除」条目只会让还原按钮骗人。
-                if (CanUndoDelete)
+                if (DeletePolicy.CanUndo(behavior))
                     records.Add(await _deletedItems.TrackAsync(item.Media, item.ThumbnailPath, batchId));
 
                 await _repo.DeleteMediaAsync(item.Id);
@@ -280,7 +275,7 @@ public partial class MainViewModel
         }
         else
         {
-            StatusText = DeletePolicy.StatusAfterDelete(_config.DeleteBehavior, deleted.Count);
+            StatusText = DeletePolicy.StatusAfterDelete(behavior, deleted.Count);
         }
 
         if (records.Count > 0)
@@ -289,11 +284,14 @@ public partial class MainViewModel
 
     // ---------- 删除模式（「点谁删谁」） ----------
     // 顶部按钮启用后，单击缩略图就走这里。和普通批量删除的区别只有两点：
-    //   1. 不弹确认框 —— 用户已经主动进入了一个写着「点谁删谁」的模式，再弹窗等于没做；
-    //      安全靠「系统回收站 + 5 秒撤销 + 常驻红色横幅 + Esc 一键退出」兜底。
+    //   1. 进回收站时**不弹确认框** —— 用户已经主动进入了一个写着「点谁删谁」的模式，
+    //      再弹窗等于没做；安全靠「系统回收站 + 5 秒撤销 + 常驻红色横幅 + Esc 一键退出」兜底。
+    //      ⚠ 但这条「不弹」只对回收站成立：设置为永久删除、或设置为「每次询问」时，
+    //      每一次单击都必须弹确认 —— 否则用户在零确认、零撤销的情况下把文件删干净
+    //      （v1.4.8 用户指出：界面还写着「5 秒内可撤销」，实际永久删除根本没有撤销）。
     //   2. 连续点删的文件合并成一次撤销 —— 连点 10 张只显示一条「已删除 10 个项目」，
     //      点撤销一次全还原，而不是弹 10 条 toast 且只救得回最后一张。
-    // 底层仍然是 DeleteToRecycleBinAsync / TrackAsync / DeleteMediaAsync，绝不绕过任何一步。
+    // 底层仍然是 DeletePolicy.DeleteAsync / TrackAsync / DeleteMediaAsync，绝不绕过任何一步。
 
     private readonly List<DeletedMedia> _tapDeleteRecords = new();
 
@@ -303,18 +301,23 @@ public partial class MainViewModel
     /// <summary>退出删除模式时结束本轮累计（已弹出的撤销条仍保留到 5 秒到期）。</summary>
     public void EndTapDeleteSession() => _tapDeleteRecords.Clear();
 
-    /// <summary>删除模式下单击一个文件，返回是否成功。</summary>
+    /// <summary>删除模式下单击一个文件，返回是否成功（用户取消也算未删）。</summary>
     public async Task<bool> DeleteOnTapAsync(ThumbnailItemViewModel item)
     {
+        var chosen = DeletePrompt.Ask(_config.DeleteBehavior, 1, item.FileName,
+            silentWhenRecycle: true);
+        if (chosen is null) return false;
+        var behavior = chosen.Value;
+
         try
         {
-            await DeleteFileAsync(item.Path);
-            await _opLog.LogAsync(DeleteLogAction, item.Path, null);
+            await DeleteFileAsync(item.Path, behavior);
+            await _opLog.LogAsync(DeletePolicy.LogAction(behavior), item.Path, null);
 
             // 快照要在删库之前抓，否则标签 / 分类关联已经没了，撤销恢复不全。
             // 永久删除不留快照（文件回不来，撤销条也弹不出来）。
             DeletedMedia? record = null;
-            if (CanUndoDelete)
+            if (DeletePolicy.CanUndo(behavior))
             {
                 record = await _deletedItems.TrackAsync(item.Media, item.ThumbnailPath,
                     Guid.NewGuid().ToString("N"));
@@ -329,14 +332,14 @@ public partial class MainViewModel
             await RefreshStatusAsync();
 
             if (record != null) _tapDeleteRecords.Add(record);
-            if (CanUndoDelete)
+            if (DeletePolicy.CanUndo(behavior))
             {
                 ShowUndoToast(_tapDeleteRecords.ToList());
                 StatusText = $"已删除 {_tapDeleteRecords.Count} 个文件";
             }
             else
             {
-                StatusText = DeletePolicy.StatusAfterDelete(_config.DeleteBehavior, 1);
+                StatusText = DeletePolicy.StatusAfterDelete(behavior, 1);
             }
             return true;
         }

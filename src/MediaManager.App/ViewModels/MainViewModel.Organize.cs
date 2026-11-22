@@ -247,12 +247,22 @@ public partial class MainViewModel
         await LoadNavigationAsync();
         await LoadMediaAsync();
 
-        // ⚠ 不能无条件写「已刷新」：LoadMediaAsync 在 0 项时会写诊断
-        // （「此文件夹的 N 个文件当前不可达（磁盘未连接）」之类），那是用户刷新后最该看到的话。
-        // 以前这里一句「已刷新」直接盖掉，用户点完刷新只看到三个字，根本不知道盘没插上。
-        if (!StatusText.StartsWith("共 0 项 ——", StringComparison.Ordinal))
+        // ⚠ 不能无条件写「已刷新」：LoadMediaAsync 在加载不出东西时会写诊断
+        // （「共 0 项 —— 磁盘未连接」「未选择任何类型…」），那是用户刷新后最该看到的话。
+        // 以前这里只挡了「共 0 项 ——」一种，用户一个类型都没勾时点刷新，
+        // 那句「未选择任何类型（顶部「类型」里至少勾选一个）」照样被三个字盖掉。
+        if (!IsDiagnosticStatus(StatusText))
             StatusText = "已刷新";
     }
+
+    /// <summary>
+    /// 状态栏这句话是不是「加载不出结果」的诊断（而不是普通的「共 N 项」计数）。
+    /// 诊断必须留住 —— 用户点刷新就是为了看它。
+    /// </summary>
+    private static bool IsDiagnosticStatus(string? status)
+        => status is not null
+           && (status.StartsWith("共 0 项 ——", StringComparison.Ordinal)
+               || status.StartsWith("未选择任何类型", StringComparison.Ordinal));
 
     // ---------- 批量操作（供右键菜单 / 快捷键调用，作用于所有选中项） ----------
 

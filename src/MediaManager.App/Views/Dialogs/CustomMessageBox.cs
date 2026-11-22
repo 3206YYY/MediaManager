@@ -20,6 +20,8 @@ public enum MsgBoxButtons
     OKCancel,
     /// <summary>关闭提示专用：最小化到托盘 / 直接退出 / 取消。</summary>
     TrayExitCancel,
+    /// <summary>删除专用：移入回收站 / 永久删除 / 取消（设置里选「每次询问」时用）。</summary>
+    RecyclePermanentCancel,
 }
 
 /// <summary>弹窗返回结果。</summary>
@@ -32,6 +34,10 @@ public enum MsgBoxResult
     Cancel,
     Tray,
     Exit,
+    /// <summary>「每次询问」删除：用户选了移入回收站。</summary>
+    Recycle,
+    /// <summary>「每次询问」删除：用户选了永久删除。</summary>
+    Permanent,
 }
 
 /// <summary>
@@ -214,6 +220,15 @@ public static class CustomMessageBox
                 {
                     new() { Text = primaryText ?? "最小化到托盘", Result = MsgBoxResult.Tray, Kind = DialogButtonKind.Primary, IsDefault = true },
                     new() { Text = secondaryText ?? "直接退出", Result = MsgBoxResult.Exit, Kind = DialogButtonKind.Normal },
+                    new() { Text = cancelText ?? "取消", Result = MsgBoxResult.Cancel, Kind = DialogButtonKind.Normal },
+                };
+
+            case MsgBoxButtons.RecyclePermanentCancel:
+                // 「永久删除」固定红色：这一支是不可逆的，不该和「取消」长得一样。
+                return new List<DialogAction>
+                {
+                    new() { Text = primaryText ?? "移入回收站", Result = MsgBoxResult.Recycle, Kind = DialogButtonKind.Primary, IsDefault = true },
+                    new() { Text = secondaryText ?? "永久删除", Result = MsgBoxResult.Permanent, Kind = DialogButtonKind.Danger },
                     new() { Text = cancelText ?? "取消", Result = MsgBoxResult.Cancel, Kind = DialogButtonKind.Normal },
                 };
 

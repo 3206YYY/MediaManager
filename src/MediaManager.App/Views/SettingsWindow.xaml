@@ -204,7 +204,7 @@
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <TextBlock Text="删除行为" Style="{StaticResource SectionTitle}" />
-                                <TextBlock Text="按 Delete 删除文件时怎么处理。默认进回收站，误删可以还原。"
+                                <TextBlock Text="删文件时怎么处理。默认进回收站，误删可以还原；选「每次询问」后，每一次删除（包括删除模式下点谁删谁）都会先弹窗问你进回收站还是永久删除。"
                                            Style="{StaticResource Hint}" Margin="0,0,0,8" />
                                 <ComboBox x:Name="DeleteBox" Style="{StaticResource FieldCombo}" Margin="0,0,0,0">
                                     <ComboBoxItem Content="回收站（默认）" Tag="RecycleBin" />

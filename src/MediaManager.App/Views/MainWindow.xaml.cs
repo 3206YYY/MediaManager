@@ -96,8 +96,14 @@ public partial class MainWindow : Window
 
         AttachPlugins();
         UpdateThemeGlyph();
-        // 设置页里也可能改主题：回到主窗口时对齐图标，不要出现「明明是浅色却显示月亮」
-        Activated += (_, _) => UpdateThemeGlyph();
+        RefreshDeleteCopy();
+        // 设置页里也可能改主题 / 改删除方式：回到主窗口时对齐，
+        // 不要出现「明明是浅色却显示月亮」「设置里选了永久删除，按钮还写着 5 秒可撤销」
+        Activated += (_, _) =>
+        {
+            UpdateThemeGlyph();
+            RefreshDeleteCopy();
+        };
 
         AttachVault();
 
@@ -1641,7 +1647,36 @@ public partial class MainWindow : Window
                 ? (n > 0
                     ? $"删除模式 · 已勾选 {n} 项，点下面「删除选中的 {n} 项」确认"
                     : "删除模式 · 单击文件打勾，选好点下面「删除选中的 N 项」确认")
-                : "删除模式 · 点谁删谁（进回收站，5 秒内可撤销）";
+                // 这句话以前写死「进回收站，5 秒内可撤销」，但设置里改成永久删除后
+                // 这句就是假的（而且点删会真的永久删）。文案统一由 DeletePolicy 提供。
+                : DeletePolicy.DeleteModeHint(_viewModel.DeleteBehavior);
+        }
+    }
+
+    /// <summary>
+    /// 把「删除方式」同步到界面上的文案（顶部按钮提示、底部按钮提示）。
+    /// <para>
+    /// XAML 里原来写死「进回收站，5 秒内可撤销」，执行端早就支持永久删除了 ——
+    /// 用户把设置改成永久删除后，界面还在承诺撤销条，属于最危险的那种不一致。
+    /// 现在只留一个来源：<see cref="DeletePolicy"/>。设置页保存后回到主窗口
+    /// （<c>Activated</c>）会再刷一次，不用重启程序。
+    /// </para>
+    /// </summary>
+    private void RefreshDeleteCopy()
+    {
+        try
+        {
+            var behavior = _viewModel.DeleteBehavior;
+            if (BatchDeleteButton != null)
+                BatchDeleteButton.ToolTip = DeletePolicy.BatchDeleteTooltip(behavior);
+            if (SelectionBarDeleteButton != null)
+                SelectionBarDeleteButton.ToolTip = DeletePolicy.SelectionDeleteTooltip(behavior);
+            // 横幅在删除模式下才显示，但文案要提前备好（进模式时不会再走这里）
+            UpdateSelectionUi();
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Debug(ex, "刷新删除相关文案失败");
         }
     }
 

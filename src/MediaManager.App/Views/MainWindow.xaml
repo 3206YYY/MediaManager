@@ -276,7 +276,7 @@
                 <Button x:Name="BatchDeleteButton" DockPanel.Dock="Right" Margin="0,0,8,0"
                         Tag="idle" Click="OnBatchDelete"
                         AutomationProperties.Name="批量删除"
-                        ToolTip="进入删除模式：之后单击文件即可打勾 / 移入回收站（5 秒内可撤销）。再点一下退出。">
+                        ToolTip="进入删除模式：之后单击文件即可打勾 / 删除。再点一下退出。">
                     <StackPanel Orientation="Horizontal">
                         <Viewbox Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform">
                             <Path Data="M3 6 H21 M8 6 V4 H16 V6 M5 6 L6 21 H18 L19 6 M10 10 V17 M14 10 V17"
@@ -323,8 +323,11 @@
                     BorderBrush="#B42318" BorderThickness="1.5"
                     Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- 文案由 DeletePolicy.DeleteModeHint 在代码里填：
+                         写死「进回收站，5 秒内可撤销」会在设置改成永久删除后变成假话。
+                         这里留个中性占位，免得设计器里空着。 -->
                     <TextBlock x:Name="TapDeleteHint"
-                               Text="删除模式 · 点谁删谁（进回收站，5 秒内可撤销）"
+                               Text="删除模式"
                                FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
                                Margin="2,0,14,0" />
                     <!-- 默认勾选：进删除模式后单击只打勾，不会「点啥删啥」。
@@ -1018,7 +1021,7 @@
                         FontWeight="SemiBold" AutomationProperties.Name="删除选中的 0 项"
                         Background="{DynamicResource PrimaryBrush}" Foreground="White"
                         BorderBrush="{DynamicResource PrimaryBrush}"
-                        ToolTip="删除当前选中的文件：确认后进回收站，5 秒内可撤销（和 Delete 键一样）">
+                        ToolTip="删除当前选中的文件">
                     <StackPanel Orientation="Horizontal">
                         <Viewbox Width="13" Height="13" Margin="0,0,6,0" Stretch="Uniform">
                             <Path Data="M3 6 H21 M8 6 V4 H16 V6 M5 6 L6 21 H18 L19 6 M10 10 V17 M14 10 V17"

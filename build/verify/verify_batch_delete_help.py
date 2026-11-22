@@ -15,6 +15,14 @@
   D. 点按钮 → 与 Delete 键同一条链路：确认弹窗 → 回收站 → 撤销提示条 → 记录消失
   E. 状态栏「❓ 帮助与快捷键」直达帮助页，四个快捷键分组都在
   F. 深色模式配色：背景深、文字浅、没有白底大块
+  G. 换成「永久删除」重启 → 取消「先勾选」后点一个文件**必须先弹确认框**
+     （文案要写「永久删除 / 无法恢复」且不许提撤销），点取消文件一个不少，
+     点确认才真删掉 —— 这条防的就是「零确认零撤销把文件删干净」。
+  H. 换成「每次询问」重启 → 勾两项点删除**必须弹三选一**（移入回收站 / 永久删除 / 取消），
+     取消后一个不删，当场选永久删除才真删 —— 以前这一项能选能存却从不询问。
+
+前半段 A–F 验的是回收站链路，seed_db 里显式把 DeleteBehavior 锁成 RecycleBin；
+永久删除在 G 段单独验，跑完 finally 会把库还原，不留痕。
 """
 import ctypes
 import ctypes.wintypes as wt
@@ -135,14 +143,9 @@ def build_files():
     return made
 
 
-def seed_db(files):
-    con = sqlite3.connect(DB)
-    con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+def add_media_rows(con, root_id, files):
+    """把一个目录里的文件登记进库（seed_db 与 G 段重建数据共用）。"""
     now = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-    cur = con.execute(
-        "INSERT INTO RootFolder (Path, VolumeSerial, RelativePath, IsEnabled, AddedAtUtc) "
-        "VALUES (?, NULL, NULL, 1, ?)", (BASE, now))
-    root_id = cur.lastrowid
     for p in files:
         st = os.stat(p)
         con.execute(
@@ -152,8 +155,22 @@ def seed_db(files):
             "VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, ?)",
             (root_id, p, os.path.basename(p),
              os.path.splitext(p)[1].lstrip(".").lower(), "Image", st.st_size, now))
+
+
+def seed_db(files):
+    con = sqlite3.connect(DB)
+    con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    now = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+    cur = con.execute(
+        "INSERT INTO RootFolder (Path, VolumeSerial, RelativePath, IsEnabled, AddedAtUtc) "
+        "VALUES (?, NULL, NULL, 1, ?)", (BASE, now))
+    root_id = cur.lastrowid
+    add_media_rows(con, root_id, files)
     # 明确锁深色：帮助页配色就是要在深色下验
     con.execute("INSERT OR REPLACE INTO AppSetting (Key, Value) VALUES ('Theme', 'Dark')")
+    # 删除方式也锁死成回收站：前半段（A–F）验的是「回收站 + 5 秒撤销」那条链路，
+    # 不能因为开发库里残留 Permanent 就红一片。永久删除单独在 G 段验。
+    con.execute("INSERT OR REPLACE INTO AppSetting (Key, Value) VALUES ('DeleteBehavior', 'RecycleBin')")
     con.commit()
     con.close()
     return root_id
@@ -667,6 +684,181 @@ def main():
             print("截图：%s  尺寸 %s" % (SHOT, img.size))
         except Exception as e:
             check("深色配色像素统计", False, repr(e))
+
+        # ---------- G 设置为永久删除：点谁删谁必须先确认（防真丢文件） ----------
+        # 用户指出过：设置改「永久删除」、再取消「先勾选」，就能在零确认、零撤销、
+        # 界面还写着「5 秒内可撤销」的情况下把文件永久删掉。
+        # 现在：永久删除时点删分支必须弹确认，且文案要说「无法恢复」。
+        kill_app()
+        # 前面 D 段已经把 5 个临时文件删光了，这里重新造一遍、重新登记，
+        # 否则网格是空的，点谁删谁根本无从点起（上一版就栽在这儿）。
+        files = build_files()
+        con = sqlite3.connect(DB)
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        add_media_rows(con, root_id, files)
+        con.execute("INSERT OR REPLACE INTO AppSetting (Key, Value) "
+                    "VALUES ('DeleteBehavior', 'Permanent')")
+        con.commit()
+        con.close()
+
+        subprocess.Popen([APP], cwd=os.path.dirname(APP))
+        hwnd = None
+        for _ in range(30):
+            time.sleep(0.6)
+            w = find_window("媒体管理器")
+            if w:
+                hwnd = w[0]
+                break
+        check("永久删除：主窗口重新启动", hwnd is not None)
+        if hwnd is None:
+            return
+        time.sleep(6)
+        win = uia.ControlFromHandle(hwnd)
+
+        folder = find_ctrl(win, "ListItemControl", lambda s: s == os.path.basename(BASE))
+        if folder is not None:
+            try:
+                folder.GetSelectionItemPattern().Select()
+            except Exception:
+                click(hwnd, folder)
+            time.sleep(3)
+
+        b = batch_btn()
+        if b is not None:
+            click(hwnd, b)
+            time.sleep(1.2)
+        mark = find_ctrl(win, "CheckBoxControl", lambda s: "先勾选" in s)
+        if mark is not None:
+            try:
+                if mark.GetTogglePattern().ToggleState == uia.ToggleState.On:
+                    mark.GetTogglePattern().Toggle()
+            except Exception:
+                native_click(hwnd, mark)
+            time.sleep(1)
+
+        one = grid_items()
+        check("永久删除：网格里还有可点的项", len(one) > 0, "%d 项" % len(one))
+        before = sum(1 for p in files if os.path.exists(p))
+        if one:
+            native_click(hwnd, one[0])
+            time.sleep(2.5)
+
+        dialogs = find_window("确认删除")
+        check("永久删除 + 点谁删谁：先弹确认框（不再无声删掉）", len(dialogs) > 0)
+        if dialogs:
+            dwin = uia.ControlFromHandle(dialogs[0])
+            dtext = "\n".join(name_of(c) for c in collect(dwin)
+                              if c.ControlTypeName == "TextControl")
+            check("确认框写明「永久删除 / 无法恢复」",
+                  "永久删除" in dtext and "无法恢复" in dtext, dtext[:80])
+            check("确认框不再承诺「撤销」", "撤销" not in dtext)
+            cancel = find_ctrl(dwin, "ButtonControl", lambda s: s == "取消")
+            check("确认框有「取消」", cancel is not None)
+            if cancel is not None:
+                click(dialogs[0], cancel)
+                time.sleep(1.5)
+
+        after = sum(1 for p in files if os.path.exists(p))
+        check("点「取消」后文件一个都没少", after == before, "%d → %d" % (before, after))
+
+        # 再来一次，这次真点确认 → 文件确实被永久删掉
+        one = grid_items()
+        if one:
+            native_click(hwnd, one[0])
+            time.sleep(2.5)
+        dialogs = find_window("确认删除")
+        if dialogs:
+            dwin = uia.ControlFromHandle(dialogs[0])
+            okbtn = find_ctrl(dwin, "ButtonControl", lambda s: s == "删除")
+            if okbtn is not None:
+                click(dialogs[0], okbtn)
+                time.sleep(2.5)
+        gone = sum(1 for p in files if not os.path.exists(p))
+        check("确认之后文件真的被删掉（永久删除确实生效）", gone == 1, "移走 %d" % gone)
+
+        # ---------- H 「每次询问」：必须真的问，且能当场选永久删除 ----------
+        # 用户指出过：这一项以前是半空开关 —— 能选能存，执行端却静默按回收站删。
+        kill_app()
+        files = build_files()
+        con = sqlite3.connect(DB)
+        con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        add_media_rows(con, root_id, files)
+        con.execute("INSERT OR REPLACE INTO AppSetting (Key, Value) "
+                    "VALUES ('DeleteBehavior', 'Ask')")
+        con.commit()
+        con.close()
+
+        subprocess.Popen([APP], cwd=os.path.dirname(APP))
+        hwnd = None
+        for _ in range(30):
+            time.sleep(0.6)
+            w = find_window("媒体管理器")
+            if w:
+                hwnd = w[0]
+                break
+        check("每次询问：主窗口重新启动", hwnd is not None)
+        if hwnd is None:
+            return
+        time.sleep(6)
+        win = uia.ControlFromHandle(hwnd)
+
+        folder = find_ctrl(win, "ListItemControl", lambda s: s == os.path.basename(BASE))
+        if folder is not None:
+            try:
+                folder.GetSelectionItemPattern().Select()
+            except Exception:
+                click(hwnd, folder)
+            time.sleep(3)
+
+        b = batch_btn()
+        if b is not None:
+            click(hwnd, b)          # 进删除模式（默认「先勾选」，点两下只是打勾）
+            time.sleep(1.5)
+        pick = grid_items()[:2]
+        for it in pick:
+            native_click(hwnd, it)
+            time.sleep(0.6)
+        time.sleep(1)
+        bar = find_ctrl(win, "ButtonControl", lambda s: s == "删除选中的 2 项")
+        check("每次询问：勾好 2 项，底部出现删除按钮", bar is not None)
+        if bar is not None:
+            click(hwnd, bar)
+            time.sleep(2)
+
+        dialogs = find_window("删除")
+        check("每次询问：弹出三选一（不是静默回回收站）", len(dialogs) > 0)
+        if dialogs:
+            dwin = uia.ControlFromHandle(dialogs[0])
+            btns = [name_of(c) for c in collect(dwin) if c.ControlTypeName == "ButtonControl"]
+            dtext = "\n".join(name_of(c) for c in collect(dwin)
+                              if c.ControlTypeName == "TextControl")
+            check("三选一含「移入回收站 / 永久删除 / 取消」",
+                  any("回收站" in s for s in btns) and any("永久删除" in s for s in btns)
+                  and any("取消" in s for s in btns), str(btns))
+            check("三选一把两种后果都写清楚",
+                  "回收站" in dtext and "无法恢复" in dtext, dtext[:80])
+            cancel = find_ctrl(dwin, "ButtonControl", lambda s: s == "取消")
+            if cancel is not None:
+                click(dialogs[0], cancel)
+                time.sleep(1.5)
+        check("每次询问：点取消后一个文件都没删",
+              sum(1 for p in files if not os.path.exists(p)) == 0,
+              "移走 %d" % sum(1 for p in files if not os.path.exists(p)))
+
+        # 再来一次，这次当场选「永久删除」
+        bar = find_ctrl(win, "ButtonControl", lambda s: s == "删除选中的 2 项")
+        if bar is not None:
+            click(hwnd, bar)
+            time.sleep(2)
+        dialogs = find_window("删除")
+        if dialogs:
+            dwin = uia.ControlFromHandle(dialogs[0])
+            perm = find_ctrl(dwin, "ButtonControl", lambda s: s == "永久删除")
+            if perm is not None:
+                click(dialogs[0], perm)
+                time.sleep(3)
+        gone = sum(1 for p in files if not os.path.exists(p))
+        check("每次询问：当场选永久删除 → 真的删掉 2 个", gone == 2, "移走 %d" % gone)
 
     finally:
         kill_app()

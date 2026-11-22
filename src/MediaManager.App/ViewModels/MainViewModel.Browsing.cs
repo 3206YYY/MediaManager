@@ -9,6 +9,7 @@ using MediaManager.Core.Media;
 using MediaManager.Core.Models;
 using MediaManager.Core.Services;
 using MediaManager.App.Collections;
+using MediaManager.App.Services;
 using MediaManager.App.Views.Dialogs;
 using MediaManager.Infrastructure.FileSystem;
 using Microsoft.Extensions.Logging;
@@ -421,14 +422,14 @@ public partial class MainViewModel
     {
         if (SelectedItem == null) return;
 
-        var confirm = CustomMessageBox.ConfirmDanger(
-            DeletePolicy.ConfirmMessage(_config.DeleteBehavior, 1, SelectedItem.FileName),
-            "确认删除");
-        if (!confirm) return;
+        // 一次问清：正文（回收站 / 永久删除 / 三选一）全部来自 DeletePolicy
+        var chosen = DeletePrompt.Ask(_config.DeleteBehavior, 1, SelectedItem.FileName);
+        if (chosen is null) return;
+        var behavior = chosen.Value;
 
         try
         {
-            await DeleteFileAsync(SelectedItem.Path);
+            await DeleteFileAsync(SelectedItem.Path, behavior);
         }
         catch (Exception ex)
         {
@@ -438,12 +439,12 @@ public partial class MainViewModel
             return;
         }
 
-        await _opLog.LogAsync(DeleteLogAction, SelectedItem.Path, null);
+        await _opLog.LogAsync(DeletePolicy.LogAction(behavior), SelectedItem.Path, null);
 
         // 先记录快照（此时数据库里的标签/分类关联还在），再删库；
         // 缩略图缓存保留，撤销后可以立刻显示，也方便「最近删除」里预览。
         // 永久删除不留快照 —— 文件已经没了，留着只会让「还原」按钮骗人。
-        DeletedMedia? record = CanUndoDelete
+        DeletedMedia? record = DeletePolicy.CanUndo(behavior)
             ? await _deletedItems.TrackAsync(SelectedItem.Media, SelectedItem.ThumbnailPath)
             : null;
 
@@ -457,7 +458,7 @@ public partial class MainViewModel
         if (record != null)
             ShowUndoToast(new[] { record });
         else
-            StatusText = DeletePolicy.StatusAfterDelete(_config.DeleteBehavior, 1);
+            StatusText = DeletePolicy.StatusAfterDelete(behavior, 1);
     }
 
     // ---------- 操作轻提示（只反馈，不带按钮） ----------

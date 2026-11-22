@@ -1,3 +1,4 @@
+using MediaManager.App.Services;
 using MediaManager.App.Views.Dialogs;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -147,10 +148,12 @@ public partial class DuplicateViewModel : ObservableObject
             return;
         }
 
-        var confirm = CustomMessageBox.ConfirmDanger(
-            DeletePolicy.ConfirmMessage(_config.DeleteBehavior, toDelete.Count)
-            + "\n\n建议先确认它们确实是重复文件。", "确认删除");
-        if (!confirm) return;
+        // 这个窗口没有撤销条（撤销条只长在主窗口底部），只有「最近删除」里的快照 ——
+        // 文案必须按这个真实情况说，不能照抄主窗口的「5 秒内可在底部撤销」。
+        var chosen = DeletePrompt.Ask(_config.DeleteBehavior, toDelete.Count,
+            undoOffer: DeleteUndoOffer.RecentDeleted);
+        if (chosen is null) return;
+        var behavior = chosen.Value;
 
         int done = 0;
         var failures = new List<Exception>();
@@ -158,10 +161,10 @@ public partial class DuplicateViewModel : ObservableObject
         {
             try
             {
-                await DeletePolicy.DeleteAsync(_fileOps, item.Path, _config.DeleteBehavior);
+                await DeletePolicy.DeleteAsync(_fileOps, item.Path, behavior);
                 // 与主界面删除一致：进回收站的留快照，可撤销 / 可在「最近删除」中还原；
                 // 永久删除不留（文件回不来，留着「还原」按钮就是骗人）
-                if (DeletePolicy.CanUndo(_config.DeleteBehavior))
+                if (DeletePolicy.CanUndo(behavior))
                     await _deletedItems.TrackAsync(item.Media, item.Media.ThumbnailPath);
                 await _repo.DeleteMediaAsync(item.Id);
                 done++;

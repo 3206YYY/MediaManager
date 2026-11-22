@@ -1309,7 +1309,7 @@ public partial class SettingsWindow : Window
             _saved = true;
             CustomMessageBox.Success(
                 "设置已保存，并且立即生效。\n\n"
-                + "主题、快捷键、删除方式（回收站 / 永久删除）、简单模式、扩展格式都已经马上用上。",
+                + "主题、快捷键、删除方式（回收站 / 永久删除 / 每次询问）、简单模式、扩展格式都已经马上用上。",
                 "保存成功");
             Close();
         }
@@ -1322,13 +1322,24 @@ public partial class SettingsWindow : Window
     /// <summary>点过保存没有。没点保存就关窗（按钮或标题栏 X）= 取消，要走回滚。</summary>
     private bool _saved;
 
+    /// <summary>回滚只做一次。取消 → Close → OnClosing 这条路以前会连着跑两遍。</summary>
+    private bool _rolledBack;
+
     /// <summary>
     /// 「取消」= 什么都不改。有几个开关在点击时就已经生效了（右键集成写注册表、
     /// 扩展格式写库），这里必须逐个退回打开时的样子；
     /// 其余设置都是在 <see cref="OnSave"/> 里才落库，本来就没写，不用管。
+    /// <para>
+    /// 只由 <see cref="OnClosing"/> 调用：以前「取消」按钮先回滚一次、<c>Close()</c>
+    /// 又触发 <c>OnClosing</c> 再回滚一次，扩展格式那条等于连写两遍库。
+    /// </para>
     /// </summary>
     private void RollbackImmediateWrites()
     {
+        if (_rolledBack) return;
+        _rolledBack = true;
+
+        Task? dbWrite = null;
         try
         {
             var shellNow = ShellIntegrationBox.IsChecked == true;
@@ -1344,20 +1355,38 @@ public partial class SettingsWindow : Window
             if (fmtNow != _initialExtendedFormats)
             {
                 Infrastructure.FileSystem.MediaFormat.SetExtendedFormatsEnabled(_initialExtendedFormats);
-                // 库里的值也要退回去；窗口马上要关了，不等它
+                // CheckBox 也复位：不改的话界面上还显示着用户刚点的那一项，
+                // 和「什么都没改」自相矛盾（窗口马上关，但状态要自洽）。
+                ExtendedFormatsCheck.IsChecked = _initialExtendedFormats;
+
+                // 库里的值也要退回去。走线程池 + 下面有界等待：
+                // 在 UI 线程上直接 await 一个会回到 UI 线程的续体，再同步 Wait 就是死锁。
                 var value = _initialExtendedFormats ? "1" : "0";
-                _ = _repo.SetSettingAsync("EnableExtendedFormats", value);
+                dbWrite = Task.Run(() => _repo.SetSettingAsync("EnableExtendedFormats", value));
             }
         }
         catch (Exception ex)
         {
             Serilog.Log.Warning(ex, "取消设置时回滚即时生效项失败");
         }
+
+        if (dbWrite is null) return;
+
+        try
+        {
+            // 本地 SQLite 一次 upsert 只要几十毫秒，等它有界即可；
+            // 原来是 `_ = _repo.SetSettingAsync(...)` 发射后不管，写失败也没人知道。
+            dbWrite.Wait(TimeSpan.FromSeconds(2));
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "回滚扩展格式设置写库失败");
+        }
     }
 
     private void OnCancel(object sender, RoutedEventArgs e)
     {
-        RollbackImmediateWrites();
+        // 只关窗：回滚统一交给 OnClosing（取消按钮和标题栏 × 走同一条路，不会重复执行）
         Close();
     }
 
