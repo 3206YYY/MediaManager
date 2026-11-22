@@ -56,17 +56,20 @@ public partial class DuplicateViewModel : ObservableObject
     private readonly IFileOperationService _fileOps;
     private readonly IMediaRepository _repo;
     private readonly Services.DeletedItemsService _deletedItems;
+    private readonly IAppConfigService _config;
 
     public DuplicateViewModel(
         IDuplicateService duplicateService,
         IFileOperationService fileOps,
         IMediaRepository repo,
-        Services.DeletedItemsService deletedItems)
+        Services.DeletedItemsService deletedItems,
+        IAppConfigService config)
     {
         _duplicateService = duplicateService;
         _fileOps = fileOps;
         _repo = repo;
         _deletedItems = deletedItems;
+        _config = config;
     }
 
     public ObservableCollection<DuplicateGroupViewModel> Groups { get; } = new();
@@ -145,7 +148,8 @@ public partial class DuplicateViewModel : ObservableObject
         }
 
         var confirm = CustomMessageBox.ConfirmDanger(
-            $"将把选中的 {toDelete.Count} 个重复文件移入回收站。\n\n建议先确认它们确实是重复文件。", "确认删除");
+            DeletePolicy.ConfirmMessage(_config.DeleteBehavior, toDelete.Count)
+            + "\n\n建议先确认它们确实是重复文件。", "确认删除");
         if (!confirm) return;
 
         int done = 0;
@@ -154,9 +158,11 @@ public partial class DuplicateViewModel : ObservableObject
         {
             try
             {
-                await _fileOps.DeleteToRecycleBinAsync(item.Path);
-                // 与主界面删除一致：留下快照，可撤销 / 可在「最近删除」中还原
-                await _deletedItems.TrackAsync(item.Media, item.Media.ThumbnailPath);
+                await DeletePolicy.DeleteAsync(_fileOps, item.Path, _config.DeleteBehavior);
+                // 与主界面删除一致：进回收站的留快照，可撤销 / 可在「最近删除」中还原；
+                // 永久删除不留（文件回不来，留着「还原」按钮就是骗人）
+                if (DeletePolicy.CanUndo(_config.DeleteBehavior))
+                    await _deletedItems.TrackAsync(item.Media, item.Media.ThumbnailPath);
                 await _repo.DeleteMediaAsync(item.Id);
                 done++;
             }

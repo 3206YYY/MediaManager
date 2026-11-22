@@ -185,6 +185,22 @@ public partial class MainWindow : Window
         RightCollapseHandle.ToolTip = rightTip;
     }
 
+    /// <summary>
+    /// Ctrl+A：<see cref="ListBox.SelectAll"/> 只能选到「已经加载进列表」的那些项
+    /// （列表是分页的，每页 2000）。以前按下去一点反馈都没有，用户以为选了整个库，
+    /// 一删发现只删了一页。现在状态栏把范围说清楚。
+    /// </summary>
+    private void SelectAllLoaded()
+    {
+        ThumbList.SelectAll();
+        var selected = ThumbList.SelectedItems?.Count ?? 0;
+        var total = _viewModel.TotalCount;
+
+        _viewModel.StatusText = total > selected
+            ? $"已选中 {selected} 项（只是已加载的部分；共 {total} 项，点「加载更多」可继续选）"
+            : $"已全选 {selected} 项";
+    }
+
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(MainViewModel.IsLeftSidebarCollapsed)
@@ -1340,7 +1356,7 @@ public partial class MainWindow : Window
             switch (key)
             {
                 case Key.A:
-                    ThumbList.SelectAll();
+                    SelectAllLoaded();
                     break;
                 case Key.F:
                     // 搜索框 ToolTip 一直承诺了 Ctrl+F，这里原本是空的（只写了个注释）。
@@ -1603,7 +1619,17 @@ public partial class MainWindow : Window
         if (SelectionBarDeleteCaption != null)
             SelectionBarDeleteCaption.Text = barCaption;
         if (SelectionBarDeleteButton != null)
+        {
+            // 删除按钮**只在删除模式下出现**。普通选中（只是想看看、想加个分类）时，
+            // 底部条不该顶着一颗主色实心的「删除选中的 N 项」大字按钮 ——
+            // 用户截了张发现页选中一张图的图来问「为啥还会亮删除所选项？」，
+            // 就是这个：明明没打算删，最显眼的位置却是删除。
+            // 日常要删：Delete 键 / 右键菜单 / 先点顶部「批量删除」进模式。
+            SelectionBarDeleteButton.Visibility = _tapDeleteMode
+                ? Visibility.Visible
+                : Visibility.Collapsed;
             AutomationProperties.SetName(SelectionBarDeleteButton, barCaption);
+        }
         if (TapDeleteBar != null)
             TapDeleteBar.Visibility = _tapDeleteMode ? Visibility.Visible : Visibility.Collapsed;
         if (TapDeleteHint != null)

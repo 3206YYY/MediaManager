@@ -804,29 +804,15 @@
                                         </Border>
                                     </Grid>
                                 </Border>
-                                <!-- 悬停快捷操作条 -->
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                                            VerticalAlignment="Bottom" Margin="0,0,4,4" Opacity="0">
-                                    <Button Content="⭐" Width="24" Height="24" Padding="0" Margin="2"
-                                            FontSize="12" ToolTip="收藏"
-                                            Command="{Binding DataContext.ToggleFavoriteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                            CommandParameter="{Binding}" />
-                                    <Button Content="🏷" Width="24" Height="24" Padding="0" Margin="2"
-                                            FontSize="12" ToolTip="加标签（右键菜单）" />
-                                    <Button Content="📁" Width="24" Height="24" Padding="0" Margin="2"
-                                            FontSize="12" ToolTip="加分类（右键菜单）" />
-                                    <StackPanel.Style>
-                                        <Style TargetType="StackPanel">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
-                                                    <Setter Property="Opacity" Value="1" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </StackPanel.Style>
-                                </StackPanel>
-                                <!-- 文件名压在图上的底部渐变遮罩：白字压浅色图片也能看清（浅色主题下尤其明显） -->
-                                <Border HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                <!-- 文件名压在图上的底部渐变遮罩：白字压浅色图片也能看清（浅色主题下尤其明显）。
+                                     ⚠ 两个约束，缺一个就是坑：
+                                     1) IsHitTestVisible=False —— Border 一旦有渐变背景就参与命中测试，
+                                        整块格子（含下面那条悬停按钮）的点击会被这层吸走，按钮看着在、点不动。
+                                     2) 必须排在快捷条**前面**（Z 序更靠下）—— 否则底部 65% 的黑
+                                        会把 ⭐ 按钮一起压暗。
+                                     以前这两条都没有：遮罩声明在快捷条之后、也没关命中测试。 -->
+                                <Border HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                        IsHitTestVisible="False">
                                     <Border.Background>
                                         <LinearGradientBrush StartPoint="0,0.6" EndPoint="0,1">
                                             <GradientStop Color="#00000000" Offset="0" />
@@ -837,6 +823,27 @@
                                                HorizontalAlignment="Center" VerticalAlignment="Bottom"
                                                Margin="4" TextTrimming="CharacterEllipsis" />
                                 </Border>
+                                <!-- 悬停快捷操作条。
+                                     这里原来有三个按钮，其中 🏷（加标签）和 📁（加分类）**没有 Command**，
+                                     ToolTip 还写着「（右键菜单）」—— 点了完全没反应，纯摆设。
+                                     标签/分类本来就只能通过右键菜单操作，与其摆两个假按钮骗人，
+                                     不如只留真实可用的 ⭐。要加标签就右键。 -->
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                            VerticalAlignment="Bottom" Margin="0,0,4,4" Opacity="0">
+                                    <Button Content="⭐" Width="24" Height="24" Padding="0" Margin="2"
+                                            FontSize="12" ToolTip="收藏 / 取消收藏"
+                                            Command="{Binding DataContext.ToggleFavoriteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                            CommandParameter="{Binding}" />
+                                    <StackPanel.Style>
+                                        <Style TargetType="StackPanel">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                                    <Setter Property="Opacity" Value="1" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </StackPanel.Style>
+                                </StackPanel>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

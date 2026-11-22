@@ -32,11 +32,21 @@ public partial class MainViewModel
             return;
         }
 
+        // 发现页 / 最近查看原来在这里直接 return，跑在 BuildFilter() 之前 ——
+        // 搜索词、类型筛选、只看已编辑 全被绕过（用户搜了关键词点进来还是全量随机）。
+        // 现在：发现页只在「没有任何快筛」时才走随机批次；有快筛就退回下面的普通查询
+        // （等于「在全部媒体里筛」），并收起「推荐池 / 换一批」那条工具栏，免得自相矛盾。
         if (_currentViewKey == "discovery")
         {
-            await LoadDiscoveryAsync();
-            return;
+            if (!HasQuickFilter)
+            {
+                await LoadDiscoveryAsync();
+                return;
+            }
+
+            IsDiscoveryView = false;
         }
+
         if (_currentViewKey == "recent-view")
         {
             await LoadRecentViewAsync();
@@ -601,7 +611,22 @@ public partial class MainViewModel
     partial void OnSelectedItemChanged(ThumbnailItemViewModel? value)
     {
         if (value != null)
+        {
             _ = LoadDetailCoreAsync(value, debounce: true);
+            return;
+        }
+
+        // 取消选择（点空白 / Ctrl+点击 / 删掉当前项 / 切换视图）时必须把详情栏清空。
+        // 以前只有 `value != null` 一支，取消选择后右栏还挂着上一张的文件名、尺寸、
+        // EXIF、备注 —— 用户以为还选着，对着一个「已经没有选中项」的面板操作。
+        _detailCts?.Cancel();
+        DetailName = string.Empty;
+        DetailMeta = string.Empty;
+        DetailDate = string.Empty;
+        DetailIsVideo = false;
+        NoteEditor = string.Empty;
+        SelectedCategories.Clear();
+        ExifItems.Clear();
     }
 
     private async Task RefreshStatusAsync()

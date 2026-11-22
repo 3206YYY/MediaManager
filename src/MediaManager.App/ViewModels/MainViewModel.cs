@@ -70,6 +70,9 @@ public partial class MainViewModel : ObservableObject
 
     private int _totalCount;
 
+    /// <summary>当前筛选条件下的总数（可能远大于已加载进列表的项数）。Ctrl+A 的提示要用它。</summary>
+    public int TotalCount => _totalCount;
+
     private bool _isLoadingMore;
 
     // 发现页状态

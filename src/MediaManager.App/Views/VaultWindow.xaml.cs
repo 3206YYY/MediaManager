@@ -38,6 +38,7 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
     private readonly IVaultService _vault;
     private readonly IFileOperationService _fileOps;
     private readonly IOperationLogService _opLog;
+    private readonly IAppConfigService _config;
 
     private readonly ObservableCollection<ThumbnailItemViewModel> _items = new();
     private readonly DispatcherTimer _debounce;
@@ -65,6 +66,7 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
         _vault = App.Services.GetRequiredService<IVaultService>();
         _fileOps = App.Services.GetRequiredService<IFileOperationService>();
         _opLog = App.Services.GetRequiredService<IOperationLogService>();
+        _config = App.Services.GetRequiredService<IAppConfigService>();
 
         DataContext = this;
 
@@ -976,7 +978,7 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
         if (items.Count == 0) return;
 
         var confirm = CustomMessageBox.Confirm(
-            $"把这 {items.Count} 项删除？文件会进入回收站（可在设置里改为永久删除）。",
+            DeletePolicy.ConfirmMessage(_config.DeleteBehavior, items.Count),
             "删除", confirmText: "删除", danger: true);
         if (!confirm) return;
 
@@ -985,8 +987,8 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
         {
             try
             {
-                await _fileOps.DeleteToRecycleBinAsync(vm.Media.Path);
-                await _opLog.LogAsync("删除到回收站", vm.Media.Path, null);
+                await DeletePolicy.DeleteAsync(_fileOps, vm.Media.Path, _config.DeleteBehavior);
+                await _opLog.LogAsync(DeletePolicy.LogAction(_config.DeleteBehavior), vm.Media.Path, null);
                 await _repo.DeleteMediaAsync(vm.Id);
                 _thumbs.Invalidate(vm.Id);
                 _items.Remove(vm);

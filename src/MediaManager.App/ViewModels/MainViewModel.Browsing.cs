@@ -399,6 +399,13 @@ public partial class MainViewModel
         item.IsFavorite = !item.IsFavorite;
         await _repo.SetFavoriteAsync(item.Id, item.IsFavorite);
         await RefreshDetailAsync(item);
+
+        // 侧栏那个「⭐ 收藏 ( N )」必须跟着变。以前只有批量收藏（Organize.BatchToggleFavoriteAsync）
+        // 会刷这个数字，单张收藏 / 缩略图悬停的 ⭐ / 右键收藏都不刷 ——
+        // 用户收藏完一张，侧栏计数纹丝不动，以为没收藏上。
+        FavoriteCount = (int)await _repo.GetFavoriteCountAsync();
+        if (item.IsFavorite)
+            CheckFavoriteMilestone(FavoriteCount);
     }
 
     [RelayCommand]
@@ -415,13 +422,13 @@ public partial class MainViewModel
         if (SelectedItem == null) return;
 
         var confirm = CustomMessageBox.ConfirmDanger(
-            $"将把下面的文件移入回收站：\n\n{SelectedItem.FileName}\n\n删除后 5 秒内可在底部撤销。",
+            DeletePolicy.ConfirmMessage(_config.DeleteBehavior, 1, SelectedItem.FileName),
             "确认删除");
         if (!confirm) return;
 
         try
         {
-            await _fileOps.DeleteToRecycleBinAsync(SelectedItem.Path);
+            await DeleteFileAsync(SelectedItem.Path);
         }
         catch (Exception ex)
         {
@@ -431,11 +438,14 @@ public partial class MainViewModel
             return;
         }
 
-        await _opLog.LogAsync("删除到回收站", SelectedItem.Path, null);
+        await _opLog.LogAsync(DeleteLogAction, SelectedItem.Path, null);
 
         // 先记录快照（此时数据库里的标签/分类关联还在），再删库；
-        // 缩略图缓存保留，撤销后可以立刻显示，也方便「最近删除」里预览
-        var record = await _deletedItems.TrackAsync(SelectedItem.Media, SelectedItem.ThumbnailPath);
+        // 缩略图缓存保留，撤销后可以立刻显示，也方便「最近删除」里预览。
+        // 永久删除不留快照 —— 文件已经没了，留着只会让「还原」按钮骗人。
+        DeletedMedia? record = CanUndoDelete
+            ? await _deletedItems.TrackAsync(SelectedItem.Media, SelectedItem.ThumbnailPath)
+            : null;
 
         // 同步删除数据库记录，保证状态一致（还原后由撤销逻辑重新写回）
         await _repo.DeleteMediaAsync(SelectedItem.Id);
@@ -444,7 +454,10 @@ public partial class MainViewModel
         SelectedItem = null;
         await RefreshStatusAsync();
 
-        ShowUndoToast(new[] { record });
+        if (record != null)
+            ShowUndoToast(new[] { record });
+        else
+            StatusText = DeletePolicy.StatusAfterDelete(_config.DeleteBehavior, 1);
     }
 
     // ---------- 操作轻提示（只反馈，不带按钮） ----------

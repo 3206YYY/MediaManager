@@ -257,7 +257,19 @@ public partial class SettingsWindow : Window
         RefreshDesktopShortcutState();
         RefreshSnapshots();
         await LoadHotkeysAsync();
+
+        // 记下「刚打开时」的状态。有几个开关是**点击即写**（右键集成写注册表、
+        // 扩展格式写库 + 改静态开关），点「取消」必须把它们退回去 ——
+        // 否则用户勾了、后悔了点取消，设置已经生效了，按钮却装作什么都没发生。
+        _initialShellIntegration = ShellIntegrationBox.IsChecked == true;
+        _initialExtendedFormats = ExtendedFormatsCheck.IsChecked == true;
     }
+
+    /// <summary>打开设置页时的右键集成状态（取消时用来回滚）。</summary>
+    private bool _initialShellIntegration;
+
+    /// <summary>打开设置页时的「扩展格式」状态（取消时用来回滚）。</summary>
+    private bool _initialExtendedFormats;
 
     // ===================================================================
     //  历史快照（时光机）
@@ -1294,7 +1306,11 @@ public partial class SettingsWindow : Window
                 return;
             }
 
-            CustomMessageBox.Success("设置已保存。主题与快捷键已立即生效，其余设置重启后生效。", "保存成功");
+            _saved = true;
+            CustomMessageBox.Success(
+                "设置已保存，并且立即生效。\n\n"
+                + "主题、快捷键、删除方式（回收站 / 永久删除）、简单模式、扩展格式都已经马上用上。",
+                "保存成功");
             Close();
         }
         catch (Exception ex)
@@ -1303,9 +1319,54 @@ public partial class SettingsWindow : Window
         }
     }
 
+    /// <summary>点过保存没有。没点保存就关窗（按钮或标题栏 X）= 取消，要走回滚。</summary>
+    private bool _saved;
+
+    /// <summary>
+    /// 「取消」= 什么都不改。有几个开关在点击时就已经生效了（右键集成写注册表、
+    /// 扩展格式写库），这里必须逐个退回打开时的样子；
+    /// 其余设置都是在 <see cref="OnSave"/> 里才落库，本来就没写，不用管。
+    /// </summary>
+    private void RollbackImmediateWrites()
+    {
+        try
+        {
+            var shellNow = ShellIntegrationBox.IsChecked == true;
+            if (shellNow != _initialShellIntegration)
+            {
+                if (_initialShellIntegration) ShellIntegrationService.Enable();
+                else ShellIntegrationService.Disable();
+
+                RefreshShellIntegrationState();
+            }
+
+            var fmtNow = ExtendedFormatsCheck.IsChecked == true;
+            if (fmtNow != _initialExtendedFormats)
+            {
+                Infrastructure.FileSystem.MediaFormat.SetExtendedFormatsEnabled(_initialExtendedFormats);
+                // 库里的值也要退回去；窗口马上要关了，不等它
+                var value = _initialExtendedFormats ? "1" : "0";
+                _ = _repo.SetSettingAsync("EnableExtendedFormats", value);
+            }
+        }
+        catch (Exception ex)
+        {
+            Serilog.Log.Warning(ex, "取消设置时回滚即时生效项失败");
+        }
+    }
+
     private void OnCancel(object sender, RoutedEventArgs e)
     {
+        RollbackImmediateWrites();
         Close();
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // 直接点标题栏 × 关窗，和点「取消」一个意思 —— 不这样做就留了个后门：
+        // 勾了右键集成，不点保存、直接叉掉窗口，注册表照样被改了。
+        if (!_saved) RollbackImmediateWrites();
+        base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)

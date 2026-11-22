@@ -81,12 +81,19 @@ public partial class MainViewModel
     {
         var generation = _loadGeneration;
         var items = await DbAsync(() => _repo.GetRecentViewAsync(100));
+
+        // 这里的过滤是 v1.4.8 补的：原本取完 100 条直接绑定，
+        // 顶部搜索词 / 类型筛选 / 只看已编辑 对这个视图完全无效。
+        items = ApplyQuickFilters(items);
+
         var recentVms = items.Select(ToViewModel).ToList();
         await ApplyCategoryMarksAsync(recentVms);
         if (generation != _loadGeneration) return;
         MediaItems.ReplaceAll(recentVms);
         EnsureThumbnails(items);
-        StatusText = $"最近查看 · {MediaItems.Count} 项";
+        StatusText = HasQuickFilter
+            ? $"最近查看 · 筛出 {MediaItems.Count} 项"
+            : $"最近查看 · {MediaItems.Count} 项";
     }
 
     /// <summary>从 AppSetting 加载发现页配置。</summary>
@@ -164,6 +171,54 @@ public partial class MainViewModel
             f.EditedOnly = true;
 
         return f;
+    }
+
+    /// <summary>
+    /// 顶部的搜索词 / 类型筛选 / 只看已编辑 有没有真的在起作用。
+    /// <para>
+    /// <b>为什么需要它</b>：发现页和「最近查看」以前在 <see cref="BuildFilter"/> <b>之前</b>
+    /// 就 <c>return</c> 跑掉了（LoadMediaAsync 开头那两个 if）。结果是用户搜了个关键词、
+    /// 或者只勾了「视频」，点进发现页 / 最近查看仍然是全量随机推荐 —— 筛选被整个绕过。
+    /// 分流条件必须先问这里。
+    /// </para>
+    /// </summary>
+    private bool HasQuickFilter
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(SearchText)) return true;
+            if (EditedOnly) return true;
+            var on = TypeFilterOptions.Count(o => o.IsSelected);
+            return on > 0 && on < TypeFilterOptions.Count;
+        }
+    }
+
+    /// <summary>
+    /// 把顶部快筛条件套到一份已经取出来的列表上。
+    /// 「最近查看」最多 100 条，内存过滤完全够，不用为它改数据层查询。
+    /// 判定口径和 SQL 版保持一致（见 <c>MediaRepository</c> 的 BuildWhere）：
+    /// 搜索 = 文件名包含（不区分大小写）；已编辑 = 文件名含 <c>_edited</c>。
+    /// </summary>
+    private List<MediaItem> ApplyQuickFilters(IEnumerable<MediaItem> items)
+    {
+        var q = items;
+
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            var kw = SearchText.Trim();
+            q = q.Where(m => m.FileName.Contains(kw, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var selected = TypeFilterOptions.Where(o => o.IsSelected)
+                                        .Select(o => o.MediaType)
+                                        .ToHashSet();
+        if (selected.Count > 0 && selected.Count < TypeFilterOptions.Count)
+            q = q.Where(m => selected.Contains(m.MediaType));
+
+        if (EditedOnly)
+            q = q.Where(m => m.FileName.Contains("_edited", StringComparison.OrdinalIgnoreCase));
+
+        return q.ToList();
     }
 
     // ---------- 顶部类型筛选变化 ----------

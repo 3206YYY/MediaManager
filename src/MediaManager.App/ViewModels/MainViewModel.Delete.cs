@@ -212,11 +212,24 @@ public partial class MainViewModel
         EnsureThumbnails(MediaItems.Select(v => v.Media).ToList());
     }
 
+    /// <summary>设置页那个「删除方式」是不是「永久删除」（真值来源见 <see cref="DeletePolicy"/>）。</summary>
+    private bool IsPermanentDelete => DeletePolicy.IsPermanent(_config.DeleteBehavior);
+
+    /// <summary>按设置里的删除方式删。所有删除入口都走这里，别再各写一份写死的回收站删除。</summary>
+    private Task DeleteFileAsync(string path)
+        => DeletePolicy.DeleteAsync(_fileOps, path, _config.DeleteBehavior);
+
+    /// <summary>操作日志里该怎么记这一笔。</summary>
+    private string DeleteLogAction => DeletePolicy.LogAction(_config.DeleteBehavior);
+
+    /// <summary>永久删除没有撤销可言 —— 不写最近删除快照、不弹撤销条。</summary>
+    private bool CanUndoDelete => DeletePolicy.CanUndo(_config.DeleteBehavior);
+
     public async Task BatchDeleteAsync(IReadOnlyList<ThumbnailItemViewModel> items)
     {
         if (items.Count == 0) return;
         var confirm = CustomMessageBox.ConfirmDanger(
-            $"将把选中的 {items.Count} 个文件移入回收站。\n\n删除后 5 秒内可在底部撤销。", "确认删除");
+            DeletePolicy.ConfirmMessage(_config.DeleteBehavior, items.Count), "确认删除");
         if (!confirm) return;
 
         var deleted = new List<ThumbnailItemViewModel>();
@@ -228,11 +241,13 @@ public partial class MainViewModel
         {
             try
             {
-                await _fileOps.DeleteToRecycleBinAsync(item.Path);
-                await _opLog.LogAsync("删除到回收站", item.Path, null);
+                await DeleteFileAsync(item.Path);
+                await _opLog.LogAsync(DeleteLogAction, item.Path, null);
 
-                // 快照要在删库之前抓，否则标签/分类关联已经没了
-                records.Add(await _deletedItems.TrackAsync(item.Media, item.ThumbnailPath, batchId));
+                // 快照要在删库之前抓，否则标签/分类关联已经没了。
+                // 永久删除不留快照：文件回不来了，留个「已删除」条目只会让还原按钮骗人。
+                if (CanUndoDelete)
+                    records.Add(await _deletedItems.TrackAsync(item.Media, item.ThumbnailPath, batchId));
 
                 await _repo.DeleteMediaAsync(item.Id);
                 deleted.Add(item);
@@ -265,7 +280,7 @@ public partial class MainViewModel
         }
         else
         {
-            StatusText = $"已删除 {deleted.Count} 个文件";
+            StatusText = DeletePolicy.StatusAfterDelete(_config.DeleteBehavior, deleted.Count);
         }
 
         if (records.Count > 0)
@@ -293,12 +308,18 @@ public partial class MainViewModel
     {
         try
         {
-            await _fileOps.DeleteToRecycleBinAsync(item.Path);
-            await _opLog.LogAsync("删除到回收站", item.Path, null);
+            await DeleteFileAsync(item.Path);
+            await _opLog.LogAsync(DeleteLogAction, item.Path, null);
 
-            // 快照要在删库之前抓，否则标签 / 分类关联已经没了，撤销恢复不全
-            var record = await _deletedItems.TrackAsync(item.Media, item.ThumbnailPath,
-                Guid.NewGuid().ToString("N"));
+            // 快照要在删库之前抓，否则标签 / 分类关联已经没了，撤销恢复不全。
+            // 永久删除不留快照（文件回不来，撤销条也弹不出来）。
+            DeletedMedia? record = null;
+            if (CanUndoDelete)
+            {
+                record = await _deletedItems.TrackAsync(item.Media, item.ThumbnailPath,
+                    Guid.NewGuid().ToString("N"));
+            }
+
             await _repo.DeleteMediaAsync(item.Id);
             MediaItems.Remove(item);
             // 只清「详情面板正在看的那一项」。以前这里无条件 `SelectedItem = null`，
@@ -308,8 +329,15 @@ public partial class MainViewModel
             await RefreshStatusAsync();
 
             if (record != null) _tapDeleteRecords.Add(record);
-            ShowUndoToast(_tapDeleteRecords.ToList());
-            StatusText = $"已删除 {_tapDeleteRecords.Count} 个文件";
+            if (CanUndoDelete)
+            {
+                ShowUndoToast(_tapDeleteRecords.ToList());
+                StatusText = $"已删除 {_tapDeleteRecords.Count} 个文件";
+            }
+            else
+            {
+                StatusText = DeletePolicy.StatusAfterDelete(_config.DeleteBehavior, 1);
+            }
             return true;
         }
         catch (Exception ex)

@@ -493,7 +493,11 @@ def main():
                 if c.ControlTypeName == "ButtonControl" and not is_offscreen(c)]
         check("悬浮条含「批量分类」", any("批量分类" in s for s in btns), str(btns[-6:]))
         check("悬浮条含「取消选择」", any("取消选择" in s for s in btns))
-        check("悬浮条含「删除选中的 5 项」", "删除选中的 5 项" in btns)
+        # v1.4.8：普通选中不再顶着「删除选中的 N 项」。
+        # 用户拿发现页选中一张的截图来问「为啥还会亮删除所选项？」——
+        # 没打算删的时候，最显眼的位置不该是删除。删除入口在删除模式 / Delete 键 / 右键菜单。
+        check("普通选中时悬浮条不显示删除按钮",
+              not any(s.startswith("删除选中的") for s in btns), str(btns[-6:]))
 
         # 留一张主界面图：目视检查工具栏按钮 / 悬浮条的图标字形与高亮效果
         try:
@@ -534,9 +538,35 @@ def main():
         check("有选中时顶部按钮仍是「批量删除」", b is not None and name_of(b) == "批量删除",
               name_of(b) if b is not None else "None")
 
-        # 删除入口是底部悬浮条（顶部那个只负责开关删除模式）
+        # 删除入口是底部悬浮条，但它只在删除模式下露面（见阶段 C 的说明）。
+        # 注意 find_ctrl 不筛可见性：Collapsed 的按钮仍在 UIA 树里，必须自己判 offscreen。
+        _probe = find_ctrl(win, "ButtonControl", lambda s: s.startswith("删除选中的"))
+        check("普通选中时悬浮条上没有删除按钮", _probe is None or is_offscreen(_probe),
+              "找到了但不可见" if _probe is not None else "None")
+        if b is not None:
+            click(hwnd, b)          # 进删除模式，删除按钮才出来
+        time.sleep(1.2)
+
+        # EnterTapDeleteMode() 里会 ThumbList.SelectedItems.Clear() ——
+        # 进模式故意清空旧选择（从零开始勾，别把之前随手点的几张一起带走），
+        # 所以这里要重新勾 5 项。默认是「先勾选再删」，程序化 Select 只打勾不删文件。
+        for idx, it in enumerate(items[:N]):
+            try:
+                if idx == 0:
+                    it.GetSelectionItemPattern().Select()
+                else:
+                    it.GetSelectionItemPattern().AddToSelection()
+            except Exception:
+                click(hwnd, it)
+            time.sleep(0.12)
+        time.sleep(1.0)
+
         bar_del = find_ctrl(win, "ButtonControl", lambda s: s == "删除选中的 5 项")
-        check("悬浮条上有「删除选中的 5 项」", bar_del is not None)
+        if bar_del is not None and is_offscreen(bar_del):
+            bar_del = None
+        check("进入删除模式后悬浮条出现「删除选中的 5 项」", bar_del is not None,
+              str([name_of(c) for c in collect(win, maxd=18)
+                   if c.ControlTypeName == "ButtonControl" and not is_offscreen(c)][-8:]))
         if bar_del is not None:
             click(hwnd, bar_del)
         time.sleep(1.5)
@@ -554,6 +584,12 @@ def main():
         check("删除后弹出撤销提示条", any("5" in t for t in toast), str(toast[:3]))
         undo = find_ctrl(win, "ButtonControl", lambda s: s == "撤销")
         check("撤销提示条带「撤销」按钮", undo is not None and not is_offscreen(undo))
+
+        # 删完还停在删除模式里（是测试自己点进去的），先退出来再看顶部文案
+        if b is not None and name_of(b) == "退出删除模式":
+            click(hwnd, b)
+            time.sleep(1.2)
+
         b = batch_btn()
         check("删除后按钮自动回到可点的「批量删除」",
               b is not None and name_of(b) == "批量删除" and is_enabled(b),

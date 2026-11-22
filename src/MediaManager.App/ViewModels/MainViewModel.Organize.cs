@@ -246,7 +246,12 @@ public partial class MainViewModel
         Services.ThumbnailMemoryCache.Clear();
         await LoadNavigationAsync();
         await LoadMediaAsync();
-        StatusText = "已刷新";
+
+        // ⚠ 不能无条件写「已刷新」：LoadMediaAsync 在 0 项时会写诊断
+        // （「此文件夹的 N 个文件当前不可达（磁盘未连接）」之类），那是用户刷新后最该看到的话。
+        // 以前这里一句「已刷新」直接盖掉，用户点完刷新只看到三个字，根本不知道盘没插上。
+        if (!StatusText.StartsWith("共 0 项 ——", StringComparison.Ordinal))
+            StatusText = "已刷新";
     }
 
     // ---------- 批量操作（供右键菜单 / 快捷键调用，作用于所有选中项） ----------
