@@ -202,6 +202,7 @@ dotnet publish src/MediaManager.App -c Release -r win-x64 --self-contained false
 👉 **[点击这里前往爱发电支持我](https://afdian.com/a/3206YYY)**
 
 您的赞助将用于：升级维护该软件，以及作者其他软件的开发。
+
 这作者真不要脸，AI做的东西都好意思拉赞助😋（评论由蓝色小肥鲸生成🐋）
 
 ---
