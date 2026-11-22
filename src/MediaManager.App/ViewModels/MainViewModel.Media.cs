@@ -24,10 +24,17 @@ public partial class MainViewModel
         CanLoadMore = false;
         LoadMoreText = string.Empty;
 
+        // 先假定可排序；下面「发现页随机批次 / 最近查看内存列表」两个分支会各自关掉，
+        // 并把原因写进 SortDisabledReason（界面据此禁用控件 + 出 ToolTip）。
+        IsSortEnabled = true;
+        SortDisabledReason = string.Empty;
+
         if (!HasSelectedType)
         {
             if (_currentViewKey == "discovery") IsDiscoveryView = true;
             MediaItems.Clear();
+            _totalCount = 0;
+            NotifyHeaderChanged();
             StatusText = "未选择任何类型（顶部「类型」里至少勾选一个）";
             return;
         }
@@ -40,6 +47,9 @@ public partial class MainViewModel
         {
             if (!HasQuickFilter)
             {
+                // 随机批次没有「排序」这个概念：控件别亮着骗人。
+                IsSortEnabled = false;
+                SortDisabledReason = "发现页是随机批次，排序不适用；切到「全部媒体」即可排序";
                 await LoadDiscoveryAsync();
                 return;
             }
@@ -49,6 +59,9 @@ public partial class MainViewModel
 
         if (_currentViewKey == "recent-view")
         {
+            // 最近查看是内存里的访问顺序 Top100，不是 SQL 查询，排序同样不适用。
+            IsSortEnabled = false;
+            SortDisabledReason = "「最近查看」是内存里的访问顺序 Top 100，不支持排序";
             await LoadRecentViewAsync();
             return;
         }
@@ -78,6 +91,7 @@ public partial class MainViewModel
 
         _totalCount = total;
         UpdateLoadMoreState();
+        NotifyHeaderChanged();
 
         // 一次性把缺缩略图的排队（同目录只探测一次，去掉逐条系统调用）
         EnsureThumbnails(items);
@@ -182,6 +196,7 @@ public partial class MainViewModel
                 // 库里的数据变少了：以实际为准，别让按钮一直挂着
                 _totalCount = MediaItems.Count;
                 UpdateLoadMoreState();
+                NotifyHeaderChanged();
                 return;
             }
 
@@ -194,6 +209,7 @@ public partial class MainViewModel
 
             _totalCount = Math.Max(_totalCount, MediaItems.Count);
             UpdateLoadMoreState();
+            NotifyHeaderChanged();
             StatusText = $"已加载 {MediaItems.Count} / 共 {_totalCount} 项";
         }
         catch (Exception ex)
@@ -444,6 +460,8 @@ public partial class MainViewModel
         if (total == 0)
         {
             MediaItems.Clear();
+            _totalCount = 0;
+            NotifyHeaderChanged();
             DiscoveryShowWelcome = true;
             DiscoveryShowHint = false;
             StatusText = "欢迎使用媒体管理器";
@@ -480,6 +498,9 @@ public partial class MainViewModel
         await ApplyCategoryMarksAsync(discoveryVms);
         if (generation != _loadGeneration) return;
         MediaItems.ReplaceAll(discoveryVms);
+        // 发现页每次只有一批（默认 30），抬头按本批条数显示；库里的总数不是「当前结果数」。
+        _totalCount = MediaItems.Count;
+        NotifyHeaderChanged();
         _logger.LogDebug("  [发现] 绑定 {Ms} ms（{Count} 项）", swD.ElapsedMilliseconds, media.Count);
         EnsureThumbnails(media);
 

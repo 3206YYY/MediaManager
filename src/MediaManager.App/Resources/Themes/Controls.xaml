@@ -79,7 +79,7 @@
                         <Trigger Property="IsSelected" Value="True">
                             <Setter TargetName="Bg" Property="Background" Value="{DynamicResource PrimaryBrush}" />
                             <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
-                            <Setter Property="Foreground" Value="White" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnPrimaryBrush}" />
                         </Trigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
@@ -137,7 +137,7 @@
                         <Trigger Property="HasSelectedDays" Value="True">
                             <Setter TargetName="Bg" Property="Background" Value="{DynamicResource PrimaryBrush}" />
                             <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
-                            <Setter Property="Foreground" Value="White" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnPrimaryBrush}" />
                         </Trigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>

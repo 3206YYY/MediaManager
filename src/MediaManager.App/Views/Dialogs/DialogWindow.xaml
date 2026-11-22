@@ -98,11 +98,18 @@
             <Border Grid.Row="0" Background="Transparent" Padding="18,14,12,8"
                     MouseLeftButtonDown="OnHeaderDrag">
                 <DockPanel>
-                    <Button x:Name="CloseButton" DockPanel.Dock="Right" Content="✕"
-                            Width="26" Height="26" Padding="0" FontSize="12"
+                    <Button x:Name="CloseButton" DockPanel.Dock="Right"
+                            Width="26" Height="26" Padding="0"
                             Style="{StaticResource DialogButton}"
                             MinWidth="0" VerticalAlignment="Top"
-                            Click="OnCancelButtonClick" ToolTip="关闭（Esc）" />
+                            Click="OnCancelButtonClick" ToolTip="关闭（Esc）"
+                            AutomationProperties.Name="关闭">
+                        <Path Data="{StaticResource Icon.Close}" Width="9" Height="9" Stretch="Uniform"
+                              Stroke="{DynamicResource TextBrush}" StrokeThickness="1.4"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                              IsHitTestVisible="False" />
+                    </Button>
                     <TextBlock x:Name="IconText" DockPanel.Dock="Left" FontSize="18"
                                VerticalAlignment="Center" Margin="0,0,10,0" />
                     <TextBlock x:Name="TitleText" FontSize="15" FontWeight="SemiBold"

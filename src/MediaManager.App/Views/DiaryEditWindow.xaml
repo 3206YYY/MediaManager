@@ -102,11 +102,18 @@
                                                Stretch="UniformToFill"
                                                RenderOptions.BitmapScalingMode="LowQuality" />
                                     </Border>
-                                    <Button Content="✕" Width="20" Height="20"
+                                    <Button Width="20" Height="20"
                                             HorizontalAlignment="Right" VerticalAlignment="Top"
-                                            Margin="0,-4,-4,0" Padding="0" FontSize="10"
+                                            Margin="0,-4,-4,0" Padding="0"
                                             Tag="{Binding}" Click="OnRemoveMediaClick"
-                                            ToolTip="从这篇里移除（不会删文件）" />
+                                            ToolTip="从这篇里移除（不会删文件）"
+                                            AutomationProperties.Name="从这篇里移除（不会删文件）">
+                                        <Path Data="{StaticResource Icon.Close}" Width="7" Height="7" Stretch="Uniform"
+                                              Stroke="{DynamicResource TextBrush}" StrokeThickness="1.4"
+                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              IsHitTestVisible="False" />
+                                    </Button>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>

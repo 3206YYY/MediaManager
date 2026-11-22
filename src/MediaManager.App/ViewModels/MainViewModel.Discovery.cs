@@ -91,6 +91,8 @@ public partial class MainViewModel
         if (generation != _loadGeneration) return;
         MediaItems.ReplaceAll(recentVms);
         EnsureThumbnails(items);
+        _totalCount = MediaItems.Count;
+        NotifyHeaderChanged();
         StatusText = HasQuickFilter
             ? $"最近查看 · 筛出 {MediaItems.Count} 项"
             : $"最近查看 · {MediaItems.Count} 项";
@@ -126,8 +128,10 @@ public partial class MainViewModel
         var f = new MediaFilter
         {
             SearchText = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText,
-            SortField = SortField.DateAdded,
-            SortDirection = SortDirection.Descending,
+            // 排序跟用户在抬头选的一致（偏好持久化在 AppSetting）。
+            // 用 this. 限定：属性名与枚举类型同名，裸写 `SortField` 会被读成类型。
+            SortField = this.SortField,
+            SortDirection = this.SortDirection,
             Limit = PageSize,
             // 主界面所有视图（含搜索、类型筛选、文件夹、标签）一律查普通内容；
             // 保险箱内容由独立的 VaultWindow 用 IncludePrivate=true 自行查询

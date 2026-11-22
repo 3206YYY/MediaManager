@@ -95,10 +95,22 @@
                     <DockPanel Grid.Row="0" Margin="0,0,0,10">
                         <Button DockPanel.Dock="Right" Content="今天" Style="{StaticResource GhostButton}"
                                 Click="OnTodayClick" />
-                        <Button DockPanel.Dock="Right" Content="▶" Style="{StaticResource GhostButton}"
-                                Click="OnNextMonth" />
-                        <Button DockPanel.Dock="Left" Content="◀" Style="{StaticResource GhostButton}"
-                                Click="OnPrevMonth" />
+                        <Button DockPanel.Dock="Right" Style="{StaticResource GhostButton}"
+                                Click="OnNextMonth" ToolTip="下个月"
+                                AutomationProperties.Name="下个月">
+                            <Path Data="{StaticResource Icon.ChevronRight}" Width="7" Height="9" Stretch="Uniform"
+                                  Fill="{DynamicResource TextBrush}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  IsHitTestVisible="False" />
+                        </Button>
+                        <Button DockPanel.Dock="Left" Style="{StaticResource GhostButton}"
+                                Click="OnPrevMonth" ToolTip="上个月"
+                                AutomationProperties.Name="上个月">
+                            <Path Data="{StaticResource Icon.ChevronLeft}" Width="7" Height="9" Stretch="Uniform"
+                                  Fill="{DynamicResource TextBrush}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  IsHitTestVisible="False" />
+                        </Button>
                         <TextBlock x:Name="MonthTitle" HorizontalAlignment="Center" VerticalAlignment="Center"
                                    FontSize="14" FontWeight="SemiBold"
                                    Foreground="{DynamicResource TextBrush}" />

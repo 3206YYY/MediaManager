@@ -1682,11 +1682,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private static readonly Color ThumbSelNormal = Color.FromRgb(0x3B, 0x82, 0xF6);
+    /// 删除模式的选中色（琥珀）。**日常那条蓝不在这里** —— 那是主题的事，
+    /// 由 Light.xaml / Dark.xaml 的 ThumbSelectionBrush 提供。代码里再存一份就会
+    /// 变成"浅色主题的蓝被带进深色主题"的第二真值。
     private static readonly Color ThumbSelDelete = Color.FromRgb(0xF5, 0x8C, 0x2E);
 
     /// <summary>
-    /// 切换缩略图选中色：日常勾选是蓝，删除模式是琥珀。
+    /// 切换缩略图选中色：日常勾选是蓝（跟主题走），删除模式是琥珀（代码临时覆盖）。
     /// 刻意**不复用蓝色** —— 删除是不可逆操作（进回收站），颜色必须和平时挑图一眼分得开；
     /// 原来两种状态用的是同一个 WPF 默认高亮，深色主题下压根看不出选没选。
     /// </summary>
@@ -1694,9 +1696,17 @@ public partial class MainWindow : Window
     {
         try
         {
-            var brush = new SolidColorBrush(deleteMode ? ThumbSelDelete : ThumbSelNormal);
+            if (!deleteMode)
+            {
+                // 退出删除模式：撤掉窗口级覆盖，DynamicResource 自动回落到当前主题那条蓝。
+                // 以前这里是"塞一条写死的蓝"，一旦用户切到深色主题就再也不跟着变了。
+                Resources.Remove("ThumbSelectionBrush");
+                return;
+            }
+
+            var brush = new SolidColorBrush(ThumbSelDelete);
             brush.Freeze();
-            // 换的是 Window.Resources 里的条目；XAML 里那两处是 DynamicResource，会立刻重取
+            // 塞的是窗口级条目，会遮住主题字典里那条；XAML 里那两处是 DynamicResource，会立刻重取
             Resources["ThumbSelectionBrush"] = brush;
         }
         catch (Exception ex)
@@ -1976,6 +1986,13 @@ public partial class MainWindow : Window
     private void OnContextMenuOpened(object sender, RoutedEventArgs e)
     {
         if (sender is not ContextMenu cm) return;
+
+        // 菜单标题跟着设置里的删除方式走：永久删除档位下再说「删除到回收站」就是假话。
+        if (DeleteMenu != null)
+        {
+            DeleteMenu.Header = DeletePolicy.ContextDeleteHeader(
+                _viewModel.DeleteBehavior, _viewModel.ConfirmPermanentDelete);
+        }
 
         // 右键点在「没被选中」的那一项上：先把它选中。
         // 不这么做的话，菜单里的「用系统默认程序打开」「打开所在位置」会作用在上一次选中的项上 ——

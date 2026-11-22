@@ -1,0 +1,18 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        度量令牌：**与主题无关**，深浅两套共用。
+        颜色不在这里 —— 颜色是随主题变的赋值，一律放 Light.xaml / Dark.xaml。
+        这个文件只装"数字"。字号刻度、间距刻度等阶段 B 迁移窗口时再补，
+        现在只放已经被 Styles.xaml 真正用到的圆角档位，不留没人引用的空令牌。
+        守门：build/verify/verify_design_tokens.py
+    -->
+
+    <!-- 圆角四档。新控件只从这四档里挑，别再写 3、5、8 这种散数 -->
+    <CornerRadius x:Key="Radius.Sm">2</CornerRadius>
+    <CornerRadius x:Key="Radius.Md">4</CornerRadius>
+    <CornerRadius x:Key="Radius.Lg">6</CornerRadius>
+    <CornerRadius x:Key="Radius.Pill">14</CornerRadius>
+
+</ResourceDictionary>

@@ -1,0 +1,24 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options">
+
+    <!--
+        功能图标：纯矢量 Geometry，**不在这里绑颜色**，颜色由使用处的 Path 给
+        （描边型用 Stroke，填充型用 Fill），这样才能跟着主题走。
+        为什么不用 emoji 当图标：很多机器缺彩色字形会回落成黑白方块，用户会以为图标没加载；
+        而且 emoji 的行高、基线、字重完全不受控，按字号对齐永远对不齐。
+        这套只覆盖"功能性"图标。侧栏的 ✨🏠 和评分菜单里的 ⭐⭐ 是**文案**不是图标
+        （验收脚本也按文本找它们），不在这里，也别换。
+    -->
+
+    <!-- 关闭：两条交叉线，描边型（配合 StrokeThickness 1.5） -->
+    <StreamGeometry x:Key="Icon.Close" po:Freeze="True">M 1 1 L 9 9 M 9 1 L 1 9</StreamGeometry>
+
+    <!-- 翻页三角：填充型，和原来的 ◀ ▶ 字符同形，换的只是渲染方式 -->
+    <StreamGeometry x:Key="Icon.ChevronLeft" po:Freeze="True">M 7 1 L 1 4 L 7 7 Z</StreamGeometry>
+    <StreamGeometry x:Key="Icon.ChevronRight" po:Freeze="True">M 1 1 L 7 4 L 1 7 Z</StreamGeometry>
+
+    <!-- 收藏：五角星，填充型 -->
+    <StreamGeometry x:Key="Icon.Star" po:Freeze="True">M 8 0.6 L 10.05 5.35 L 15.3 5.8 L 11.25 9.3 L 12.5 14.4 L 8 11.7 L 3.5 14.4 L 4.75 9.3 L 0.7 5.8 L 5.95 5.35 Z</StreamGeometry>
+
+</ResourceDictionary>

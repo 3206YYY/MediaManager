@@ -200,6 +200,39 @@ public class DeletePolicyTests
         Assert.Contains("撤销", DeletePolicy.SelectionDeleteTooltip(b));
     }
 
+    /// <summary>
+    /// 右键菜单头：以前 XAML 里写死「删除到回收站 (Delete)」，
+    /// 设置改成永久删除后，菜单说回收站、点下去真删 —— 比没有菜单更糟。
+    /// </summary>
+    [Theory]
+    [InlineData(DeleteBehavior.RecycleBin, true)]
+    [InlineData(DeleteBehavior.Ask, true)]
+    [InlineData(DeleteBehavior.Permanent, true)]
+    [InlineData(DeleteBehavior.Permanent, false)]
+    public void 右键菜单标题_永久删除档位绝口不提回收站(DeleteBehavior behavior, bool confirmPermanent)
+    {
+        var text = DeletePolicy.ContextDeleteHeader(behavior, confirmPermanent);
+
+        if (behavior == DeleteBehavior.Permanent)
+        {
+            Assert.Contains("永久", text);
+            Assert.DoesNotContain("回收站", text);
+        }
+        else
+        {
+            Assert.DoesNotContain("永久", text);
+        }
+    }
+
+    [Fact]
+    public void 右键菜单标题_关掉提醒后要说不再确认()
+    {
+        Assert.Contains("不再确认",
+            DeletePolicy.ContextDeleteHeader(DeleteBehavior.Permanent, confirmPermanent: false));
+        Assert.DoesNotContain("不再确认",
+            DeletePolicy.ContextDeleteHeader(DeleteBehavior.Permanent, confirmPermanent: true));
+    }
+
     // ---------- 「永久删除提醒确认」这个开关 ----------
 
     /// <summary>

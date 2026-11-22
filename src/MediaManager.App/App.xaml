@@ -8,9 +8,16 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
-                <!-- 索引 0 必须是主题字典：App.SetThemeAsync 靠替换 [0] 切主题 -->
+                <!-- 索引 0 必须是主题字典：App.SetThemeAsync 靠替换 [0] 切主题。
+                     这是硬约束，新增字典只能往后追加，绝不能插到它前面。 -->
                 <ResourceDictionary Source="Resources/Themes/Light.xaml" />
                 <ResourceDictionary Source="Resources/Languages/zh-CN.xaml" />
+                <!-- 度量令牌（圆角档位等），与主题无关，深浅共用 -->
+                <ResourceDictionary Source="Resources/Themes/Tokens.xaml" />
+                <!-- 功能图标矢量（关窗、翻页、收藏星），颜色由使用处给 -->
+                <ResourceDictionary Source="Resources/Icons.xaml" />
+                <!-- 共享控件模板：深浅两套共用这一份，颜色一律 DynamicResource -->
+                <ResourceDictionary Source="Resources/Themes/Styles.xaml" />
                 <!-- 系统控件重绘（DatePicker / Calendar），只写模板、颜色走 DynamicResource，
                      所以深浅两套主题共用这一份，放最后不影响主题替换 -->
                 <ResourceDictionary Source="Resources/Themes/Controls.xaml" />

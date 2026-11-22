@@ -75,6 +75,9 @@ public partial class MainViewModel
         // 后台探测每个根目录在磁盘上是否可达。不能在 UI 线程逐个 Directory.Exists：
         // 未挂载的移动硬盘 / 断开的网络盘上它可能阻塞几百毫秒甚至更久，侧栏会卡住。
         await ProbeFolderOfflineAsync();
+
+        // 抬头要按 RelatedId 取文件夹 / 标签 / 分类名，导航没加载完时只能显示兜底名。
+        NotifyHeaderChanged();
     }
 
     /// <summary>
@@ -348,6 +351,7 @@ public partial class MainViewModel
         }
 
         IsDiscoveryView = _currentViewKey == "discovery";
+        NotifyHeaderChanged();   // 标题立刻跟着换，别等查询跑完
         await LoadMediaAsync();
     }
 

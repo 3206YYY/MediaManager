@@ -20,10 +20,12 @@
         Drop="OnDrop">
 
     <Window.Resources>
-        <!-- 缩略图「选中」的唯一颜色来源。普通选择是蓝，删除模式由代码换成琥珀色。
+        <!-- 缩略图「选中」描边的颜色真值在 Light.xaml / Dark.xaml（ThumbSelectionBrush）。
+             这里**不再声明**它：删除模式由代码往 Window.Resources 临时塞一个琥珀色条目，
+             退出时 Remove 掉，DynamicResource 就自动回到当前主题的那条蓝。
+             （以前这里写死 #3B82F6，切主题也不会变，只因为蓝在深浅两套下都还能看。）
              注意：模板触发器里的 DynamicResource 是**应用那一刻**求值，不会自己跟着变；
              能换成功是因为进出删除模式都会先清空选择，环色总在「重新选中」时取到新值。 -->
-        <SolidColorBrush x:Key="ThumbSelectionBrush" Color="#3B82F6" />
 
         <!-- 缩略图容器。以前这里没有样式，用的是 WPF 默认高亮：选中色只从格子四周
              4px 的空隙里透出来，深色主题下几乎看不出区别 —— 「选了跟没选一样」的根因。
@@ -192,7 +194,9 @@
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
                 Padding="10,8">
             <StackPanel>
-            <DockPanel>
+            <!-- LastChildFill=False：所有子元素都显式 Dock，最后一个（扫描）不设的话
+                 会被 DockPanel 当成填充项拉满剩余宽度，变成一条横贯顶栏的巨型按钮。 -->
+            <DockPanel LastChildFill="False">
                 <TextBox x:Name="SearchTextBox" DockPanel.Dock="Left" Width="240" Margin="0,0,10,0"
                          InputMethod.IsInputMethodEnabled="True"
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
@@ -214,8 +218,10 @@
                                 CornerRadius="6" Padding="12" Margin="0,4,0,0">
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <Button Content="全部" Click="OnSelectAllTypes" Margin="0,0,6,0" />
-                                    <Button Content="全不选" Click="OnClearAllTypes" />
+                                    <Button Content="全部" Click="OnSelectAllTypes" Margin="0,0,6,0"
+                                            AutomationProperties.Name="全部" />
+                                    <Button Content="全不选" Click="OnClearAllTypes"
+                                            AutomationProperties.Name="全不选" />
                                 </StackPanel>
                                 <ItemsControl ItemsSource="{Binding TypeFilterOptions}">
                                     <ItemsControl.ItemTemplate>
@@ -231,6 +237,56 @@
                     <ToggleButton Content="📝 已编辑" Style="{StaticResource FilterToggleStyle}"
                                   IsChecked="{Binding EditedOnly}" Margin="0,0,6,0"
                                   ToolTip="只显示已编辑生成的副本" />
+                </StackPanel>
+
+                <!-- 主操作：新内容的唯一入口（空库欢迎页也复用它）。
+                     不让「批量删除」当主按钮 —— 它是删除模式的开关、危险色由 Tag 触发，
+                     做成蓝色主按钮会误导，而且 84 项实机脚本守着它的文案。 -->
+                <Button DockPanel.Dock="Left" Content="＋ 添加文件夹" Margin="8,0,0,0"
+                        Background="{DynamicResource PrimaryBrush}"
+                        Foreground="{DynamicResource OnPrimaryBrush}"
+                        BorderBrush="{DynamicResource PrimaryBrush}"
+                        Command="{Binding AddFolderCommand}"
+                        AutomationProperties.Name="添加文件夹"
+                        ToolTip="把一个文件夹加入媒体库并扫描里面的媒体文件" />
+
+                <!-- 溢出菜单：只收没有脚本锚定的低频入口（去重 / 快速查看 / 缩略图滑块）。
+                     **别把批量删除、扫描、设置、插件挪进来** —— WPF Popup 是独立窗口，
+                     实机脚本从主窗口 UIA 树按名字扫不到，收进来等于把回归打红。
+                     Popup 里每一项都要 AutomationProperties.Name（同上，没有名字 UIA 找不着）。 -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                            VerticalAlignment="Center" Margin="10,0,0,0">
+                    <ToggleButton x:Name="OverflowToggle" Content="⋯" Width="34" Height="30" Padding="0"
+                                  Style="{StaticResource FilterToggleStyle}"
+                                  AutomationProperties.Name="更多操作"
+                                  ToolTip="更多操作：去重、快速查看、缩略图大小" />
+                    <!-- HorizontalOffset 把弹出层右边缘对齐到 ⋯ 按钮右边缘：
+                         Placement=Bottom 默认左对齐，按钮又永远贴在窗口最右，
+                         不偏移会整块跑到屏幕外被裁掉。Width 固定后 -156 是确定的。 -->
+                    <Popup x:Name="OverflowPopup"
+                           PlacementTarget="{Binding ElementName=OverflowToggle}"
+                           Placement="Bottom" HorizontalOffset="-156"
+                           StaysOpen="False" AllowsTransparency="True"
+                           IsOpen="{Binding IsChecked, ElementName=OverflowToggle, Mode=TwoWay}">
+                        <Border Background="{DynamicResource PanelBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="6" Padding="8" Margin="0,4,0,0" Width="190">
+                            <StackPanel>
+                                <Button Content="🗂 去重" HorizontalContentAlignment="Left"
+                                        Margin="0,0,0,4" Click="OnFindDuplicates"
+                                        AutomationProperties.Name="去重" />
+                                <Button Content="👁 快速查看" HorizontalContentAlignment="Left"
+                                        Margin="0,0,0,8" Click="OnOpenFile"
+                                        AutomationProperties.Name="快速查看" />
+                                <TextBlock Text="缩略图大小" FontSize="11.5" Margin="4,0,0,4"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <Slider Minimum="80" Maximum="320"
+                                        Value="{Binding ThumbnailSize}"
+                                        AutomationProperties.Name="缩略图大小"
+                                        Margin="4,0,4,0" />
+                            </StackPanel>
+                        </Border>
+                    </Popup>
                 </StackPanel>
 
                 <!-- 私密空间是独立窗口（点侧栏「🔒 私密空间」打开），主界面不承载私密视图 -->
@@ -262,7 +318,6 @@
                         ToolTip="由插件提供的扩展功能" />
                 <Button DockPanel.Dock="Right" Content="🔄 刷新" Margin="0,0,8,0"
                         Command="{Binding RefreshCommand}" />
-                <Button DockPanel.Dock="Right" Content="🗂 去重" Margin="0,0,8,0" Click="OnFindDuplicates" />
                 <!-- 批量删除：只做「进入 / 退出删除模式」这一件事，永远可点，绝不置灰。
                      曾经它还兼管「已选中 N 项 → 直接删掉」，结果是用户一选中图片，这个按钮
                      就变成蓝底「删除选中的 2 项」，看起来像删除模式已经被启动了 —— 实际只是
@@ -290,9 +345,9 @@
                         <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                             <Style.Triggers>
                                 <Trigger Property="Tag" Value="mode">
-                                    <Setter Property="Background" Value="#B42318" />
-                                    <Setter Property="Foreground" Value="White" />
-                                    <Setter Property="BorderBrush" Value="#B42318" />
+                                    <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource OnDangerBrush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
                                     <Setter Property="FontWeight" Value="SemiBold" />
                                 </Trigger>
                             </Style.Triggers>
@@ -301,17 +356,6 @@
                 </Button>
                 <Button DockPanel.Dock="Right" Content="扫描" Margin="0,0,8,0"
                         Command="{Binding ScanAllCommand}" />
-                <Button DockPanel.Dock="Right" Content="👁 快速查看" Margin="0,0,10,0" Click="OnOpenFile"
-                        ToolTip="直接打开单个文件预览，不加入媒体库（也可把文件拖进窗口）" />
-                <Button DockPanel.Dock="Right" Content="＋ 添加文件夹" Margin="0,0,10,0"
-                        Command="{Binding AddFolderCommand}"
-                        ToolTip="把一个文件夹加入媒体库并扫描里面的媒体文件" />
-
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="缩略图大小：" VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <Slider Width="120" Minimum="80" Maximum="320" Value="{Binding ThumbnailSize}"
-                            VerticalAlignment="Center" />
-                </StackPanel>
             </DockPanel>
 
             <!-- 删除模式横幅：在工具栏里**单独占一行**，不是浮在网格上。
@@ -320,7 +364,7 @@
             <Border x:Name="TapDeleteBar" HorizontalAlignment="Center" Margin="0,8,0,0"
                     Padding="12,7" CornerRadius="9" MaxWidth="820"
                     Background="{DynamicResource PanelBrush}"
-                    BorderBrush="#B42318" BorderThickness="1.5"
+                    BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1.5"
                     Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <!-- 文案由 DeletePolicy.DeleteModeHint 在代码里填：
@@ -534,7 +578,7 @@
                                             <!-- 离线标记：移动硬盘没插 / 盘符变了时提前告知，
                                                  别让用户点进去看到「共 0 项」还以为是软件坏了 -->
                                             <TextBlock x:Name="OfflineBadge" Text="⛔ 离线" FontSize="10"
-                                                       Foreground="#C4554D" FontWeight="Bold"
+                                                       Foreground="{DynamicResource DangerBrush}" FontWeight="Bold"
                                                        Margin="0,2,0,0" Visibility="Collapsed" />
                                         </StackPanel>
                                     </Grid>
@@ -620,24 +664,93 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <!-- 发现页工具栏 -->
+                <!-- ===== 内容区抬头（唯一一条） =====
+                     以前这里叠了两个 Border 都在 Grid.Row=0：发现页工具栏 + 排序条，
+                     靠 IsDiscoveryView 正反向可见性互斥。改成一条之后左右分栏：
+                       左 = 视图标题 · 结果数 + 面包屑（长路径截断，ToolTip 保留全路径）
+                       右 = 发现页时是「推荐池 / 换一批」，其余视图是排序组
+                     右边两组仍然互斥（同一位置），不会露出两条，也不会把「换一批」弄丢。 -->
                 <Border Grid.Row="0" Background="{DynamicResource PanelBrush}"
                         BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
-                        Padding="10,8"
-                        Visibility="{Binding IsDiscoveryView, Converter={StaticResource BoolToVis}}">
-                    <DockPanel>
-                        <Button DockPanel.Dock="Right" Content="🎲 换一批 (R)"
-                                Command="{Binding RefreshDiscoveryCommand}" Margin="10,0,0,0" />
-                        <TextBlock DockPanel.Dock="Left" Text="推荐池：" VerticalAlignment="Center" Margin="0,0,6,0" />
-                        <ComboBox DockPanel.Dock="Left" Width="160"
-                                  ItemsSource="{Binding DiscoveryPoolOptions}"
-                                  SelectedIndex="{Binding DiscoveryPoolIndex}" />
-                        <ComboBox x:Name="DiscoveryPoolCombo" DockPanel.Dock="Left" Width="160" Margin="10,0,0,0"
-                                  ItemsSource="{Binding DiscoveryPoolCategories}"
-                                  DisplayMemberPath="Name"
-                                  Visibility="{Binding DiscoveryPoolIndex, Converter={StaticResource DiscoveryPoolVis}}"
-                                  SelectionChanged="OnDiscoveryCategoryChanged" />
-                    </DockPanel>
+                        Padding="10,6">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <!-- MinWidth：1020 最小宽度 + 双栏展开时，右侧两组能吃掉整行，
+                                 没有下限的话标题/结果数会被压成 0 宽直接消失（实测）。 -->
+                            <ColumnDefinition Width="*" MinWidth="110" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- 结果数来自 _totalCount（只读），不解析状态栏文案：
+                             状态栏还承载离线 / 分页这些诊断句子，解析字符串迟早错位。 -->
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,12,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding ViewTitle}" FontSize="13" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text=" · " FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding ResultCountText}" FontSize="12"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding BreadcrumbText}"
+                                       ToolTip="{Binding BreadcrumbTooltip}"
+                                       FontSize="11.5" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Visibility="{Binding HasBreadcrumb, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+
+                            <!-- 发现页：推荐池 + 换一批 -->
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                        Visibility="{Binding IsDiscoveryView, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="推荐池：" VerticalAlignment="Center" Margin="0,0,6,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <!-- 两个下拉的选项都很短（收藏/全部/未分类/指定分类、分类名），
+                                     160 宽在 1020 + 双栏下会把标题挤没，收到刚好放得下的宽度。 -->
+                                <ComboBox Width="96"
+                                          ItemsSource="{Binding DiscoveryPoolOptions}"
+                                          SelectedIndex="{Binding DiscoveryPoolIndex}" />
+                                <ComboBox x:Name="DiscoveryPoolCombo" Width="112" Margin="10,0,0,0"
+                                          ItemsSource="{Binding DiscoveryPoolCategories}"
+                                          DisplayMemberPath="Name"
+                                          Visibility="{Binding DiscoveryPoolIndex, Converter={StaticResource DiscoveryPoolVis}}"
+                                          SelectionChanged="OnDiscoveryCategoryChanged" />
+                                <Button Content="🎲 换一批 (R)" Margin="10,0,0,0"
+                                        Command="{Binding RefreshDiscoveryCommand}" />
+                            </StackPanel>
+
+                            <!-- 普通视图：排序。最近查看是内存 Top100 —— 控件仍显示但被禁用 +
+                                 ToolTip 说明原因，避免「控件亮着、点了不生效」。 -->
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                        Visibility="{Binding IsDiscoveryView, Converter={StaticResource InverseBoolToVis}}">
+                                <TextBlock Text="排序：" VerticalAlignment="Center"
+                                           Margin="0,0,6,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <!-- 必须用 ItemTemplate 而不是 DisplayMemberPath：
+                                     全局 ComboBox 模板显示的是 SelectionBoxItem，
+                                     DisplayMemberPath 在这套自定义模板里不生效，选中后会显示
+                                     record 的 ToString（"SortOption (File...)"）。 -->
+                                <ComboBox Width="132"
+                                          ItemsSource="{Binding SortOptions}"
+                                          SelectedValuePath="Field"
+                                          SelectedValue="{Binding SortField, Mode=TwoWay}"
+                                          IsEnabled="{Binding IsSortEnabled}"
+                                          ToolTip="{Binding SortDisabledReason}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button Margin="8,0,0,0" Padding="10,2"
+                                        Content="{Binding SortDirectionText}"
+                                        Command="{Binding ToggleSortDirectionCommand}"
+                                        IsEnabled="{Binding IsSortEnabled}"
+                                        ToolTip="{Binding SortDisabledReason}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
                 </Border>
 
                 <!-- 发现页：空库欢迎引导 -->
@@ -706,7 +819,9 @@
                             <MenuItem Header="重命名 (F2)" Click="OnRenameMenu" />
                             <MenuItem x:Name="BatchRenameMenu" Header="✏ 批量重命名…" Click="OnBatchRenameMenu" />
                             <MenuItem x:Name="BatchExportMenu" Header="📤 批量导出 / 统一尺寸…" Click="OnBatchExportMenu" />
-                            <MenuItem Header="删除到回收站 (Delete)" Click="OnDeleteMenu" />
+                            <!-- 标题由 DeletePolicy.ContextDeleteHeader 在 OnContextMenuOpened 里填，
+                                 不写死「删除到回收站」：设置改成永久删除后那就是假话。 -->
+                            <MenuItem x:Name="DeleteMenu" Header="删除 (Delete)" Click="OnDeleteMenu" />
                             <Separator />
                             <MenuItem x:Name="MoveIntoVaultMenu" Header="🔒 移入私密空间" Click="OnMoveIntoVaultMenu" />
                             <MenuItem x:Name="AddToDiaryMenu" Header="📔 写进日记" Click="OnAddToDiaryMenu" />
@@ -833,10 +948,16 @@
                                      不如只留真实可用的 ⭐。要加标签就右键。 -->
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                                             VerticalAlignment="Bottom" Margin="0,0,4,4" Opacity="0">
-                                    <Button Content="⭐" Width="24" Height="24" Padding="0" Margin="2"
-                                            FontSize="12" ToolTip="收藏 / 取消收藏"
+                                    <Button Width="24" Height="24" Padding="0" Margin="2"
+                                            ToolTip="收藏 / 取消收藏"
+                                            AutomationProperties.Name="收藏 / 取消收藏"
                                             Command="{Binding DataContext.ToggleFavoriteCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                            CommandParameter="{Binding}" />
+                                            CommandParameter="{Binding}">
+                                        <Path Data="{StaticResource Icon.Star}" Width="12" Height="12" Stretch="Uniform"
+                                              Fill="{DynamicResource FavoriteBrush}"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              IsHitTestVisible="False" />
+                                    </Button>
                                     <StackPanel.Style>
                                         <Style TargetType="StackPanel">
                                             <Style.Triggers>
@@ -934,10 +1055,17 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <DockPanel Margin="0,2">
-                                        <Button Content="✕" Width="20" Height="20" Padding="0" DockPanel.Dock="Right"
+                                        <Button Width="20" Height="20" Padding="0" DockPanel.Dock="Right"
                                                 ToolTip="移出该分类"
+                                                AutomationProperties.Name="移出该分类"
                                                 Command="{Binding DataContext.RemoveCategoryCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                CommandParameter="{Binding}" />
+                                                CommandParameter="{Binding}">
+                                            <Path Data="{StaticResource Icon.Close}" Width="7" Height="7" Stretch="Uniform"
+                                                  Stroke="{DynamicResource TextBrush}" StrokeThickness="1.4"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  IsHitTestVisible="False" />
+                                        </Button>
                                         <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
                                     </DockPanel>
                                 </DataTemplate>

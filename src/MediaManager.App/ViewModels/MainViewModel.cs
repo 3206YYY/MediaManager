@@ -12,6 +12,9 @@ using MediaManager.App.Collections;
 using MediaManager.App.Views.Dialogs;
 using MediaManager.Infrastructure.FileSystem;
 using Microsoft.Extensions.Logging;
+// 属性名 SortDirection 与枚举类型同名：表达式里 `SortDirection.Ascending` 会被解析成属性，
+// 所以判断升/降序时统一走这个别名，避免「属性上找不到 Ascending」的编译错误。
+using SortDir = MediaManager.Core.Enums.SortDirection;
 
 namespace MediaManager.App.ViewModels;
 
@@ -160,6 +163,16 @@ public partial class MainViewModel : ObservableObject
             IsRightSidebarCollapsed = rightCollapsed == "1";
             _suppressSidebarSave = false;
 
+            // 排序偏好（上次选的字段 / 方向）。读不到就用默认：添加时间 + 倒序。
+            var sortFieldStr = await DbAsync(() => _repo.GetSettingAsync(SortFieldSettingKey));
+            var sortDirStr = await DbAsync(() => _repo.GetSettingAsync(SortDirectionSettingKey));
+            _suppressSortSave = true;
+            if (Enum.TryParse<SortField>(sortFieldStr, out var savedField))
+                SortField = savedField;
+            if (Enum.TryParse<SortDir>(sortDirStr, out var savedDir))
+                SortDirection = savedDir;
+            _suppressSortSave = false;
+
             await RefreshPrivateCountAsync();
 
             // 扩展格式（音频/文档/压缩包）开关：默认开启，可在 设置 → 插件扩展 关闭
@@ -294,6 +307,181 @@ public partial class MainViewModel : ObservableObject
         {
             _logger.LogWarning(ex, "保存设置失败 {Key}", key);
         }
+    }
+
+    // ---------- 排序（普通视图；发现页 / 最近查看不适用） ----------
+
+    public const string SortFieldSettingKey = "View.SortField";
+    public const string SortDirectionSettingKey = "View.SortDirection";
+
+    /// <summary>加载阶段读到的值别回写设置，也别触发重查（和两侧栏同一个套路）。</summary>
+    private bool _suppressSortSave;
+
+    /// <summary>
+    /// 排序字段。写进 AppSetting 下次启动保留 ——
+    /// 不存的话每次开程序都跳回「添加时间倒序」，用户改过的偏好白设。
+    /// </summary>
+    [ObservableProperty]
+    private SortField _sortField = SortField.DateAdded;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SortDirectionText))]
+    private SortDir _sortDirection = SortDir.Descending;
+
+    /// <summary>
+    /// 当前视图能不能排序。发现页是随机批次、最近查看是内存里的访问 Top100，
+    /// 这两个视图必须把控件禁用并说明原因 —— 否则就是「控件亮着、点了不生效」。
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSortEnabled = true;
+
+    /// <summary>控件禁用时的原因；可排序时为空（ToolTip 也就不显示）。</summary>
+    [ObservableProperty]
+    private string _sortDisabledReason = string.Empty;
+
+    public string SortDirectionText
+        => SortDirection == SortDir.Ascending ? "↑ 升序" : "↓ 降序";
+
+    /// <summary>下拉框选项。顺序即界面顺序，6 个枚举值一个不漏。</summary>
+    public IReadOnlyList<SortOption> SortOptions { get; } = new[]
+    {
+        new SortOption(SortField.DateAdded, "添加时间"),
+        new SortOption(SortField.Name, "文件名"),
+        new SortOption(SortField.ModifiedAt, "修改时间"),
+        new SortOption(SortField.Size, "文件大小"),
+        new SortOption(SortField.MediaType, "文件类型"),
+        new SortOption(SortField.Favorite, "收藏优先"),
+    };
+
+    partial void OnSortFieldChanged(SortField value)
+    {
+        if (_suppressSortSave) return;
+        _ = SaveSettingAsync(SortFieldSettingKey, value.ToString());
+        _ = ReloadForSortAsync();
+    }
+
+    partial void OnSortDirectionChanged(SortDir value)
+    {
+        if (_suppressSortSave) return;
+        _ = SaveSettingAsync(SortDirectionSettingKey, value.ToString());
+        _ = ReloadForSortAsync();
+    }
+
+    [RelayCommand]
+    private void ToggleSortDirection()
+        => SortDirection = SortDirection == SortDir.Ascending
+            ? SortDir.Descending
+            : SortDir.Ascending;
+
+    /// <summary>排序变了只需重查列表，不用连侧栏一起刷（那是「刷新」按钮的事）。</summary>
+    private async Task ReloadForSortAsync()
+    {
+        try
+        {
+            await LoadMediaAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "切换排序后重新加载失败");
+        }
+    }
+
+    /// <summary>下拉框的一项：枚举值 + 中文名（ComboBox 的 ItemTemplate 绑 Name）。</summary>
+    public sealed record SortOption(SortField Field, string Name);
+
+    // ---------- 内容区抬头：标题 / 结果数 / 面包屑 ----------
+    // 结果数只读 _totalCount。**不要解析状态栏 StatusText** —— 它还承载诊断文案
+    //（"共 0 项 —— 有 N 个文件暂不可达"、"已加载 N / 共 N 项"），文案一改就会静默错位。
+
+    /// <summary>抬头第一行：当前视图的中文名。</summary>
+    public string ViewTitle => _currentViewKey switch
+    {
+        "discovery" => "发现",
+        "all" => "全部媒体",
+        "favorites" => "收藏",
+        "unfiled" => "未分类",
+        "recent-view" => "最近查看",
+        "recent" => "最近添加",
+        "diary" => "日记",
+        "trash" => "最近删除",
+        "folder" => CurrentFolderTitle(),
+        "tag" => TagItems.FirstOrDefault(t => t.RelatedId == _currentTagId)?.Title ?? "标签",
+        "category" => CategoryItems.FirstOrDefault(c => c.Id == _currentCategoryId)?.Name ?? "分类",
+        _ => "媒体库",
+    };
+
+    /// <summary>抬头第一行：结果数（与 <see cref="TotalCount"/> 同源）。</summary>
+    public string ResultCountText => $"共 {_totalCount} 项";
+
+    /// <summary>抬头第二行：面包屑（文件夹给路径，标签 / 分类给类别名，其余留空）。</summary>
+    public string BreadcrumbText
+    {
+        get
+        {
+            var path = CurrentViewPath();
+            if (path.Length > 0) return CompactPath(path);
+            return _currentViewKey switch
+            {
+                "tag" => "标签",
+                "category" => "分类",
+                _ => string.Empty,
+            };
+        }
+    }
+
+    /// <summary>
+    /// 面包屑的完整路径，仅给 ToolTip 用。
+    /// 绑定 ToolTipText 而不是 Title —— Title 只是末级目录名，拿它当全路径会丢上级。
+    /// </summary>
+    public string BreadcrumbTooltip => CurrentViewPath();
+
+    public bool HasBreadcrumb => BreadcrumbText.Length > 0;
+
+    /// <summary>当前视图对应的完整文件夹路径；非文件夹视图返回空串。</summary>
+    private string CurrentViewPath()
+    {
+        if (_currentFolderPath is { Length: > 0 } sub) return sub;
+        if (_currentViewKey != "folder" || !_currentRootFolderId.HasValue) return string.Empty;
+        return FolderItems.FirstOrDefault(f => f.RelatedId == _currentRootFolderId)?.ToolTipText
+               ?? string.Empty;
+    }
+
+    /// <summary>文件夹视图的抬头标题：子文件夹取末级目录名，根目录取侧栏标题。</summary>
+    private string CurrentFolderTitle()
+    {
+        var path = CurrentViewPath();
+        if (path.Length > 0)
+        {
+            var name = System.IO.Path.GetFileName(path.TrimEnd('\\', '/'));
+            if (!string.IsNullOrEmpty(name)) return name;
+        }
+        return "文件夹";
+    }
+
+    /// <summary>
+    /// 把长路径压成「盘符\…\末两级」。抬头宽度在侧栏折叠时会变，
+    /// 只靠 XAML 的 TextTrimming 是从尾部截断，最深的那层目录反而看不见。
+    /// </summary>
+    private static string CompactPath(string path)
+    {
+        var trimmed = path.TrimEnd('\\', '/');
+        var root = System.IO.Path.GetPathRoot(trimmed) ?? string.Empty;
+        var rest = trimmed.Substring(root.Length).Trim('\\', '/');
+        var parts = rest.Length == 0
+            ? Array.Empty<string>()
+            : rest.Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length <= 2) return trimmed;
+        return root.TrimEnd('\\', '/') + "\\…\\" + parts[parts.Length - 2] + "\\" + parts[parts.Length - 1];
+    }
+
+    /// <summary>视图切换 / 列表加载 / 导航重载后刷新抬头（标题、结果数、面包屑同一批通知）。</summary>
+    private void NotifyHeaderChanged()
+    {
+        OnPropertyChanged(nameof(ViewTitle));
+        OnPropertyChanged(nameof(ResultCountText));
+        OnPropertyChanged(nameof(BreadcrumbText));
+        OnPropertyChanged(nameof(BreadcrumbTooltip));
+        OnPropertyChanged(nameof(HasBreadcrumb));
     }
 
     /// <summary>保险箱里的媒体数量（侧栏徽标）。</summary>

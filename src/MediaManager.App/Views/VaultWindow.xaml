@@ -206,7 +206,7 @@
                             <Separator />
                             <MenuItem Header="🔓 移出私密空间" Click="OnMoveOutMenu"
                                       ToolTip="移回移入前的位置（原目录不在就留在保险箱里）" />
-                            <MenuItem Header="🗑 删除" Click="OnDeleteMenu" ToolTip="删除到回收站（默认）" />
+                            <MenuItem Header="🗑 删除" Click="OnDeleteMenu" ToolTip="按设置里的删除方式处理" />
                         </ContextMenu>
                     </ListBox.ContextMenu>
                     <ListBox.ItemsPanel>

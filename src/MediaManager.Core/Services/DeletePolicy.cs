@@ -175,4 +175,19 @@ public static class DeletePolicy
         DeleteBehavior.Ask => "删除当前选中的文件：会先问你进回收站还是永久删除",
         _ => "删除当前选中的文件：确认后进回收站，5 秒内可撤销（和 Delete 键一样）",
     };
+
+    /// <summary>
+    /// 右键菜单里「删除」那一项的标题（主窗口用）。
+    /// <para>
+    /// 以前写死「删除到回收站 (Delete)」，设置改成永久删除后变成假话 ——
+    /// 菜单头说回收站、点下去真删，比没有菜单更糟。标题必须跟当前档位一致。
+    /// </para>
+    /// </summary>
+    public static string ContextDeleteHeader(DeleteBehavior behavior, bool confirmPermanent = true) => behavior switch
+    {
+        DeleteBehavior.Permanent when !confirmPermanent => "删除 (Delete，永久，不再确认)",
+        DeleteBehavior.Permanent => "删除 (Delete，永久删除)",
+        DeleteBehavior.Ask => "删除 (Delete，每次询问)",
+        _ => "删除 (Delete)",
+    };
 }
