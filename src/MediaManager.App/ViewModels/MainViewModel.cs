@@ -482,6 +482,8 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(BreadcrumbText));
         OnPropertyChanged(nameof(BreadcrumbTooltip));
         OnPropertyChanged(nameof(HasBreadcrumb));
+        // 空状态跟着列表走：凡是刷新抬头的路径，列表内容都刚换过
+        NotifyCenterStateChanged();
     }
 
     /// <summary>保险箱里的媒体数量（侧栏徽标）。</summary>
@@ -554,6 +556,69 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _detailIsVideo;
+
+    /// <summary>
+    /// 当前选中项数量。选择状态存在 ListBox.SelectedItems 里（WPF 多选拿不到 VM），
+    /// 由视图在 SelectionChanged 时同步过来，详情面板据此切三态。
+    /// </summary>
+    [ObservableProperty]
+    private int _selectionCount;
+
+    /// <summary>多选时的预览（前几个文件名 + 「等 N 项」），由视图拼好传进来。</summary>
+    [ObservableProperty]
+    private string _selectionPreviewText = string.Empty;
+
+    /// <summary>详情面板：一个都没选。</summary>
+    public bool IsDetailEmpty => SelectionCount == 0;
+
+    /// <summary>详情面板：单选（只有这时才显示备注 / 分类 / EXIF 这些字段）。</summary>
+    public bool IsDetailSingle => SelectionCount == 1;
+
+    /// <summary>详情面板：多选。详情字段对多选没有意义，改显示批量操作入口。</summary>
+    public bool IsDetailMultiple => SelectionCount > 1;
+
+    public string SelectionSummaryText => $"已选中 {SelectionCount} 项";
+
+    partial void OnSelectionCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(IsDetailEmpty));
+        OnPropertyChanged(nameof(IsDetailSingle));
+        OnPropertyChanged(nameof(IsDetailMultiple));
+        OnPropertyChanged(nameof(SelectionSummaryText));
+    }
+
+    // ---------- 中央空状态 / 首屏加载 ----------
+
+    /// <summary>列表正在加载。只在还没有任何内容时用来显示「正在加载…」。</summary>
+    [ObservableProperty]
+    private bool _isListLoading;
+
+    /// <summary>中央空状态标题。</summary>
+    [ObservableProperty]
+    private string _centerEmptyTitle = "这里还没有内容";
+
+    /// <summary>
+    /// 中央空状态说明。和状态栏是同一句话（ExplainEmptyResultAsync 里一次拼好、两处赋值），
+    /// 不各写一份 —— 否则「磁盘未连接」改了口径，总有一处还在说旧的。
+    /// </summary>
+    [ObservableProperty]
+    private string _centerEmptyText = string.Empty;
+
+    /// <summary>列表 0 项、且不是发现页空库引导（那有自己的欢迎页）时显示中央空状态。</summary>
+    public bool IsCenterEmptyVisible => MediaItems.Count == 0 && !DiscoveryShowWelcome && !IsListLoading;
+
+    /// <summary>首屏加载且还没有任何内容时才盖遮罩，已有内容刷新时不闪。</summary>
+    public bool IsCenterLoadingVisible => IsListLoading && MediaItems.Count == 0 && !DiscoveryShowWelcome;
+
+    partial void OnIsListLoadingChanged(bool value) => NotifyCenterStateChanged();
+
+    partial void OnDiscoveryShowWelcomeChanged(bool value) => NotifyCenterStateChanged();
+
+    private void NotifyCenterStateChanged()
+    {
+        OnPropertyChanged(nameof(IsCenterEmptyVisible));
+        OnPropertyChanged(nameof(IsCenterLoadingVisible));
+    }
 
     [ObservableProperty]
     private string _noteEditor = string.Empty;

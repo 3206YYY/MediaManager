@@ -18,7 +18,33 @@ namespace MediaManager.App.ViewModels;
 /// <summary>主窗口视图模型 —— 媒体列表：列表加载与刷新、缩略图生成与缓存、详情面板数据。</summary>
 public partial class MainViewModel
 {
+    /// <summary>
+    /// 列表加载入口：只负责「加载中 / 出错」两种界面状态，真正的加载在 Core 里。
+    /// 出错以前直接抛给全局异常处理，用户只看到列表空着，分不清「没文件」和「坏了」；
+    /// 现在把原因写进中央空状态，和状态栏用同一句诊断。
+    /// </summary>
     private async Task LoadMediaAsync()
+    {
+        IsListLoading = true;
+        try
+        {
+            await LoadMediaCoreAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "加载媒体列表失败");
+            CenterEmptyTitle = "读取媒体库失败";
+            CenterEmptyText = StorageErrors.WithAction(ex, "刷新列表");
+            StatusText = "读取媒体库失败 —— " + ex.Message;
+        }
+        finally
+        {
+            IsListLoading = false;
+            NotifyCenterStateChanged();
+        }
+    }
+
+    private async Task LoadMediaCoreAsync()
     {
         var generation = ++_loadGeneration;
         CanLoadMore = false;
@@ -35,7 +61,10 @@ public partial class MainViewModel
             MediaItems.Clear();
             _totalCount = 0;
             NotifyHeaderChanged();
-            StatusText = "未选择任何类型（顶部「类型」里至少勾选一个）";
+            const string noType = "未选择任何类型（顶部「类型」里至少勾选一个）";
+            StatusText = noType;
+            CenterEmptyTitle = "未选择任何类型";
+            CenterEmptyText = noType;
             return;
         }
 
@@ -136,13 +165,24 @@ public partial class MainViewModel
             if (generation != _loadGeneration) return;   // 期间又触发了新加载，别覆盖新结果
 
             if (!onDisk)
+            {
                 StatusText = diagTotal > 0
                     ? $"共 0 项 —— 此文件夹的 {diagTotal} 个文件当前不可达（磁盘未连接或路径已变更），重新连接后点「扫描」即可恢复"
                     : "共 0 项 —— 此文件夹当前无法访问（磁盘未连接或路径已变更）";
+                CenterEmptyTitle = "这个文件夹暂时打不开";
+            }
             else if (missing > 0)
+            {
                 StatusText = $"共 0 项 —— 有 {missing} 个文件暂不可达，点「扫描」重新扫描此文件夹即可恢复";
+                CenterEmptyTitle = "文件夹里有文件暂时看不到";
+            }
             else
+            {
                 StatusText = "共 0 项 —— 文件夹可达但里面没有匹配的文件（检查顶部「类型」勾选与搜索词）";
+                CenterEmptyTitle = "这个文件夹里没有匹配的文件";
+            }
+            // 中央空状态和状态栏共用同一句诊断：只改一处就不会出现两种说法
+            CenterEmptyText = StatusText;
             return;
         }
 
@@ -158,6 +198,20 @@ public partial class MainViewModel
         StatusText = hints.Count > 0
             ? $"共 0 项 —— 没有文件同时满足 " + string.Join(" 和 ", hints) + "，清除筛选后再试试"
             : "共 0 项 —— 当前视图没有文件";
+        CenterEmptyTitle = hints.Count > 0 ? "没有符合筛选的文件" : "当前视图没有文件";
+        CenterEmptyText = StatusText;
+    }
+
+    /// <summary>
+    /// 删除 / 移出后列表变空时调用：中央空状态得换一句「已经空了」，
+    /// 不能沿用上一次视图留下的诊断（「磁盘未连接」挂在一张已经删完的列表上就是误导）。
+    /// </summary>
+    private void ResetEmptyCopyAfterRemoval()
+    {
+        if (MediaItems.Count > 0) return;
+        CenterEmptyTitle = "这个视图里已经没有文件了";
+        CenterEmptyText = "删除完成。点顶部「刷新」或切到别的视图继续浏览。";
+        NotifyCenterStateChanged();
     }
 
     /// <summary>后台探测根目录可达性并同步侧栏离线标记（不改变状态栏）。</summary>
@@ -516,6 +570,13 @@ public partial class MainViewModel
         StatusText = _discoveryFallbackToAll
             ? $"发现 · {MediaItems.Count} 项随机推荐（收藏还是空的，这次先看全库）"
             : $"发现 · {MediaItems.Count} 项随机推荐";
+
+        // 库里有东西，但这个池子/类型筛出来 0 项：中央别留一片空白
+        if (MediaItems.Count == 0)
+        {
+            CenterEmptyTitle = "这个推荐池里没有可推荐的";
+            CenterEmptyText = "当前类型筛选或指定分类下没有文件，换个推荐池或清除筛选再试。";
+        }
     }
 
     /// <summary>

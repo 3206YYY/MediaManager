@@ -96,6 +96,15 @@ public partial class MainViewModel
         StatusText = HasQuickFilter
             ? $"最近查看 · 筛出 {MediaItems.Count} 项"
             : $"最近查看 · {MediaItems.Count} 项";
+
+        // 最近查看是内存里的访问顺序，0 项时要说清「为什么空」，别只甩一句 0 项
+        if (MediaItems.Count == 0)
+        {
+            CenterEmptyTitle = HasQuickFilter ? "没有符合筛选的文件" : "最近查看还是空的";
+            CenterEmptyText = HasQuickFilter
+                ? "最近查看里没有同时满足当前搜索 / 类型 / 已编辑条件的文件，清除筛选后再试。"
+                : "打开、预览或编辑过的文件会出现在这里。";
+        }
     }
 
     /// <summary>从 AppSetting 加载发现页配置。</summary>

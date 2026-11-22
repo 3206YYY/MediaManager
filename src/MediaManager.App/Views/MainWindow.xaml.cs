@@ -1600,6 +1600,14 @@ public partial class MainWindow : Window
         var n = ThumbList?.SelectedItems.Count ?? 0;
         var has = n > 0;
 
+        // 详情面板三态要靠数量：多选状态只存在 ListBox.SelectedItems 里，VM 拿不到，这里同步过去
+        var vm = _viewModel;
+        if (vm != null)
+        {
+            vm.SelectionCount = n;
+            vm.SelectionPreviewText = BuildSelectionPreview(n);
+        }
+
         // 顶部按钮只回答一个问题：删除模式开没开。
         // 以前它还有第三个状态（有选中就变蓝、写「删除选中的 N 项」），用户看到蓝底
         // 以为程序自己进了删除模式 —— 那只是换了个文案，但视觉上像一个被按下的开关。
@@ -1652,6 +1660,16 @@ public partial class MainWindow : Window
                 : DeletePolicy.DeleteModeHint(_viewModel.DeleteBehavior,
                     _viewModel.ConfirmPermanentDelete);
         }
+    }
+
+    /// <summary>多选时详情面板的摘要：前三个文件名 + 「等 N 项」，空/单选返回空串。</summary>
+    private string BuildSelectionPreview(int count)
+    {
+        if (count <= 1) return string.Empty;
+        var names = ThumbList.SelectedItems.OfType<ThumbnailItemViewModel>()
+            .Take(3).Select(x => x.FileName).ToList();
+        if (names.Count == 0) return $"已选中 {count} 项";
+        return string.Join("、", names) + (count > names.Count ? $" 等 {count} 项" : string.Empty);
     }
 
     /// <summary>

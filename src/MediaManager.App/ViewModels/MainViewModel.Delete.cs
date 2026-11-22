@@ -260,6 +260,7 @@ public partial class MainViewModel
             MediaItems.Remove(item);
         // 同上：只有被删的正是详情面板那一项时才清空，别把剩下的选择连坐清掉
         if (SelectedItem != null && deleted.Contains(SelectedItem)) SelectedItem = null;
+        ResetEmptyCopyAfterRemoval();
         await RefreshStatusAsync();
 
         if (failures.Count > 0)
@@ -331,6 +332,7 @@ public partial class MainViewModel
             // 它是 TwoWay 绑到 ListBox.SelectedItems 的：点删模式下删掉一张，
             // 手上勾好的另外 5 张会被一起清空（v1.4.8 实测 5 → 0）。
             if (ReferenceEquals(SelectedItem, item)) SelectedItem = null;
+            ResetEmptyCopyAfterRemoval();
             await RefreshStatusAsync();
 
             if (record != null) _tapDeleteRecords.Add(record);

@@ -458,6 +458,7 @@ public partial class MainViewModel
 
         MediaItems.Remove(SelectedItem);
         SelectedItem = null;
+        ResetEmptyCopyAfterRemoval();
         await RefreshStatusAsync();
 
         if (record != null)
