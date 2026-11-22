@@ -307,6 +307,13 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public DeleteBehavior DeleteBehavior => _config.DeleteBehavior;
 
+    /// <summary>
+    /// 设置里的「永久删除提醒确认」。关掉后永久删除不再弹框，
+    /// 界面文案也得跟着改口（见 <see cref="DeletePolicy"/>）——
+    /// 删之前一句话都不说，界面上还写着「每次都会确认」，就是骗人。
+    /// </summary>
+    public bool ConfirmPermanentDelete => _config.ConfirmPermanentDelete;
+
     /// <summary>极简模式的设置键。</summary>
     public const string SimpleModeSettingKey = "Ui.SimpleMode";
 

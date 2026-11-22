@@ -25,12 +25,14 @@ public class AppConfigService : IAppConfigService
     private AppTheme _theme = AppTheme.System;
     private AppLanguage _language = AppLanguage.Chinese;
     private DeleteBehavior _deleteBehavior = DeleteBehavior.RecycleBin;
+    private bool _confirmPermanentDelete = true;
 
     public string? FfmpegPath => _ffmpegPath;
     public int Concurrency => _concurrency;
     public AppTheme Theme => _theme;
     public AppLanguage Language => _language;
     public DeleteBehavior DeleteBehavior => _deleteBehavior;
+    public bool ConfirmPermanentDelete => _confirmPermanentDelete;
 
     public Task EnsureLoadedAsync() => _loadTask.Value;
 
@@ -58,6 +60,10 @@ public class AppConfigService : IAppConfigService
         // 语言切换 UI 已隐藏（仅保留中文）：无论库中曾存何值，一律按中文加载。
         _language = AppLanguage.Chinese;
         _deleteBehavior = ParseEnum(await _repo.GetSettingAsync("DeleteBehavior"), DeleteBehavior.RecycleBin);
+        // 「永久删除前确认」：只有明确存了 "0" 才算关闭。
+        // 老库没有这一行、或者值写坏了，都按默认「提醒」处理 ——
+        // 这是唯一一个默认值偏保守的开关：理解错方向的代价是文件没了。
+        _confirmPermanentDelete = (await _repo.GetSettingAsync(DeletePolicy.ConfirmPermanentKey)) != "0";
     }
 
     /// <summary>自动探测 FFmpeg：tools/ffmpeg/ → PATH → 常见安装位置。</summary>

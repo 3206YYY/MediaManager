@@ -29,16 +29,23 @@ public static class DeletePrompt
     /// <param name="configured">设置里的删除方式（可能为 <see cref="DeleteBehavior.Ask"/>）。</param>
     /// <param name="count">本次删几个文件。</param>
     /// <param name="fileName">单个文件时传文件名；批量传 null。</param>
+    /// <param name="confirmPermanent">
+    /// 设置里「永久删除提醒确认」。默认 <c>true</c>；关掉后永久删除不再弹框 ——
+    /// 只对「永久删除」这一档生效，「每次询问」的三选一不受影响
+    /// （那是用户当场选的，不是拦路虎）。
+    /// </param>
     /// <param name="silentWhenRecycle">
     /// 「点谁删谁」模式用：进回收站时不弹窗（安全网是回收站 + 5 秒撤销），
     /// 但<b>永久删除 / 每次询问仍然要弹</b> —— 否则用户把设置改成永久删除、
     /// 再取消「先勾选」，就会在零确认、零撤销的情况下把文件删干净。
+    /// 唯一的例外是用户自己在设置里关掉了「永久删除提醒确认」。
     /// </param>
     /// <param name="undoOffer">当前窗口真实具备的补救方式，决定确认框能承诺什么。</param>
     public static DeleteBehavior? Ask(
         DeleteBehavior configured,
         int count,
         string? fileName = null,
+        bool confirmPermanent = true,
         bool silentWhenRecycle = false,
         DeleteUndoOffer undoOffer = DeleteUndoOffer.UndoToast)
     {
@@ -60,6 +67,10 @@ public static class DeletePrompt
                 _ => null,
             };
         }
+
+        // 永久删除 + 关掉了提醒 → 不问，直接按设置的来。
+        if (!DeletePolicy.NeedsConfirmation(configured, confirmPermanent))
+            return configured;
 
         if (silentWhenRecycle && !DeletePolicy.IsPermanent(configured))
             return configured;

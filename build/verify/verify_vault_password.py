@@ -167,8 +167,26 @@ def kill_vault_windows():
                 pass
 
 
+def reset_credential():
+    """开跑前先把库里的密码凭据清掉。
+
+    ⚠ 这个脚本要求「从无密码状态开始」，但它自己失败退出时会把凭据留在库里；
+    下一次再跑，第 1 步「未设密码时不弹密码窗」立刻红，后面改密码/取消密码
+    跟着连锁失败 —— 看起来像功能坏了，其实是被上一次的自己绊倒。
+    回归里就出过这一出（2026-11-22，首跑 BAD、清完重跑 20/20）。
+    """
+    try:
+        conn = sqlite3.connect(DB)
+        conn.execute("DELETE FROM AppSetting WHERE Key='Vault.Credential'")
+        conn.commit()
+        conn.close()
+    except Exception as ex:
+        log("清理旧凭据失败（可能还没有库）：", ex)
+
+
 def main():
     kill_app()
+    reset_credential()
 
     main_win = launch()
     if main_win is None:
@@ -257,6 +275,17 @@ def main():
         kill_app()
         return 1
     shot(unlock_win, "05_unlock_dialog")
+
+    # 解锁窗只许说「解锁后能看什么」。
+    # 「文件没加密 / Vault 文件夹能直接拷出来」这类实话只在
+    # 设置 → 系统集成 → 私密空间的安全性 里讲 —— 摆在正要保护自己的那一刻，
+    # 等于先告诉人家「这功能没用」（用户 2026-11-22 指着截图要求改掉）。
+    unlock_text = "\n".join(c.Name or "" for c in collect(unlock_win)
+                            if c.ControlTypeName == "TextControl")
+    check("解锁窗不再自曝「文件没加密 / Vault 能直接拷出来」",
+          "没加密" not in unlock_text and "拷出来" not in unlock_text
+          and "Vault" not in unlock_text, unlock_text[:80])
+    check("解锁窗仍说清「解锁后才能看到内容」", "解锁后" in unlock_text)
 
     # 输错 → 原地报错，不关窗
     box = find_password_box(unlock_win)

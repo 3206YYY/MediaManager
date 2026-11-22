@@ -75,10 +75,11 @@ public partial class VaultPasswordWindow : Window
                 TitleText.Text = "输入密码解锁";
                 MainLabel.Text = "密码";
                 OkButton.Content = "解锁";
-                MessageText.Text =
-                    "解锁后才能看到保险箱里的内容。\n\n"
-                    + "忘了密码也不用慌：文件没加密，去「设置 → 数据目录 → 打开数据目录」，"
-                    + "里面的 Vault 文件夹能直接拷出来。";
+                // 只说「解锁后能看什么」这一句。
+                // 「密码挡不住懂电脑的人 / 文件没加密、拷走 Vault 文件夹就能看」这类实话
+                // 只在 设置 → 系统集成 → 私密空间的安全性 里讲 —— 摆在解锁窗里，
+                // 等于用户正要保护自己的那一刻先被告知「这没用」（用户明确要求过）。
+                MessageText.Text = "解锁后才能看到保险箱里的内容。";
                 break;
 
             case VaultDialogMode.Change:

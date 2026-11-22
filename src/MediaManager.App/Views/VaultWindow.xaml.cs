@@ -980,6 +980,7 @@ public partial class VaultWindow : Window, INotifyPropertyChanged
         // 私密空间没有底部撤销条、也不写「最近删除」快照 ——
         // 确认框只能说「可以在系统回收站里还原」，不能照抄主窗口那句「5 秒内可撤销」。
         var chosen = DeletePrompt.Ask(_config.DeleteBehavior, items.Count,
+            confirmPermanent: _config.ConfirmPermanentDelete,
             undoOffer: DeleteUndoOffer.RecycledOnly);
         if (chosen is null) return;
         var behavior = chosen.Value;

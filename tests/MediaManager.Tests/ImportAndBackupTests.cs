@@ -267,6 +267,7 @@ public class ImportAndBackupTests : IDisposable
         public AppTheme Theme => AppTheme.Light;
         public AppLanguage Language => AppLanguage.Chinese;
         public DeleteBehavior DeleteBehavior => DeleteBehavior.RecycleBin;
+        public bool ConfirmPermanentDelete => true;
 
         public Task EnsureLoadedAsync() => Task.CompletedTask;
         public void UpdateTheme(AppTheme theme) { }

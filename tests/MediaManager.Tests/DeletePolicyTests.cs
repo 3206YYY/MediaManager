@@ -200,6 +200,63 @@ public class DeletePolicyTests
         Assert.Contains("撤销", DeletePolicy.SelectionDeleteTooltip(b));
     }
 
+    // ---------- 「永久删除提醒确认」这个开关 ----------
+
+    /// <summary>
+    /// 这个开关只管「永久删除」一格。
+    /// 回收站和每次询问本来就每次都会问，不能被它顺带关掉 ——
+    /// 否则用户在设置里关掉「永久删除提醒」，等于把「每次询问」也一起废了。
+    /// </summary>
+    [Theory]
+    [InlineData(DeleteBehavior.RecycleBin, true, true)]
+    [InlineData(DeleteBehavior.RecycleBin, false, true)]
+    [InlineData(DeleteBehavior.Permanent, true, true)]
+    [InlineData(DeleteBehavior.Permanent, false, false)]
+    [InlineData(DeleteBehavior.Ask, true, true)]
+    [InlineData(DeleteBehavior.Ask, false, true)]
+    public void NeedsConfirmation_只对永久删除生效(
+        DeleteBehavior behavior, bool confirmPermanent, bool expected)
+        => Assert.Equal(expected, DeletePolicy.NeedsConfirmation(behavior, confirmPermanent));
+
+    /// <summary>键名改了，等于所有人关过的选择被悄悄恢复成默认（还可能反着来）。</summary>
+    [Fact]
+    public void 提醒开关的库键固定不变()
+        => Assert.Equal("DeleteConfirmPermanent", DeletePolicy.ConfirmPermanentKey);
+
+    /// <summary>关掉提醒之后，界面上不能还写着「每次都会确认」——那是拿假话骗人删文件。</summary>
+    [Fact]
+    public void 关掉提醒后文案照实说不问()
+    {
+        const DeleteBehavior b = DeleteBehavior.Permanent;
+
+        Assert.Contains("每次都会确认", DeletePolicy.DeleteModeHint(b, confirmPermanent: true));
+
+        var hint = DeletePolicy.DeleteModeHint(b, confirmPermanent: false);
+        Assert.DoesNotContain("每次都会确认", hint);
+        Assert.Contains("不再确认", hint);
+
+        var batch = DeletePolicy.BatchDeleteTooltip(b, confirmPermanent: false);
+        Assert.DoesNotContain("每次都会", batch);
+        Assert.Contains("不会再问", batch);
+
+        var single = DeletePolicy.SelectionDeleteTooltip(b, confirmPermanent: false);
+        Assert.DoesNotContain("会先问", single);
+        Assert.Contains("不再弹确认", single);
+    }
+
+    /// <summary>省掉「会问你」这句，不等于可以把「删了就没了」也省掉。</summary>
+    [Fact]
+    public void 关掉提醒也不许丢掉危险提示()
+    {
+        const DeleteBehavior b = DeleteBehavior.Permanent;
+
+        Assert.Contains("永久删除", DeletePolicy.DeleteModeHint(b, confirmPermanent: false));
+        Assert.Contains("不再确认", DeletePolicy.DeleteModeHint(b, confirmPermanent: false));
+        Assert.Contains("永久删除", DeletePolicy.SelectionDeleteTooltip(b, confirmPermanent: false));
+        Assert.Contains("无法恢复", DeletePolicy.SelectionDeleteTooltip(b, confirmPermanent: false));
+        Assert.Contains("回不来", DeletePolicy.BatchDeleteTooltip(b, confirmPermanent: false));
+    }
+
     /// <summary>记账用的假文件操作：只记调用，不碰磁盘。</summary>
     private sealed class RecordingFileOps : IFileOperationService
     {

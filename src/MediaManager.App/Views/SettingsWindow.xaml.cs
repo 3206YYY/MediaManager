@@ -181,12 +181,16 @@ public partial class SettingsWindow : Window
             _ => 0,
         };
         // 语言切换入口已隐藏（仅保留中文）：这里不再读 LanguageBox。
+        // 先填开关再选下拉：SelectedIndex 一设就会触发 OnDeleteBehaviorChanged，
+        // 那时候 CheckBox 还是 null，文案会闪一下「已关闭」的危言。
+        ConfirmPermanentBox.IsChecked = _config.ConfirmPermanentDelete;
         DeleteBox.SelectedIndex = _config.DeleteBehavior switch
         {
             Core.Enums.DeleteBehavior.RecycleBin => 0,
             Core.Enums.DeleteBehavior.Permanent => 1,
             _ => 2,
         };
+        RefreshConfirmPermanentUi();
 
         // 发现页推荐数量
         var discCount = int.TryParse(discCountStr, out var c) ? c : 30;
@@ -270,6 +274,39 @@ public partial class SettingsWindow : Window
 
     /// <summary>打开设置页时的「扩展格式」状态（取消时用来回滚）。</summary>
     private bool _initialExtendedFormats;
+
+    /// <summary>
+    /// 「永久删除提醒确认」的可用性与说明文字。
+    /// <para>
+    /// 这一项只在删除行为选「永久删除」时有意义 —— 回收站和「每次询问」本来就每次都会问，
+    /// 让它在那些档位可勾，只会让人误以为关掉就能少一道确认。所以非永久删除时灰掉，
+    /// 并且换一句解释，而不是留个看不出作用的空开关（这个项目栽过好几次）。
+    /// </para>
+    /// </summary>
+    private void RefreshConfirmPermanentUi()
+    {
+        if (ConfirmPermanentBox is null || ConfirmPermanentHint is null) return;
+
+        var permanent = (DeleteBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() == "Permanent";
+        ConfirmPermanentBox.IsEnabled = permanent;
+
+        if (!permanent)
+        {
+            ConfirmPermanentHint.Text =
+                "这一项只在上面选「永久删除」时才起作用：「回收站」和「每次询问」本来就每次都会问你。";
+            return;
+        }
+
+        ConfirmPermanentHint.Text = ConfirmPermanentBox.IsChecked == true
+            ? "每次永久删除（包括删除模式下点谁删谁）都会先弹确认框。关掉它，点了就直接从磁盘抹掉：不进回收站、没有撤销条、也找不回来。"
+            : "已关闭：永久删除会直接执行，不再问你。删掉的文件不进回收站、也没有撤销，只能靠备份找回。";
+    }
+
+    private void OnDeleteBehaviorChanged(object sender, SelectionChangedEventArgs e)
+        => RefreshConfirmPermanentUi();
+
+    private void OnConfirmPermanentChanged(object sender, RoutedEventArgs e)
+        => RefreshConfirmPermanentUi();
 
     // ===================================================================
     //  历史快照（时光机）
@@ -1239,6 +1276,10 @@ public partial class SettingsWindow : Window
             // 语言切换入口已隐藏：保存时固定写回中文，不覆盖用户将来可能的手动配置以外的值
             await _repo.SetSettingAsync("Language", "Chinese");
             await _repo.SetSettingAsync("DeleteBehavior", deleteTag);
+            // 「永久删除前确认」：存 1/0。读的一侧只认明确的 "0" 为关闭，
+            // 所以这里绝不能存 null（否则关过一次就再也关不掉 / 或者关不掉反了）。
+            await _repo.SetSettingAsync(DeletePolicy.ConfirmPermanentKey,
+                ConfirmPermanentBox.IsChecked == true ? "1" : "0");
             await _repo.SetSettingAsync("DiscoveryCount", discoveryTag);
             await _repo.SetSettingAsync("CloseBehavior", closeTag);
 
@@ -1309,7 +1350,7 @@ public partial class SettingsWindow : Window
             _saved = true;
             CustomMessageBox.Success(
                 "设置已保存，并且立即生效。\n\n"
-                + "主题、快捷键、删除方式（回收站 / 永久删除 / 每次询问）、简单模式、扩展格式都已经马上用上。",
+                + "主题、快捷键、删除方式（回收站 / 永久删除 / 每次询问）、永久删除是否先确认、简单模式、扩展格式都已经马上用上。",
                 "保存成功");
             Close();
         }

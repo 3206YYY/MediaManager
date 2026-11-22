@@ -1649,7 +1649,8 @@ public partial class MainWindow : Window
                     : "删除模式 · 单击文件打勾，选好点下面「删除选中的 N 项」确认")
                 // 这句话以前写死「进回收站，5 秒内可撤销」，但设置里改成永久删除后
                 // 这句就是假的（而且点删会真的永久删）。文案统一由 DeletePolicy 提供。
-                : DeletePolicy.DeleteModeHint(_viewModel.DeleteBehavior);
+                : DeletePolicy.DeleteModeHint(_viewModel.DeleteBehavior,
+                    _viewModel.ConfirmPermanentDelete);
         }
     }
 
@@ -1667,10 +1668,11 @@ public partial class MainWindow : Window
         try
         {
             var behavior = _viewModel.DeleteBehavior;
+            var confirmPermanent = _viewModel.ConfirmPermanentDelete;
             if (BatchDeleteButton != null)
-                BatchDeleteButton.ToolTip = DeletePolicy.BatchDeleteTooltip(behavior);
+                BatchDeleteButton.ToolTip = DeletePolicy.BatchDeleteTooltip(behavior, confirmPermanent);
             if (SelectionBarDeleteButton != null)
-                SelectionBarDeleteButton.ToolTip = DeletePolicy.SelectionDeleteTooltip(behavior);
+                SelectionBarDeleteButton.ToolTip = DeletePolicy.SelectionDeleteTooltip(behavior, confirmPermanent);
             // 横幅在删除模式下才显示，但文案要提前备好（进模式时不会再走这里）
             UpdateSelectionUi();
         }

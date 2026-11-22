@@ -151,6 +151,7 @@ public partial class DuplicateViewModel : ObservableObject
         // 这个窗口没有撤销条（撤销条只长在主窗口底部），只有「最近删除」里的快照 ——
         // 文案必须按这个真实情况说，不能照抄主窗口的「5 秒内可在底部撤销」。
         var chosen = DeletePrompt.Ask(_config.DeleteBehavior, toDelete.Count,
+            confirmPermanent: _config.ConfirmPermanentDelete,
             undoOffer: DeleteUndoOffer.RecentDeleted);
         if (chosen is null) return;
         var behavior = chosen.Value;

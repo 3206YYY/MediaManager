@@ -42,18 +42,31 @@ public class DesktopShortcutServiceTests : IDisposable
     [Fact]
     public void 创建后能读回目标且判定为当前()
     {
-        var lnk = DesktopShortcutService.Create(_dir);
+        // 测试进程的 ExecutablePath 是 testhost.exe，而且它落在 bin\Debug 下 →
+        // 产品逻辑（v1.4.8）会认为「这是开发构建，不该指向自己」，转而去 dist\ 里
+        // 挑版本号最高的发布包。那条逻辑由 verify_desktop_shortcut.py 实机验，
+        // 这里要验的只是「写进去 → 读回来 → 判为可用」，所以强制指向自身。
+        var old = Environment.GetEnvironmentVariable("MM_SHORTCUT_USE_SELF");
+        Environment.SetEnvironmentVariable("MM_SHORTCUT_USE_SELF", "1");
+        try
+        {
+            var lnk = DesktopShortcutService.Create(_dir);
 
-        Assert.True(File.Exists(lnk));
-        Assert.Equal(DesktopShortcutService.FileName, Path.GetFileName(lnk));
+            Assert.True(File.Exists(lnk));
+            Assert.Equal(DesktopShortcutService.FileName, Path.GetFileName(lnk));
 
-        // COM 读回来的路径可能被系统规范化（大小写/短名），按文件身份比
-        var target = DesktopShortcutService.ReadTarget(lnk);
-        Assert.NotNull(target);
-        Assert.Equal(Path.GetFileName(DesktopShortcutService.ExecutablePath),
-                     Path.GetFileName(target));
+            // COM 读回来的路径可能被系统规范化（大小写/短名），按文件身份比
+            var target = DesktopShortcutService.ReadTarget(lnk);
+            Assert.NotNull(target);
+            Assert.Equal(Path.GetFileName(DesktopShortcutService.ExecutablePath),
+                         Path.GetFileName(target));
 
-        Assert.Equal(ShortcutState.Current, DesktopShortcutService.Inspect(_dir).State);
+            Assert.Equal(ShortcutState.Current, DesktopShortcutService.Inspect(_dir).State);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MM_SHORTCUT_USE_SELF", old);
+        }
     }
 
     [Fact]

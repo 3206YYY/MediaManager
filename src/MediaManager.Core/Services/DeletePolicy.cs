@@ -39,8 +39,26 @@ public enum DeleteUndoOffer
 /// </summary>
 public static class DeletePolicy
 {
+    /// <summary>
+    /// 「永久删除前确认」的库键。默认开启：只有明确存 "0" 才算关闭
+    /// （见 <c>AppConfigService</c>）——这开关理解错方向的代价是文件没了，
+    /// 所以缺省、空值、写坏一律按「提醒」处理。
+    /// </summary>
+    public const string ConfirmPermanentKey = "DeleteConfirmPermanent";
+
     /// <summary>这个设置值是不是「永久删除」。</summary>
     public static bool IsPermanent(DeleteBehavior behavior) => behavior == DeleteBehavior.Permanent;
+
+    /// <summary>
+    /// 这次删除要不要弹确认框。
+    /// <para>
+    /// 唯一的例外是「永久删除 + 用户主动关掉了提醒」：那时候再到每张图前面挡一下，
+    /// 就是他自己选的。其余组合（回收站 / 每次询问）一律要问 ——
+    /// 「每次询问」问的是「进回收站还是永久删」，这个不能说关就关。
+    /// </para>
+    /// </summary>
+    public static bool NeedsConfirmation(DeleteBehavior behavior, bool confirmPermanent = true)
+        => !IsPermanent(behavior) || confirmPermanent;
 
     /// <summary>
     /// 这个设置值要不要在每次删除前问「回收站还是永久删除」。
@@ -123,16 +141,24 @@ public static class DeletePolicy
     // ---------- 界面文案（以前写死在 XAML 里，和执行端脱节） ----------
 
     /// <summary>删除模式顶部红条上那句话。</summary>
-    public static string DeleteModeHint(DeleteBehavior behavior) => behavior switch
+    /// <param name="confirmPermanent">
+    /// 设置里「永久删除提醒确认」开着没有。永久删除 + 关掉时不能说「每次都会确认」，
+    /// 那正是最要命的那种假文案：用户以为还有一道闸，其实点了就没了。
+    /// </param>
+    public static string DeleteModeHint(DeleteBehavior behavior, bool confirmPermanent = true) => behavior switch
     {
-        DeleteBehavior.Permanent => "删除模式 · 点谁删谁（永久删除，不可恢复，每次都会确认）",
+        DeleteBehavior.Permanent => confirmPermanent
+            ? "删除模式 · 点谁删谁（永久删除，不可恢复，每次都会确认）"
+            : "删除模式 · 点谁删谁（永久删除，不再确认，点了就没了）",
         DeleteBehavior.Ask => "删除模式 · 点谁删谁（每次都会问你：回收站还是永久删除）",
         _ => "删除模式 · 点谁删谁（进回收站，5 秒内可撤销）",
     };
 
     /// <summary>顶部「批量删除」按钮的提示。</summary>
-    public static string BatchDeleteTooltip(DeleteBehavior behavior) => behavior switch
+    public static string BatchDeleteTooltip(DeleteBehavior behavior, bool confirmPermanent = true) => behavior switch
     {
+        DeleteBehavior.Permanent when !confirmPermanent =>
+            "进入删除模式：单击文件打勾，选好点底部按钮永久删除（删了回不来，也不会再问你）。再点一下退出。",
         DeleteBehavior.Permanent =>
             "进入删除模式：单击文件打勾，选好点底部按钮永久删除（删了回不来）。再点一下退出。",
         DeleteBehavior.Ask =>
@@ -141,8 +167,10 @@ public static class DeletePolicy
     };
 
     /// <summary>底部悬浮条那个实心删除按钮的提示。</summary>
-    public static string SelectionDeleteTooltip(DeleteBehavior behavior) => behavior switch
+    public static string SelectionDeleteTooltip(DeleteBehavior behavior, bool confirmPermanent = true) => behavior switch
     {
+        DeleteBehavior.Permanent when !confirmPermanent =>
+            "删除当前选中的文件：永久删除，不进回收站，无法恢复，也不再弹确认",
         DeleteBehavior.Permanent => "删除当前选中的文件：永久删除，不进回收站，无法恢复",
         DeleteBehavior.Ask => "删除当前选中的文件：会先问你进回收站还是永久删除",
         _ => "删除当前选中的文件：确认后进回收站，5 秒内可撤销（和 Delete 键一样）",

@@ -423,7 +423,8 @@ public partial class MainViewModel
         if (SelectedItem == null) return;
 
         // 一次问清：正文（回收站 / 永久删除 / 三选一）全部来自 DeletePolicy
-        var chosen = DeletePrompt.Ask(_config.DeleteBehavior, 1, SelectedItem.FileName);
+        var chosen = DeletePrompt.Ask(_config.DeleteBehavior, 1, SelectedItem.FileName,
+            confirmPermanent: _config.ConfirmPermanentDelete);
         if (chosen is null) return;
         var behavior = chosen.Value;
 

@@ -30,6 +30,15 @@ public interface IAppConfigService
     Enums.DeleteBehavior DeleteBehavior { get; }
 
     /// <summary>
+    /// 永久删除前要不要弹确认框（默认 true）。
+    /// <para>
+    /// 只有删除行为选了「永久删除」时才起作用：关掉之后点删除就直接从磁盘抹掉，
+    /// 不弹框、不进回收站、没有撤销条。默认开启，见 <c>DeletePolicy</c>。
+    /// </para>
+    /// </summary>
+    bool ConfirmPermanentDelete { get; }
+
+    /// <summary>
     /// 主题被运行时切换后同步内存中的配置值。
     /// 不调用它会造成「设置窗口里显示的还是启动时的旧主题」，
     /// 用户再保存其他设置时又把旧主题写回数据库，表现为主题被莫名还原。

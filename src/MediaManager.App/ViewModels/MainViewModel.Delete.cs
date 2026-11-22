@@ -223,7 +223,8 @@ public partial class MainViewModel
 
         // 文案与「要不要问」全由 DeletePolicy / DeletePrompt 决定：
         // 永久删除时正文写「无法恢复」，设置了「每次询问」就当场三选一。
-        var chosen = DeletePrompt.Ask(_config.DeleteBehavior, items.Count);
+        var chosen = DeletePrompt.Ask(_config.DeleteBehavior, items.Count,
+            confirmPermanent: _config.ConfirmPermanentDelete);
         if (chosen is null) return;
         var behavior = chosen.Value;
 
@@ -305,6 +306,7 @@ public partial class MainViewModel
     public async Task<bool> DeleteOnTapAsync(ThumbnailItemViewModel item)
     {
         var chosen = DeletePrompt.Ask(_config.DeleteBehavior, 1, item.FileName,
+            confirmPermanent: _config.ConfirmPermanentDelete,
             silentWhenRecycle: true);
         if (chosen is null) return false;
         var behavior = chosen.Value;

@@ -18,6 +18,9 @@
   G. 换成「永久删除」重启 → 取消「先勾选」后点一个文件**必须先弹确认框**
      （文案要写「永久删除 / 无法恢复」且不许提撤销），点取消文件一个不少，
      点确认才真删掉 —— 这条防的就是「零确认零撤销把文件删干净」。
+     v1.4.8 起用户可以在设置里关掉「永久删除提醒确认」，那时不弹是设计如此；
+     这一段的 seed 会把这个键删掉，确保验的是默认（开启）的行为。
+     关闭后的行为由 verify_delete_confirm_switch.py 单独验。
   H. 换成「每次询问」重启 → 勾两项点删除**必须弹三选一**（移入回收站 / 永久删除 / 取消），
      取消后一个不删，当场选永久删除才真删 —— 以前这一项能选能存却从不询问。
 
@@ -171,6 +174,9 @@ def seed_db(files):
     # 删除方式也锁死成回收站：前半段（A–F）验的是「回收站 + 5 秒撤销」那条链路，
     # 不能因为开发库里残留 Permanent 就红一片。永久删除单独在 G 段验。
     con.execute("INSERT OR REPLACE INTO AppSetting (Key, Value) VALUES ('DeleteBehavior', 'RecycleBin')")
+    # 「永久删除提醒确认」删干净：G 段验的就是「永久删除必须弹确认」，
+    # 库里残留用户自己关过的 0 会让 G 段假红。默认值（没有这一行）= 提醒。
+    con.execute("DELETE FROM AppSetting WHERE Key='DeleteConfirmPermanent'")
     con.commit()
     con.close()
     return root_id
