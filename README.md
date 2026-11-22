@@ -7,9 +7,9 @@
 
 **[📥 下载最新版安装包](https://github.com/3206YYY/MediaManager/releases)** ｜ **[🌐 官网](https://3206yyy.github.io/MediaManager/)** ｜ **[🇨🇳 Gitee 源码镜像](https://gitee.com/yyy3206/MediaManager)** ｜ **[☕ 赞助开发者](#sponsor)** ｜ **[🐛 提交 Bug](https://github.com/3206YYY/MediaManager/issues)**
 
-> 当前版本 **v1.4.8** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
+> 当前版本 **v1.4.9** · Windows 10 / 11 · 免装 .NET 运行库 · MIT 开源
 >
-> 🆕 **v1.4.8**：把「删除」这条链路从头到尾捋直了——以前设置里选「永久删除」，文件照样进回收站；选「每次询问」，从来不问。现在批量删、点谁删谁、单张删、私密空间、去重窗口都读同一个设置，确认框里的每句承诺都按当前窗口真实有的补救方式说。另新增「永久删除前先确认」开关（默认开着，嫌逐张确认烦可以关掉），设置页的「取消」也终于会真的把点击即生效的开关退回去。详见 [更新说明](docs/changelog/v1.4.8.md)。
+> 🆕 **v1.4.9**：主界面从头到脚收干净了——顶栏只留「＋ 添加文件夹」，去重、快速查看、缩略图大小收进「⋯」；内容区抬头合并成一条「标题 · 结果数」加面包屑，窄窗口下也不会再把标题挤没。列表为空时中央分「加载中 / 空 / 出错 / 离线 / 筛选无结果」给出说明和刷新，详情栏分成没选、单选、多选三态。底层把字号和间距收进统一令牌，所有窗口的字号硬编码已归零，视觉不变。详见 [更新说明](docs/changelog/v1.4.9.md)。
 
 ---
 
@@ -133,7 +133,7 @@ MediaManager.sln
 ├─ src/MediaManager.App/               WPF UI（主窗口 / 图片查看器+编辑器 / 视频播放器 / 私密空间 / 日记 / 设置 / 插件宿主）
 ├─ src/MediaManager.Core/              领域模型、接口、纯逻辑（编辑/媒体/插件契约）
 ├─ src/MediaManager.Infrastructure/    SQLite、文件系统、缩略图、便携模式
-├─ tests/MediaManager.Tests/           Core / Infrastructure 单元测试（384 项）
+├─ tests/MediaManager.Tests/           Core / Infrastructure 单元测试（389 项）
 ├─ tests/MediaManager.App.Tests/       App 层单元测试（78 项，net8.0-windows）
 ├─ docs/plugin-template/               插件模板（可编译的最小示例）
 ├─ tools/ffmpeg/                       ffmpeg.exe（不进仓库；Release 安装包已内置）

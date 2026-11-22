@@ -298,5 +298,83 @@ public partial class MainViewModel
         catch (TaskCanceledException) { }
     }
 
+    /// <summary>加载发现页（随机推荐，当日固定）。</summary>
+    private async Task LoadDiscoveryAsync()
+    {
+        var generation = _loadGeneration;
+        IsDiscoveryView = true;
+        var swD = System.Diagnostics.Stopwatch.StartNew();
+        var total = await DbAsync(() => _repo.GetTotalCountAsync());
+        _logger.LogDebug("  [发现] 总数 {Ms} ms", swD.ElapsedMilliseconds);
+
+        // 空库 → 欢迎引导
+        if (total == 0)
+        {
+            MediaItems.Clear();
+            _totalCount = 0;
+            NotifyHeaderChanged();
+            DiscoveryShowWelcome = true;
+            DiscoveryShowHint = false;
+            StatusText = "欢迎使用媒体管理器";
+            return;
+        }
+        DiscoveryShowWelcome = false;
+
+        var today = DateTime.Now.ToString("yyyy-MM-dd");
+        var batch = await DbAsync(() => _repo.GetDiscoveryBatchAsync(today));
+        _logger.LogDebug("  [发现] 批次 {Ms} ms", swD.ElapsedMilliseconds);
+
+        List<MediaItem> media;
+        var typeKey = GetDiscoveryTypeKey();
+        if (batch != null && batch.MediaIds.Count > 0 &&
+            string.Equals(batch.TypeFilter ?? "all", typeKey, StringComparison.Ordinal))
+        {
+            // 当天已有“同一类型范围”的批次，直接复用（同一天重开看到同一批）
+            media = await DbAsync(() => _repo.GetByIdsAsync(batch.MediaIds));
+
+            // 若批次里有媒体已被删除/还原后换了新 Id，查到的数量会变少，
+            // 此时重新生成一批，避免发现页出现空白项
+            if (media.Count < batch.MediaIds.Count)
+            {
+                media = await GenerateDiscoveryBatchAsync();
+            }
+        }
+        else
+        {
+            // 没有批次，或类型筛选变了（旧批次只包含某个子集）→ 重新生成
+            media = await GenerateDiscoveryBatchAsync();
+        }
+
+        var discoveryVms = media.Select(ToViewModel).ToList();
+        await ApplyCategoryMarksAsync(discoveryVms);
+        if (generation != _loadGeneration) return;
+        MediaItems.ReplaceAll(discoveryVms);
+        // 发现页每次只有一批（默认 30），抬头按本批条数显示；库里的总数不是「当前结果数」。
+        _totalCount = MediaItems.Count;
+        NotifyHeaderChanged();
+        _logger.LogDebug("  [发现] 绑定 {Ms} ms（{Count} 项）", swD.ElapsedMilliseconds, media.Count);
+        EnsureThumbnails(media);
+
+        // 首次提示（仅一次）
+        if (!_discoveryOnboardingShown && MediaItems.Count > 0)
+        {
+            DiscoveryHintText = $"这是随机挑出来的 {MediaItems.Count} 张。按 R 换一批，按 F 收藏喜欢的。";
+            ShowDiscoveryHintForAWhile();
+            _discoveryOnboardingShown = true;
+            await DbAsync(() => _repo.SetSettingAsync("DiscoveryHintShown", "1"));
+        }
+
+        StatusText = _discoveryFallbackToAll
+            ? $"发现 · {MediaItems.Count} 项随机推荐（收藏还是空的，这次先看全库）"
+            : $"发现 · {MediaItems.Count} 项随机推荐";
+
+        // 库里有东西，但这个池子/类型筛出来 0 项：中央别留一片空白
+        if (MediaItems.Count == 0)
+        {
+            CenterEmptyTitle = "这个推荐池里没有可推荐的";
+            CenterEmptyText = "当前类型筛选或指定分类下没有文件，换个推荐池或清除筛选再试。";
+        }
+    }
+
     // ---------- 命令 ----------
 }
