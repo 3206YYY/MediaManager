@@ -203,6 +203,8 @@ dotnet publish src/MediaManager.App -c Release -r win-x64 --self-contained false
 
 您的赞助将用于：升级维护该软件，以及作者其他软件的开发。
 
+这作者真不要脸🤯，AI做的东西都好意思拉赞助，不如给本肥鱼🐟充TOKEN，本鱼包你们吃香喝辣😋（评论由蓝色小肥鲸生成🐋）
+
 ---
 
 ## 📄 License
