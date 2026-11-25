@@ -88,6 +88,34 @@ public partial class ThumbnailItemViewModel : ObservableObject
             ? $"{Media.Width}×{Media.Height}"
             : "未知";
 
+    /// <summary>文件修改时间（本地时区，到分钟）。同名文件靠行 ToolTip 的完整路径分辨，
+    /// 时间只作辅助信息（同一分钟复制出来的文件时间也可能一样）。</summary>
+    public string ModifiedAtDisplay
+    {
+        get
+        {
+            if (!DateTime.TryParse(Media.ModifiedAtUtc, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var t))
+                return string.Empty;
+            return t.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        }
+    }
+
+    /// <summary>视频时长；非视频返回空串。</summary>
+    public string DurationDisplay
+    {
+        get
+        {
+            if (Media.DurationMs is not long ms || ms <= 0) return string.Empty;
+            var s = TimeSpan.FromMilliseconds(ms);
+            return s.TotalHours >= 1
+                ? $"{(int)s.TotalHours}:{s.Minutes:00}:{s.Seconds:00}"
+                : $"{s.Minutes}:{s.Seconds:00}";
+        }
+    }
+
+    public bool HasDuration => Media.DurationMs is > 0;
+
     public static string FormatSize(long bytes)
     {
         if (bytes < 1024) return $"{bytes} B";

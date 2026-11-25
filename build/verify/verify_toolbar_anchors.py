@@ -11,7 +11,7 @@
   3 可以收进溢出的低频项确实在 <Popup> 里（防止「说搬了其实没搬」）
   4 <Popup> 里每个 Button 都有 AutomationProperties.Name（没名字 UIA 同样找不着）
   5 发现页提示文案还在 VM 里（verify_discovery_hint 按「按 R 换一批」找 UIA）：
-    默认文案在 MainViewModel.cs，运行时带张数的那句在 MainViewModel.Media.cs —— 两个都要扫，
+    默认文案在 MainViewModel.cs，运行时带张数的那句在 MainViewModel.Discovery.cs —— 两个都要扫，
     只守默认值的话改运行时的句子照样绿。改文案时这里会先红。
 
 用法：
@@ -27,10 +27,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 XAML_FILE = os.path.join(ROOT, "src", "MediaManager.App", "Views", "MainWindow.xaml")
 VM_FILE = os.path.join(ROOT, "src", "MediaManager.App", "ViewModels", "MainViewModel.cs")
-# 运行时真正显示的是 Media.cs 里带张数的那句；默认值只是兜底，两个都得守
+# 运行时真正显示的是 Discovery.cs 里带张数的那句（LoadDiscoveryAsync 在 v1.4.9
+# 从 Media.cs 拆到了 Discovery.cs，文案跟着走）；默认值在 MainViewModel.cs 兜底。
 VM_FILES = [
     VM_FILE,
-    os.path.join(ROOT, "src", "MediaManager.App", "ViewModels", "MainViewModel.Media.cs"),
+    os.path.join(ROOT, "src", "MediaManager.App", "ViewModels", "MainViewModel.Discovery.cs"),
 ]
 
 # 文案 -> 守着它的实机脚本（只写在这里做备忘，检查是纯静态的）
@@ -39,8 +40,10 @@ ANCHORED = {
     "扫描": "verify_multi_subfolder(collect maxd=6) / verify_offline_folder",
     "设置": "verify_update_prompt / verify_update_settings / verify_desktop_shortcut",
     "插件": "verify_plugin_breaker（还断言熔断后按钮整个消失）",
-    "换一批": "「🎲 换一批 (R)」按钮在 XAML（本脚本守）；「按 R 换一批」提示文案在 "
-              "MainViewModel.cs（本脚本第 5 项 + verify_discovery_hint 守）",
+    "换一批": "「🎲 换一批」按钮在 XAML（本脚本守）；「按 R 换一批」提示文案在 "
+              "MainViewModel.Discovery.cs（本脚本第 5 项 + verify_discovery_hint 守）",
+    "网格视图": "verify_view_switch(UIA)：主窗口树按名字找；收进 ⋯ 就扫不到，静态段也会先红",
+    "列表视图": "verify_view_switch(UIA)：主窗口树按名字找；收进 ⋯ 就扫不到，静态段也会先红",
 }
 
 # 允许（且应当）收进溢出菜单的低频项

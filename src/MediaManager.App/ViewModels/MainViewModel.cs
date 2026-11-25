@@ -15,6 +15,8 @@ using Microsoft.Extensions.Logging;
 // 属性名 SortDirection 与枚举类型同名：表达式里 `SortDirection.Ascending` 会被解析成属性，
 // 所以判断升/降序时统一走这个别名，避免「属性上找不到 Ascending」的编译错误。
 using SortDir = MediaManager.Core.Enums.SortDirection;
+// 属性名 ViewMode 与枚举类型同名，理由同上：用别名写枚举值才不会被解析成属性。
+using ViewKind = MediaManager.Core.Enums.ViewMode;
 
 namespace MediaManager.App.ViewModels;
 
@@ -172,6 +174,13 @@ public partial class MainViewModel : ObservableObject
             if (Enum.TryParse<SortDir>(sortDirStr, out var savedDir))
                 SortDirection = savedDir;
             _suppressSortSave = false;
+
+            // 网格 / 列表偏好。读不到就当网格（老版本用户保持原样）。
+            var viewModeStr = await DbAsync(() => _repo.GetSettingAsync(ViewModeSettingKey));
+            _suppressViewModeSave = true;
+            if (Enum.TryParse<ViewKind>(viewModeStr, out var savedMode))
+                ViewMode = savedMode;
+            _suppressViewModeSave = false;
 
             await RefreshPrivateCountAsync();
 
@@ -388,6 +397,8 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>下拉框的一项：枚举值 + 中文名（ComboBox 的 ItemTemplate 绑 Name）。</summary>
     public sealed record SortOption(SortField Field, string Name);
+
+    // 网格 / 列表的绑定属性与命令在 MainViewModel.Browsing.cs（浏览：视图切换）。
 
     // ---------- 内容区抬头：标题 / 结果数 / 面包屑 ----------
     // 结果数只读 _totalCount。**不要解析状态栏 StatusText** —— 它还承载诊断文案

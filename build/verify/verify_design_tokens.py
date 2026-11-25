@@ -83,7 +83,7 @@ HARDCODED_BUDGET = {
     "Views/Dialogs/TextPromptWindow.xaml": 1,
     "Views/Dialogs/UpdateWindow.xaml": 1,
     "Views/Dialogs/VaultPasswordWindow.xaml": 2,
-    "Views/MainWindow.xaml": 14,
+    "Views/MainWindow.xaml": 12,
     "Views/RecentlyDeletedWindow.xaml": 3,
     "Views/SettingsWindow.xaml": 8,
     "Views/TextEditWindow.xaml": 7,
@@ -365,22 +365,41 @@ def main():
               [k for k in lk if k.endswith("Brush")]))
 
     # ---------- E 功能图标 ----------
-    emoji_icon = []
+    # 字符当图标：Content / Text 的值只有 1~2 个符号字符且落在下面这组里，就该改矢量。
+    # 只查 Content 会漏掉 RadioButton（▦/☰ 视图切换）和 TextBlock（▶ 视频角标）——
+    # 上一版就漏了这两类，22/22 全绿但根本没守到。
+    GLYPH_CHARS = set("✕▶◀▦☰")
+    # 既存欠账：只许减不许增。ViewerWindow 编辑栏的「▦ 打码」下面带中文标签，
+    # 是「图标 + 文字」的整块标签，不是纯图标按钮，暂不强制矢量。
+    GLYPH_BUDGET = {
+        "Views/ViewerWindow.xaml": 1,
+    }
     naked_icon_button = []
+    glyph_current = {}
     for rel, full in iter_xaml():
         if rel in WHITELIST:
             continue
         text = read(full)
-        for ch in "✕▶◀":
-            if re.search(r'Content\s*=\s*"%s"' % ch, text):
-                emoji_icon.append("%s 里的 Content=\"%s\"" % (rel, ch))
+        hits = []
+        for m in re.finditer(r'(Content|Text)\s*=\s*"([^"]{1,2})"', text):
+            attr, val = m.group(1), m.group(2)
+            if set(val) & GLYPH_CHARS:
+                hits.append('%s="%s"' % (attr, val))
+        if hits:
+            glyph_current[rel] = len(hits)
         for head, _block in icon_buttons(text):
             if "AutomationProperties.Name" not in head:
                 snippet = re.sub(r"\s+", " ", head)[:70]
                 naked_icon_button.append("%s：%s…" % (rel, snippet))
 
-    check("功能按钮不再用字符当图标（都走 Icons.xaml 的矢量）", not emoji_icon,
-          "；".join(emoji_icon) if emoji_icon else "0 处")
+    glyph_over = []
+    for rel, n in sorted(glyph_current.items()):
+        budget = GLYPH_BUDGET.get(rel, 0)
+        if n > budget:
+            glyph_over.append("%s %d 处 > 上限 %d" % (rel, n, budget))
+    check("不再用字符当图标（Content / Text 的符号字形都算，含 RadioButton 与视频角标）",
+          not glyph_over, "；".join(glyph_over) if glyph_over else
+          "剩余 %d 处（都在预算内）" % sum(glyph_current.values()))
 
     check("矢量图标按钮都有 AutomationProperties.Name（否则屏幕阅读器念不出、UIA 也找不着）",
           not naked_icon_button, "；".join(naked_icon_button) if naked_icon_button

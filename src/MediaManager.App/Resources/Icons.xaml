@@ -21,4 +21,13 @@
     <!-- 收藏：五角星，填充型 -->
     <StreamGeometry x:Key="Icon.Star" po:Freeze="True">M 8 0.6 L 10.05 5.35 L 15.3 5.8 L 11.25 9.3 L 12.5 14.4 L 8 11.7 L 3.5 14.4 L 4.75 9.3 L 0.7 5.8 L 5.95 5.35 Z</StreamGeometry>
 
+    <!-- 网格视图：四个方块，填充型 -->
+    <StreamGeometry x:Key="Icon.Grid" po:Freeze="True">M 0 0 H 7 V 7 H 0 Z M 9 0 H 16 V 7 H 9 Z M 0 9 H 7 V 16 H 0 Z M 9 9 H 16 V 16 H 9 Z</StreamGeometry>
+
+    <!-- 列表视图：三条横杠，填充型 -->
+    <StreamGeometry x:Key="Icon.List" po:Freeze="True">M 0 1 H 16 V 4 H 0 Z M 0 6.5 H 16 V 9.5 H 0 Z M 0 12 H 16 V 15 H 0 Z</StreamGeometry>
+
+    <!-- 播放三角：压在视频缩略图上的角标，填充型（颜色由使用处给，浮层用白） -->
+    <StreamGeometry x:Key="Icon.Play" po:Freeze="True">M 2 0.8 L 12 6.5 L 2 12.2 Z</StreamGeometry>
+
 </ResourceDictionary>

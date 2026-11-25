@@ -26,6 +26,17 @@ public partial class MainWindow : Window
     /// <summary>程序化同步左侧导航时置位，避免 SelectionChanged 再次触发加载。</summary>
     private bool _suppressNavSync;
 
+    /// <summary>窗口构造完成、可以安全执行导航命令。XAML 加载阶段 IsSelected 会先触发一次 SelectionChanged。</summary>
+    private bool _navReady;
+
+    /// <summary>
+    /// 刚由鼠标按下处理过的导航项 key。鼠标走 PreviewMouseLeftButtonDown（按下即切，重复点同一项可刷新），
+    /// 紧接着 ListBox 还会再触发一次 SelectionChanged —— 靠它挡掉这次重复加载。
+    /// 只按「同一次点击」配对，不用时间窗：600ms 窗口对「连点两个不同项」不成立，
+    /// 反而会把合法的键盘切换挡掉。
+    /// </summary>
+    private string? _navHandledKey;
+
     /// <summary>托盘图标服务（由 App 注入）。</summary>
     public TrayIconService? TrayService { get; set; }
 
@@ -119,6 +130,11 @@ public partial class MainWindow : Window
         // 初始化里读出来的值能自动反映到界面上，不用关心时序。
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         ApplySidebarState();
+        // 网格模板就是 XAML 里那份内联的：先记下来，之后切列表 / 切回来都靠它还原
+        ApplyViewMode(preserveScrollAndSelection: false);
+        // XAML 里的 IsSelected="True" 在 InitializeComponent 阶段已经触发过一次 SelectionChanged，
+        // 那时 _viewModel 还没赋值。构造完成后才允许键盘 / 选中变化驱动导航。
+        _navReady = true;
     }
 
     // ===================================================================
@@ -213,6 +229,137 @@ public partial class MainWindow : Window
             or nameof(MainViewModel.IsRightSidebarCollapsed))
         {
             ApplySidebarState();
+            return;
+        }
+
+        // 网格 / 列表：切之前先把正在进行的框选收掉（换面板会重建容器，矩形里存的坐标就失效了），
+        // 再换三处模板，并在布局跑完后把选择和滚动位置还原。
+        if (e.PropertyName is nameof(MainViewModel.IsGridView)
+            or nameof(MainViewModel.IsListView))
+        {
+            if (_isMarqueeSelecting) EndMarquee();
+            ApplyViewMode(preserveScrollAndSelection: true);
+        }
+    }
+
+    // ===================================================================
+    //  网格 / 列表：只换三处模板
+    // ===================================================================
+
+    /// <summary>网格那三件套（首次切换时从 XAML 内联值抄下来，切回时原样还原）。</summary>
+    private DataTemplate? _gridItemTemplate;
+    private ItemsPanelTemplate? _gridItemsPanel;
+    private Style? _gridItemContainerStyle;
+    private bool _gridTemplatesCaptured;
+
+    // 切换前的位置快照：重建容器后按 id / 索引补回来
+    private List<ThumbnailItemViewModel> _savedViewSelection = new();
+    private int _savedTopIndex = -1;
+    private double _savedTopDelta;
+    private double _savedVerticalOffset;
+    private bool _restoringViewMode;
+
+    /// <summary>
+    /// 把当前展示方式落到 ListBox 的三处模板上。
+    /// 用代码而不是 Style DataTrigger：ItemsPanel 换类型时容器重建，
+    /// 代码里能统一做「先记位置、换完再还原」，触发器里没有这个时机。
+    /// </summary>
+    private void ApplyViewMode(bool preserveScrollAndSelection)
+    {
+        if (ThumbList == null) return;
+
+        if (!_gridTemplatesCaptured)
+        {
+            _gridItemTemplate = ThumbList.ItemTemplate;
+            _gridItemsPanel = ThumbList.ItemsPanel;
+            _gridItemContainerStyle = ThumbList.ItemContainerStyle;
+            _gridTemplatesCaptured = true;
+        }
+
+        var list = _viewModel.IsListView;
+        var panel = list ? (ItemsPanelTemplate)FindResource("MediaListPanel") : _gridItemsPanel;
+        var template = list ? (DataTemplate)FindResource("MediaListRowTemplate") : _gridItemTemplate;
+        var containerStyle = list ? (Style)FindResource("ListItemStyle") : _gridItemContainerStyle;
+
+        if (ReferenceEquals(ThumbList.ItemsPanel, panel)
+            && ReferenceEquals(ThumbList.ItemTemplate, template)
+            && ReferenceEquals(ThumbList.ItemContainerStyle, containerStyle))
+            return;
+
+        if (preserveScrollAndSelection) CaptureViewAnchor();
+
+        ThumbList.ItemsPanel = panel;
+        ThumbList.ItemTemplate = template;
+        ThumbList.ItemContainerStyle = containerStyle;
+
+        if (preserveScrollAndSelection)
+            Dispatcher.BeginInvoke(new Action(RestoreViewAnchor), DispatcherPriority.Loaded);
+    }
+
+    /// <summary>换模板前记下「选了谁」和「最上面那一项在哪」。</summary>
+    private void CaptureViewAnchor()
+    {
+        _savedViewSelection = ThumbList.SelectedItems.OfType<ThumbnailItemViewModel>().ToList();
+        _savedTopIndex = -1;
+        var sv = FindVisualChild<ScrollViewer>(ThumbList);
+        _savedVerticalOffset = sv?.VerticalOffset ?? 0;
+        if (sv == null) return;
+
+        for (var i = 0; i < ThumbList.Items.Count; i++)
+        {
+            if (ThumbList.ItemContainerGenerator.ContainerFromIndex(i) is not ListBoxItem c
+                || !c.IsDescendantOf(sv))
+                continue;
+            var y = c.TransformToAncestor(sv).Transform(new Point(0, 0)).Y;
+            if (y + c.ActualHeight <= 0) continue;
+            _savedTopIndex = i;
+            _savedTopDelta = y;
+            break;
+        }
+    }
+
+    /// <summary>
+    /// 容器重建后按对象引用把选择补回来，再把切换前最上面那项对回原来的屏幕位置。
+    /// 不还原的话：滚动条会跳回顶部、勾好的删除清单会清空 —— 这两条都是切视图最刺眼的副作用。
+    /// </summary>
+    private void RestoreViewAnchor()
+    {
+        if (_restoringViewMode) return;
+        _restoringViewMode = true;
+        try
+        {
+            if (_savedViewSelection.Count > 0)
+            {
+                var alive = _savedViewSelection.Where(i => ThumbList.Items.Contains(i)).ToList();
+                var current = ThumbList.SelectedItems.OfType<ThumbnailItemViewModel>().ToList();
+                if (current.Count != alive.Count || !alive.All(current.Contains))
+                {
+                    ThumbList.SelectedItems.Clear();
+                    foreach (var item in alive)
+                        ThumbList.SelectedItems.Add(item);
+                }
+            }
+
+            var sv = FindVisualChild<ScrollViewer>(ThumbList);
+            if (sv == null) return;
+
+            if (_savedTopIndex >= 0 && _savedTopIndex < ThumbList.Items.Count)
+            {
+                ThumbList.ScrollIntoView(ThumbList.Items[_savedTopIndex]);
+                ThumbList.UpdateLayout();
+                if (ThumbList.ItemContainerGenerator.ContainerFromIndex(_savedTopIndex) is ListBoxItem c
+                    && c.IsDescendantOf(sv))
+                {
+                    var y = c.TransformToAncestor(sv).Transform(new Point(0, 0)).Y;
+                    sv.ScrollToVerticalOffset(sv.VerticalOffset + y - _savedTopDelta);
+                    return;
+                }
+            }
+            sv.ScrollToVerticalOffset(_savedVerticalOffset);
+        }
+        finally
+        {
+            _restoringViewMode = false;
         }
     }
 
@@ -528,6 +675,42 @@ public partial class MainWindow : Window
     {
         if (sender is not ListBoxItem item || item.Tag is not string key) return;
 
+        // 记一笔：ListBox 随后还会触发 SelectionChanged，别让它再加载一遍
+        _navHandledKey = key;
+        NavigateFromNav(key, item);
+
+        // 兜底：点的是「当前已选中项」时 ListBox 不会再报 SelectionChanged，_navHandledKey 会
+        // 一直残留，之后一次同 key 的程序化同步就会被误挡一次。本次输入处理结束后还没被消费
+        // 就清掉 —— 比「下一次事件无条件消费」安全，后者会吞掉随后合法的键盘切换。
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (_navHandledKey == key) _navHandledKey = null;
+        }));
+    }
+
+    /// <summary>
+    /// 键盘 ↑↓ / 空格只会改 ListBox 的选中项，不会触发 PreviewMouseLeftButtonDown。
+    /// 以前只监听鼠标，结果方向键把高亮挪到「全部媒体」、内容还停在「发现」——
+    /// 高亮和视图脱钩，用户当然会问「为什么全部媒体里看到的是发现页」。
+    /// </summary>
+    private void OnNavSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_navReady || _suppressNavSync) return;
+        if (NavList.SelectedItem is not ListBoxItem item || item.Tag is not string key) return;
+
+        // 鼠标点击已经由 OnNavClick 处理过；ListBox 随后为同一项再报一次 SelectionChanged。
+        // 这里按「同一次点击」配对并立刻消费掉，不再用 600ms 时间窗 —— 那样连点两个不同项时
+        // 第二个键会被误当重复挡掉，反而各加载两次。
+        bool fromClick = key == _navHandledKey;
+        _navHandledKey = null;
+        if (fromClick) return;
+
+        NavigateFromNav(key, item);
+    }
+
+    /// <summary>鼠标 / 键盘共用的导航落点。「最近删除 / 私密空间 / 日记」是独立窗口，不是主界面视图。</summary>
+    private void NavigateFromNav(string key, ListBoxItem item)
+    {
         // 「最近删除」不是媒体视图，而是打开独立窗口查看删除记录
         if (key == "trash")
         {
@@ -765,7 +948,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 空白区：不参与拖拽，走原来的框选逻辑
+        // 空白区：不参与拖拽，走原来的框选逻辑。
+        // 列表视图用的是同一个二维换行面板（2~4 列紧凑行），框选的几何算法和网格完全一致，
+        // 所以这里不再为列表单独关掉框选 —— 之前按「单列」设的分支只会白丢功能。
         _thumbDragArmed = false;
         _thumbDragItem = null;
 

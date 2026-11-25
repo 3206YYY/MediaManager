@@ -13,6 +13,8 @@ using MediaManager.App.Services;
 using MediaManager.App.Views.Dialogs;
 using MediaManager.Infrastructure.FileSystem;
 using Microsoft.Extensions.Logging;
+// 属性名与枚举类型同名，枚举值统一走别名（理由见 MainViewModel.cs 顶部）。
+using ViewKind = MediaManager.Core.Enums.ViewMode;
 
 namespace MediaManager.App.ViewModels;
 
@@ -468,4 +470,59 @@ public partial class MainViewModel
     }
 
     // ---------- 操作轻提示（只反馈，不带按钮） ----------
+
+    // ---------- 网格 / 列表展示方式 ----------
+    // 只影响内容区的三个模板（ItemsPanel / ItemTemplate / ItemContainerStyle）。
+    // 排序、筛选、分页、选择、拖拽、双击全部共用，别在这里复制一套数据逻辑。
+
+    public const string ViewModeSettingKey = "View.Mode";
+
+    /// <summary>加载阶段读到的值别回写设置（和排序 / 侧栏同一个套路）。</summary>
+    private bool _suppressViewModeSave;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsGridView))]
+    [NotifyPropertyChangedFor(nameof(IsListView))]
+    private ViewKind _viewMode = ViewKind.Grid;
+
+    /// <summary>
+    /// 当前是缩略图网格。绑定给切换按钮和「缩略图大小」滑块。
+    /// 有 setter 是为了让 TwoWay 绑定也走得通（UIA / 辅助工具直接改 IsChecked 时同样生效）；
+    /// 只认 true —— 选中另一个时 RadioButton 会把这一项置 false，那不是「要切到网格」。
+    /// </summary>
+    public bool IsGridView
+    {
+        get => ViewMode == ViewKind.Grid;
+        set
+        {
+            if (value) ViewMode = ViewKind.Grid;
+        }
+    }
+
+    /// <summary>
+    /// 当前是紧凑列表（一行一个文件，宽窗口下并排 2~4 列）。
+    /// 它和网格共用同一个二维换行面板，框选/多选/点删/拖拽都走同一套视图逻辑，不再单独分支。
+    /// </summary>
+    public bool IsListView
+    {
+        get => ViewMode == ViewKind.List;
+        set
+        {
+            if (value) ViewMode = ViewKind.List;
+        }
+    }
+
+    partial void OnViewModeChanged(ViewKind value)
+    {
+        if (!_suppressViewModeSave)
+            _ = SaveSettingAsync(ViewModeSettingKey, value.ToString());
+    }
+
+    /// <summary>切换展示方式（CommandParameter 传 "Grid" / "List"）。</summary>
+    [RelayCommand]
+    private void SetViewMode(string? mode)
+    {
+        if (Enum.TryParse<ViewKind>(mode, out var parsed))
+            ViewMode = parsed;
+    }
 }

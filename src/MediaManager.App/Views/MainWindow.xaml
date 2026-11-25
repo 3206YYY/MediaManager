@@ -65,6 +65,168 @@
             </Setter>
         </Style>
 
+        <!-- ===== 列表视图的三件套（只在这里定义，由 MainWindow.xaml.cs 换上去） =====
+             网格的三件套仍是下面 ListBox 里的内联版本，切换时原样换回 ——
+             两边共用同一个 ItemsSource、选择、分页、拖拽和右键菜单，
+             这里只负责「一行怎么排」，不复制任何数据逻辑。 -->
+        <ItemsPanelTemplate x:Key="MediaListPanel">
+            <!-- 和网格共用同一个虚拟化换行面板：窗口越宽并排的行越多（2~4 条），
+                 条目本身仍是「48 缩略图 + 文件名 + 一行元信息」的紧凑行。
+                 行宽交给面板算：按 340 起排，再把每列均分拉伸铺满，不留半列空白。 -->
+            <vw:VirtualizingWrapPanel Orientation="Horizontal" ItemSize="340,72" StretchItems="True" />
+        </ItemsPanelTemplate>
+
+        <!-- 列表行选中态：整行描边 + 悬停底色。
+             网格那套 8px 圆角与「右上角 28px 偏移的勾选角标」是为避开收藏星标摆的，
+             行模板里没有那个角标位置，照抄会错位，所以单独做一份。
+             宽度固定，让换行面板按可用宽度自动排 2~4 列。 -->
+        <Style x:Key="ListItemStyle" TargetType="ListBoxItem">
+            <!-- 行宽交给换行面板按列均分拉伸，这里不再锁死宽度 -->
+            <Setter Property="Width" Value="Auto" />
+            <Setter Property="Padding" Value="{StaticResource Space.None}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Grid>
+                            <Border x:Name="RowBg" CornerRadius="{StaticResource Radius.Lg}"
+                                    Background="Transparent" />
+                            <ContentPresenter />
+                            <Border x:Name="SelRing" Margin="{StaticResource Space.Xs}"
+                                    CornerRadius="{StaticResource Radius.Lg}"
+                                    BorderThickness="2" BorderBrush="Transparent"
+                                    IsHitTestVisible="False" />
+                            <!-- FocusVisualStyle 置空后要补一个自己的焦点环，否则键盘走列表完全没有焦点反馈 -->
+                            <Border x:Name="FocusRing" Margin="{StaticResource Space.Xs}"
+                                    CornerRadius="{StaticResource Radius.Lg}"
+                                    BorderThickness="1" BorderBrush="Transparent"
+                                    IsHitTestVisible="False" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RowBg" Property="Background"
+                                        Value="{DynamicResource HoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="SelRing" Property="BorderBrush"
+                                        Value="{DynamicResource ThumbSelectionBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="FocusRing" Property="BorderBrush"
+                                        Value="{DynamicResource PrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 列表行：48×48 缩略图 + 文件名 / 类型 / 大小 / 分辨率 / 分类。
+             字段全部来自 ThumbnailItemViewModel，和网格卡片同源。 -->
+        <DataTemplate x:Key="MediaListRowTemplate">
+            <Grid Margin="{StaticResource Space.Xs}" Background="Transparent">
+                <Grid.ToolTip>
+                    <ToolTip>
+                        <TextBlock Text="{Binding Path}" TextWrapping="Wrap" MaxWidth="320"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="{StaticResource FontSize.Small}" />
+                    </ToolTip>
+                </Grid.ToolTip>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="48" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Width="48" Height="48" VerticalAlignment="Center"
+                        Background="{DynamicResource PanelBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="{StaticResource Radius.Md}">
+                    <Grid ClipToBounds="True">
+                        <Border Background="{DynamicResource SkeletonBrush}"
+                                Visibility="{Binding IsVisual, Converter={StaticResource BoolToVis}}" />
+                        <Image ctl:AsyncThumbnail.SourcePath="{Binding ThumbnailPath}"
+                               Stretch="UniformToFill"
+                               RenderOptions.BitmapScalingMode="LowQuality"
+                               Visibility="{Binding IsVisual, Converter={StaticResource BoolToVis}}" />
+                        <Viewbox Width="14" Height="14" Stretch="Uniform"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                                 Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
+                            <Path Data="{StaticResource Icon.Play}"
+                                  Fill="{DynamicResource OnPrimaryBrush}" />
+                        </Viewbox>
+                        <ctl:FileTypeIconView Icon="{Binding FileIcon}"
+                                              Width="28" Height="28"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Visibility="{Binding IsNonVisual, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
+                </Border>
+
+                <StackPanel Grid.Column="1" VerticalAlignment="Center"
+                            Margin="{StaticResource Space.Sm}">
+                    <DockPanel LastChildFill="True">
+                        <!-- 行右端补上「修改时间」：行被均分拉宽后这里空着也是空着 -->
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding ModifiedAtDisplay}"
+                                   FontSize="{StaticResource FontSize.Meta}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Margin="{StaticResource Space.Sm}"
+                                   VerticalAlignment="Center"
+                                   ToolTip="文件修改时间" />
+                        <!-- 收藏 ★ 是唯一留在行右端的星标：评分星标以前也摆在这，
+                             两排星连在一起（最多 6 颗）分不清哪个能点、哪个只是信息，
+                             所以评分挪回详情面板，这里只留可点的收藏。 -->
+                        <TextBlock DockPanel.Dock="Right" Text="★"
+                                   FontSize="{StaticResource FontSize.Small}"
+                                   Foreground="{DynamicResource FavoriteBrush}"
+                                   Margin="{StaticResource Space.Xs}"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding FileName}"
+                                   FontSize="{StaticResource FontSize.Body}"
+                                   TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+                    <!-- 元信息用 Grid 而不是横向 StackPanel：StackPanel 不约束子项宽度，
+                         TextTrimming 永远不生效，窗口最窄时会把「分类」直接挤出可视区。
+                         Auto/Auto/Auto/* 让最后一列吃掉剩余宽度并真正省略。 -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{Binding TypeLabel}"
+                                   FontSize="{StaticResource FontSize.Meta}"
+                                   Margin="{StaticResource Space.Sm}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding SizeDisplay}"
+                                   FontSize="{StaticResource FontSize.Meta}"
+                                   Margin="{StaticResource Space.Sm}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="2" Text="{Binding ResolutionDisplay}"
+                                   FontSize="{StaticResource FontSize.Meta}"
+                                   Margin="{StaticResource Space.Sm}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="3" Text="{Binding DurationDisplay}"
+                                   FontSize="{StaticResource FontSize.Meta}"
+                                   Margin="{StaticResource Space.Sm}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Visibility="{Binding HasDuration, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Grid.Column="4" Text="{Binding CategoryNames}"
+                                   FontSize="{StaticResource FontSize.Meta}"
+                                   Margin="{StaticResource Space.Sm}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding CategoryNames, StringFormat=分类：{0}}"
+                                   Visibility="{Binding IsCategorized, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
         <!-- 侧边栏可折叠分组标题：库 / 文件夹 / 标签 / 分类共用同一套视觉与悬停反馈 -->
         <Style x:Key="SidebarSectionHeader" TargetType="ToggleButton">
             <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
@@ -278,12 +440,16 @@
                                 <Button Content="👁 快速查看" HorizontalContentAlignment="Left"
                                         Margin="0,0,0,8" Click="OnOpenFile"
                                         AutomationProperties.Name="快速查看" />
-                                <TextBlock Text="缩略图大小" FontSize="{StaticResource FontSize.Meta}" Margin="4,0,0,4"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <Slider Minimum="80" Maximum="320"
-                                        Value="{Binding ThumbnailSize}"
-                                        AutomationProperties.Name="缩略图大小"
-                                        Margin="4,0,4,0" />
+                                <!-- 列表模式没有「缩略图大小」这回事：整行藏掉，
+                                     不留一个亮着却不生效的滑块。 -->
+                                <StackPanel Visibility="{Binding IsGridView, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="缩略图大小" FontSize="{StaticResource FontSize.Meta}" Margin="4,0,0,4"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <Slider Minimum="80" Maximum="320"
+                                            Value="{Binding ThumbnailSize}"
+                                            AutomationProperties.Name="缩略图大小"
+                                            Margin="4,0,4,0" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </Popup>
@@ -427,7 +593,8 @@
                             </ToggleButton>
                         </DockPanel>
                         <ListBox x:Name="NavList" BorderThickness="0" Background="Transparent"
-                                 ItemContainerStyle="{StaticResource SidebarItemStyle}">
+                                 ItemContainerStyle="{StaticResource SidebarItemStyle}"
+                                 SelectionChanged="OnNavSelectionChanged">
                             <ListBoxItem Tag="discovery" PreviewMouseLeftButtonDown="OnNavClick" IsSelected="True">
                                 <TextBlock Text="✨ 发现" Style="{StaticResource SidebarText}" />
                             </ListBoxItem>
@@ -705,19 +872,21 @@
                             <!-- 发现页：推荐池 + 换一批 -->
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                         Visibility="{Binding IsDiscoveryView, Converter={StaticResource BoolToVis}}">
-                                <TextBlock Text="推荐池：" VerticalAlignment="Center" Margin="0,0,6,0"
+                                <TextBlock Text="推荐池：" VerticalAlignment="Center" Margin="0,0,4,0"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <!-- 两个下拉的选项都很短（收藏/全部/未分类/指定分类、分类名），
-                                     160 宽在 1020 + 双栏下会把标题挤没，收到刚好放得下的宽度。 -->
-                                <ComboBox Width="96"
+                                <!-- 两个下拉的选项都很短（收藏/全部/未分类/指定分类、分类名）。
+                                     1020 最小宽度 + 双栏 + 新加的网格/列表切换要一起放下，
+                                     所以再各收窄一档；再宽就会把标题挤没。 -->
+                                <ComboBox Width="84"
                                           ItemsSource="{Binding DiscoveryPoolOptions}"
                                           SelectedIndex="{Binding DiscoveryPoolIndex}" />
-                                <ComboBox x:Name="DiscoveryPoolCombo" Width="112" Margin="10,0,0,0"
+                                <ComboBox x:Name="DiscoveryPoolCombo" Width="96" Margin="6,0,0,0"
                                           ItemsSource="{Binding DiscoveryPoolCategories}"
                                           DisplayMemberPath="Name"
                                           Visibility="{Binding DiscoveryPoolIndex, Converter={StaticResource DiscoveryPoolVis}}"
                                           SelectionChanged="OnDiscoveryCategoryChanged" />
-                                <Button Content="🎲 换一批 (R)" Margin="10,0,0,0"
+                                <Button Content="🎲 换一批" Margin="6,0,0,0"
+                                        ToolTip="随机换一批（快捷键 R）"
                                         Command="{Binding RefreshDiscoveryCommand}" />
                             </StackPanel>
 
@@ -748,6 +917,42 @@
                                         Command="{Binding ToggleSortDirectionCommand}"
                                         IsEnabled="{Binding IsSortEnabled}"
                                         ToolTip="{Binding SortDisabledReason}" />
+                            </StackPanel>
+
+                            <!-- 网格 / 列表切换：只换展示模板，排序、筛选、分页、选择全部共用。
+                                 用 RadioButton + GroupName 保证始终恰好一个亮着
+                                 （ToggleButton 点当前项会把自己取消，和「当前视图」对不上）。 -->
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                        Margin="{StaticResource Space.Sm}">
+                                <!-- 图标走 Icons.xaml 矢量（▦ / ☰ 字符会随字体变胖变瘦、基线也不可控）；
+                                     颜色绑定 RadioButton 的 Foreground，选中时自动变 OnPrimary -->
+                                <RadioButton GroupName="MediaViewMode"
+                                             Style="{StaticResource FilterToggleStyle}"
+                                             Width="26" Height="26"
+                                             Padding="{StaticResource Space.None}"
+                                             IsChecked="{Binding IsGridView, Mode=TwoWay}"
+                                             Command="{Binding SetViewModeCommand}" CommandParameter="Grid"
+                                             AutomationProperties.Name="网格视图"
+                                             ToolTip="网格视图（缩略图）">
+                                    <Viewbox Width="14" Height="14" Stretch="Uniform">
+                                        <Path Data="{StaticResource Icon.Grid}"
+                                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" />
+                                    </Viewbox>
+                                </RadioButton>
+                                <RadioButton GroupName="MediaViewMode"
+                                             Style="{StaticResource FilterToggleStyle}"
+                                             Width="26" Height="26"
+                                             Padding="{StaticResource Space.None}"
+                                             Margin="{StaticResource Space.Xs}"
+                                             IsChecked="{Binding IsListView, Mode=TwoWay}"
+                                             Command="{Binding SetViewModeCommand}" CommandParameter="List"
+                                             AutomationProperties.Name="列表视图"
+                                             ToolTip="列表视图（文件名 / 类型 / 大小 / 分辨率）">
+                                    <Viewbox Width="14" Height="14" Stretch="Uniform">
+                                        <Path Data="{StaticResource Icon.List}"
+                                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" />
+                                    </Viewbox>
+                                </RadioButton>
                             </StackPanel>
                         </StackPanel>
                     </Grid>
@@ -883,8 +1088,14 @@
                                     <ToolTip>
                                         <StackPanel>
                                             <TextBlock Text="{Binding FileName}" FontWeight="Bold" />
-                                            <TextBlock Text="{Binding ResolutionDisplay}" Foreground="#BBBBBB" FontSize="{StaticResource FontSize.Small}" />
-                                            <TextBlock Text="{Binding SizeDisplay}" Foreground="#BBBBBB" FontSize="{StaticResource FontSize.Small}" />
+                                            <TextBlock Text="{Binding ResolutionDisplay}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="{StaticResource FontSize.Small}" />
+                                            <TextBlock Text="{Binding SizeDisplay}" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="{StaticResource FontSize.Small}" />
+                                            <!-- 完整路径：真实库里不同文件夹的同名文件很常见，只给文件名分不清。
+                                                 列表行 ToolTip 也是同一个口径，两个视图别一个能分辨一个不能。 -->
+                                            <TextBlock Text="{Binding Path}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       TextWrapping="Wrap" MaxWidth="320"
+                                                       FontSize="{StaticResource FontSize.Small}" />
                                             <TextBlock Text="{Binding Note, StringFormat=备注：{0}}"
                                                        TextWrapping="Wrap" MaxWidth="260" FontSize="{StaticResource FontSize.Small}"
                                                        Visibility="{Binding Note, Converter={StaticResource StringToVis}}" />
@@ -921,9 +1132,11 @@
                                                RenderOptions.BitmapScalingMode="LowQuality" />
                                         <Border Background="#22000000"
                                                 Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="▶" Foreground="White" FontSize="{StaticResource FontSize.Hero}"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                       Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}" />
+                                            <Viewbox Width="28" Height="28" Stretch="Uniform"
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                     Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
+                                                <Path Data="{StaticResource Icon.Play}" Fill="White" />
+                                            </Viewbox>
                                         </Border>
                                         <!-- 非视觉类型（文档/压缩包/音频）：彩色矢量类型图标。
                                              以前这里是 emoji（📄 🗜️ 🎵），而 emoji 在 WPF 里能不能出彩色

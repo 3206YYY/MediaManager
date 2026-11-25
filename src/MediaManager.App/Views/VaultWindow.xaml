@@ -282,8 +282,10 @@
                                                RenderOptions.BitmapScalingMode="LowQuality" />
                                         <Border Background="#22000000"
                                                 Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
-                                            <TextBlock Text="▶" Foreground="White" FontSize="{StaticResource FontSize.Hero}"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <Viewbox Width="28" Height="28" Stretch="Uniform"
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Path Data="{StaticResource Icon.Play}" Fill="White" />
+                                            </Viewbox>
                                         </Border>
                                         <ctl:FileTypeIconView Icon="{Binding FileIcon}"
                                                               HorizontalAlignment="Center" VerticalAlignment="Center"

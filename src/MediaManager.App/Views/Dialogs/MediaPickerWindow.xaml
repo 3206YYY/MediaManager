@@ -81,7 +81,9 @@
                                                         HorizontalAlignment="Left" VerticalAlignment="Top"
                                                         Margin="4" Padding="4,0"
                                                         Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
-                                                    <TextBlock Text="▶" FontSize="{StaticResource FontSize.Caption}" Foreground="White" />
+                                                    <Viewbox Width="9" Height="9" Stretch="Uniform">
+                                                        <Path Data="{StaticResource Icon.Play}" Fill="White" />
+                                                    </Viewbox>
                                                 </Border>
                                                 <!-- 选中勾选角标 -->
                                                 <Border x:Name="tick" Width="20" Height="20" CornerRadius="10"

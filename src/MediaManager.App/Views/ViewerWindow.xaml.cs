@@ -92,6 +92,8 @@ public partial class ViewerWindow : Window
     private bool _editingText;
     private EditorSnapshot? _textEditSnapshot;
     private bool _textDirty;
+    /// <summary>文本框还没写进文档：用户敲下第一个字才落库，没敲就直接丢。</summary>
+    private bool _textPending;
     private bool _suppressTextPanel;
 
     private bool IsTextEditing => _editingText && _activeText != null;
@@ -117,11 +119,19 @@ public partial class ViewerWindow : Window
     // 裁剪
     private CropBox _cropBox;
     private double? _cropAspect;
+    // 进入裁剪前的视图状态：点进去看一眼又切走时还回去，别每次都把缩放重置
+    private bool _cropViewSaved;
+    private double _cropZoomBefore = 1.0;
+    private Point _cropPanBefore;
 
     // 打码
     private PrivacyMode _privacyMode = PrivacyMode.Mosaic;
     private bool _privacyRectTool;
     private double _privacyWidthDisplay = 40;
+    /// <summary>画笔圈最后出现的位置（画布坐标），缩放/改笔刷大小时用它原地重算。</summary>
+    private Point _brushCursorPoint;
+    /// <summary>画笔圈当前屏幕直径（DIP）。只给界面用，不写进 UIA 名字，免得读屏软件跟着鼠标刷屏。</summary>
+    private double _brushCursorDiameter;
     /// <summary>马赛克颗粒（相对画布宽度的千分比）：17 ≈ 画布宽度 / 60。</summary>
     private double _privacyBlockPermille = 17;
     private PrivacyOverlayItem? _privacyDraft;
@@ -286,6 +296,9 @@ public partial class ViewerWindow : Window
         _activeTextBox = null;
         _activeTextHost = null;
         _editingText = false;
+        // 换图 / 重置工具时旧文档里的待提交文本框已经无效；不清掉这个标记，
+        // EnsureSelectionsValid 会一直以为「还有挂起框」，撤销后的选中态就再也不会被清理。
+        _textPending = false;
         _textEditSnapshot = null;
         _activeWatermark = null;
         _wmImageElement = null;
@@ -329,6 +342,9 @@ public partial class ViewerWindow : Window
         _activeTextBox = null;
         _activeTextHost = null;
         _editingText = false;
+        // 换图 / 重置工具时旧文档里的待提交文本框已经无效；不清掉这个标记，
+        // EnsureSelectionsValid 会一直以为「还有挂起框」，撤销后的选中态就再也不会被清理。
+        _textPending = false;
         _textEditSnapshot = null;
         _activeWatermark = null;
         HideDraft();
@@ -517,12 +533,13 @@ public partial class ViewerWindow : Window
     {
         if (_doc == null) return;
 
-        if (_activeText != null && !_doc.Texts.Contains(_activeText))
+        if (!_textPending && _activeText != null && !_doc.Texts.Contains(_activeText))
         {
             _activeText = null;
             _activeTextBox = null;
             _activeTextHost = null;
             _editingText = false;
+            _textPending = false;
             _textEditSnapshot = null;
             _textDirty = false;
             TextProps.Visibility = Visibility.Collapsed;
@@ -549,16 +566,36 @@ public partial class ViewerWindow : Window
         var baseBmp = PrivacySampleSource;
         if (baseBmp == null) return;
 
+        // 实机脚本按这个名字数覆盖层；Canvas 宿主没有 UIA 节点，名字要落到里面的 Image 上
+        var overlayIndex = 0;
+        void TagOverlay(FrameworkElement element)
+        {
+            var name = $"打码覆盖层 {++overlayIndex}";
+            System.Windows.Automation.AutomationProperties.SetName(element, name);
+            if (element is Canvas host)
+                foreach (var child in host.Children)
+                    if (child is Image inner)
+                        System.Windows.Automation.AutomationProperties.SetName(inner, name);
+        }
+
         foreach (var mosaic in _doc.Mosaics)
         {
             var img = EditorOverlayFactory.BuildMosaicRect(mosaic, baseBmp, w, h, showOutline: true);
-            if (img != null) MosaicLayer.Children.Add(img);
+            if (img != null)
+            {
+                TagOverlay(img);
+                MosaicLayer.Children.Add(img);
+            }
         }
 
         foreach (var mode in new[] { PrivacyMode.Mosaic, PrivacyMode.Blur })
         {
             var layer = EditorOverlayFactory.BuildPrivacyLayer(_doc.Privacies, mode, baseBmp, w, h, showOutline: true);
-            if (layer != null) MosaicLayer.Children.Add(layer);
+            if (layer != null)
+            {
+                TagOverlay(layer);
+                MosaicLayer.Children.Add(layer);
+            }
         }
 
         ApplyOverlayZOrder();
@@ -710,6 +747,13 @@ public partial class ViewerWindow : Window
             };
             TextLayer.Children.Add(element);
         }
+
+        // 待提交的文本框还没进文档，但也要先画出来让用户能输入
+        if (_textPending && IsTextEditing && _activeText != null
+            && !_doc.Texts.Contains(_activeText))
+        {
+            TextLayer.Children.Add(CreateTextEditor(_activeText, w, h, scale));
+        }
     }
 
     private Border CreateTextEditor(TextOverlayItem item, double w, double h, double scale)
@@ -734,6 +778,8 @@ public partial class ViewerWindow : Window
             Padding = new Thickness(2),
             MaxWidth = Math.Max(120, w - item.X * w),
         };
+
+        System.Windows.Automation.AutomationProperties.SetName(box, "文字输入框");
 
         var handle = new Border
         {
@@ -765,6 +811,7 @@ public partial class ViewerWindow : Window
         box.TextChanged += (_, _) =>
         {
             if (_activeTextBox == null || _activeText == null) return;
+            // 挂起期间只改内存里的 item，等结束编辑时一次性落库（一次撤销回干净）
             _activeText.Text = box.Text;
             _textDirty = true;
             MeasureText(_activeText, box);
@@ -968,6 +1015,9 @@ public partial class ViewerWindow : Window
         TextLayer.Visibility = Visibility.Collapsed;
         InkLayer.Visibility = Visibility.Collapsed;
         TileLayer.Visibility = Visibility.Collapsed;
+        // 新加的画笔圈和裁剪框也在「辅助线」之列，看原图时不能浮在上面
+        HideBrushCursor();
+        CropLayer.Visibility = Visibility.Collapsed;
         ToolHint.Text = "正在显示原图（松开恢复）";
     }
 
@@ -987,6 +1037,8 @@ public partial class ViewerWindow : Window
         TextLayer.Visibility = Visibility.Visible;
         InkLayer.Visibility = Visibility.Visible;
         TileLayer.Visibility = Visibility.Visible;
+        // 裁剪框只在还在裁剪模式时恢复；画笔圈不主动恢复，下次移动鼠标自然会出来
+        CropLayer.Visibility = _mode == ToolMode.Crop ? Visibility.Visible : Visibility.Collapsed;
         _lastGeometry = null;
         ApplyBase();
         ToolHint.Text = HintText;
@@ -1334,6 +1386,14 @@ public partial class ViewerWindow : Window
 
         EndTextEditing();
         EndOtherModes(except: ToolMode.Crop);
+
+        if (_mode != ToolMode.Crop)
+        {
+            _cropViewSaved = true;
+            _cropZoomBefore = _viewModel.Zoom;
+            _cropPanBefore = new Point(PanTranslate.X, PanTranslate.Y);
+        }
+
         ApplyZoom(1.0);
         PanTranslate.X = 0;
         PanTranslate.Y = 0;
@@ -1343,7 +1403,8 @@ public partial class ViewerWindow : Window
 
         var w = CanvasW;
         var h = CanvasH;
-        _cropBox = new CropBox(w * 0.1, h * 0.1, w * 0.8, h * 0.8);
+        // 默认就框住整张图：之前按 80% 内缩，用户会以为「怎么比图片小一圈」
+        _cropBox = new CropBox(0, 0, w, h);
         _cropBox = CropMath.FitInside(_cropBox, _cropAspect, w, h);
 
         CropLayer.Visibility = Visibility.Visible;
@@ -1355,13 +1416,24 @@ public partial class ViewerWindow : Window
         LayoutCrop();
     }
 
-    private void ExitCropMode()
+    /// <summary>退出裁剪；restoreView=false 用于「确认裁剪」——那时画布尺寸变了，按新图走。</summary>
+    private void ExitCropMode(bool restoreView = true)
     {
         _mode = ToolMode.None;
         CropLayer.Visibility = Visibility.Collapsed;
         CropBar.Visibility = Visibility.Collapsed;
         CropTool.IsChecked = false;
         ToolHint.Text = HintText;
+
+        if (restoreView && _cropViewSaved)
+        {
+            // 先摆平移再设缩放：ApplyZoom 会按新缩放把平移夹回合法范围
+            PanTranslate.X = _cropPanBefore.X;
+            PanTranslate.Y = _cropPanBefore.Y;
+            ApplyZoom(_cropZoomBefore);
+        }
+
+        _cropViewSaved = false;
     }
 
     private void OnCancelCrop(object sender, RoutedEventArgs e) => ExitCropMode();
@@ -1387,7 +1459,7 @@ public partial class ViewerWindow : Window
             return;
         }
 
-        ExitCropMode();
+        ExitCropMode(restoreView: false);
         MutateBase("裁剪", () => _doc.ApplyCropNormalized(norm));
         ShowToast("已裁剪（可撤销）");
     }
@@ -2042,7 +2114,8 @@ public partial class ViewerWindow : Window
 
         var item = new TextOverlayItem
         {
-            Text = isWatermark ? "水印文字" : "输入文字",
+            // 先留空：用户真的敲字时才写进文档，避免切走时留下「输入文字」
+            Text = string.Empty,
             FontSize = fontPx,
             ColorHex = "#FFFFFF",
             Opacity = isWatermark ? 0.55 : 1.0,
@@ -2052,12 +2125,13 @@ public partial class ViewerWindow : Window
             OutlineHex = isWatermark ? null : "#FF000000",
         };
 
-        _doc.Mutate(isWatermark ? "添加水印" : "添加文字", () => _doc.Texts.Add(item));
-        SelectText(item, selectAll: true);
+        _textPending = true;
+        // keepPending：刚挂起的文本框还没进文档，不能再走一遍 EndTextEditing 把它丢掉
+        SelectText(item, selectAll: true, keepPending: true);
         ShowToast(isWatermark ? "输入水印文字，拖「✥ 拖动」调整位置" : "直接输入文字，拖「✥ 拖动」调整位置");
     }
 
-    private void SelectText(TextOverlayItem item, bool selectAll = false)
+    private void SelectText(TextOverlayItem item, bool selectAll = false, bool keepPending = false)
     {
         if (_doc == null) return;
 
@@ -2067,7 +2141,8 @@ public partial class ViewerWindow : Window
             return;
         }
 
-        EndTextEditing(rebuild: false);
+        // keepPending：刚挂起的文本框还没进文档，不能再走一遍 EndTextEditing 把它丢掉
+        if (!keepPending) EndTextEditing(rebuild: false);
 
         _activeText = item;
         _editingText = true;
@@ -2109,12 +2184,26 @@ public partial class ViewerWindow : Window
         var item = _activeText;
         _editingText = false;
 
+        // 自动弹出的文本框：一个字没敲就直接丢；敲了字就趁现在一次性落库，
+        // 此时 item.Text 已是最终内容，一条「添加文字」撤销直接回到没加过字。
+        var wasPending = _textPending;
+        _textPending = false;
+        if (wasPending)
+        {
+            if (_doc != null && item != null && OverlayTextRules.HasContent(item.Text))
+            {
+                var added = item;
+                _doc.Mutate("添加文字", () => _doc.Texts.Add(added));
+            }
+            item = null;   // 挂起项不参与下面的「空内容移除 / 编辑文字」记录
+        }
+
         if (_doc != null && item != null && !OverlayTextRules.HasContent(item.Text))
         {
             if (_doc.Texts.Remove(item)) _textDirty = true;
         }
 
-        if (_doc != null && _textEditSnapshot != null && _textDirty)
+        if (_doc != null && item != null && _textEditSnapshot != null && _textDirty)
         {
             var after = EditorSnapshot.Capture(_doc);
             _doc.History.Push(new SnapshotCommand(_doc, _textEditSnapshot, after, "编辑文字"));
@@ -2633,12 +2722,60 @@ public partial class ViewerWindow : Window
     {
         if (PrivacyToolCombo?.SelectedItem is not ComboBoxItem item) return;
         _privacyRectTool = string.Equals(item.Tag?.ToString(), "rect", StringComparison.Ordinal);
+        if (_privacyRectTool) HideBrushCursor();
+        else RefreshBrushCursor();
     }
 
     private void OnPrivacyWidthChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         _privacyWidthDisplay = e.NewValue;
         if (PrivacyWidthText != null) PrivacyWidthText.Text = ((int)Math.Round(e.NewValue)).ToString();
+        RefreshBrushCursor();
+    }
+
+    /// <summary>
+    /// 画笔大小提示圈：纯界面层，显示实际笔刷直径（画布像素 × 当前缩放）。
+    /// 只在「打码 + 画笔涂抹」时出现；压在鼠标下时鼠标已经在涂抹，圈会挡视线，先藏起来。
+    /// </summary>
+    private void UpdateBrushCursor(Point p)
+    {
+        _brushCursorPoint = p;
+
+        if (_mode != ToolMode.Privacy || _privacyRectTool || _comparing)
+        {
+            HideBrushCursor();
+            return;
+        }
+
+        _brushCursorDiameter = Math.Max(10, _privacyWidthDisplay * AbsoluteScale);
+        var d = _brushCursorDiameter;
+        foreach (var ring in new[] { BrushCursorOuter, BrushCursorInner })
+        {
+            ring.Width = d;
+            ring.Height = d;
+            Canvas.SetLeft(ring, p.X - d / 2);
+            Canvas.SetTop(ring, p.Y - d / 2);
+        }
+
+        // 探针名字保持固定（尺寸不进读屏名字）；直径用宽高暴露给实机脚本量
+        BrushCursorProbe.Width = d;
+        BrushCursorProbe.Height = d;
+        Canvas.SetLeft(BrushCursorProbe, p.X - d / 2);
+        Canvas.SetTop(BrushCursorProbe, p.Y - d / 2);
+
+        BrushCursorLayer.Visibility = Visibility.Visible;
+    }
+
+    private void HideBrushCursor()
+    {
+        if (BrushCursorLayer != null) BrushCursorLayer.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>缩放或笔刷大小变了：圈还开着就按新尺寸原地重画。</summary>
+    private void RefreshBrushCursor()
+    {
+        if (BrushCursorLayer != null && BrushCursorLayer.Visibility == Visibility.Visible)
+            UpdateBrushCursor(_brushCursorPoint);
     }
 
     private void OnPrivacyBlockChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -2669,6 +2806,7 @@ public partial class ViewerWindow : Window
         _mode = ToolMode.None;
         MosaicTool.IsChecked = false;
         CancelPrivacyDraft();
+        HideBrushCursor();
         ToolHint.Text = HintText;
     }
 
@@ -3372,7 +3510,16 @@ public partial class ViewerWindow : Window
                 case "privacy":
                     EnterPrivacyMode();
                     break;
+                case "crop":
+                    // 即点即用：点分类就出裁剪框，面板里的「开始裁剪」保留为开关
+                    EnterCropMode();
+                    break;
+                case "text":
+                    // 即点即用：点分类就弹输入框；空着切走不会进文档（见 _textPending）
+                    AddTextItem(isWatermark: false);
+                    break;
                 default:
+                    if (_mode == ToolMode.Crop) ExitCropMode();
                     if (_mode == ToolMode.Ink) ExitInkMode();
                     if (_mode == ToolMode.Privacy) ExitPrivacyMode();
                     if (_mode == ToolMode.Shape) ExitShapeMode();
@@ -3477,6 +3624,7 @@ public partial class ViewerWindow : Window
         }
 
         ClampPan();
+        RefreshBrushCursor();
     }
 
     /// <summary>
@@ -3541,6 +3689,7 @@ public partial class ViewerWindow : Window
     {
         FadeArrow(PrevButton, false);
         FadeArrow(NextButton, false);
+        HideBrushCursor();
     }
 
     private static void FadeArrow(UIElement? element, bool show)
@@ -3656,6 +3805,16 @@ public partial class ViewerWindow : Window
     private void OnCanvasMouseMove(object sender, MouseEventArgs e)
     {
         UpdateNavArrows();
+
+        if (_mode == ToolMode.Privacy)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed) HideBrushCursor();
+            else UpdateBrushCursor(e.GetPosition(ImageBox));
+        }
+        else if (BrushCursorLayer.Visibility == Visibility.Visible)
+        {
+            HideBrushCursor();
+        }
 
         if (_wmDragItem != null && e.LeftButton == MouseButtonState.Pressed)
         {
