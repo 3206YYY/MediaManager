@@ -359,10 +359,34 @@
             <!-- LastChildFill=False：所有子元素都显式 Dock，最后一个（扫描）不设的话
                  会被 DockPanel 当成填充项拉满剩余宽度，变成一条横贯顶栏的巨型按钮。 -->
             <DockPanel LastChildFill="False">
-                <TextBox x:Name="SearchTextBox" DockPanel.Dock="Left" Width="240" Margin="0,0,10,0"
-                         InputMethod.IsInputMethodEnabled="True"
-                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                         ToolTip="搜索（Ctrl+F）" />
+                <!-- 搜索框空着时给一句看得见的说明（不是 ToolTip）：
+                     新用户第一次打开只看到一个光秃秃的输入框，不知道能搜文件名还是标签。
+                     聚焦后藏起来，免得和光标重叠。 -->
+                <Grid DockPanel.Dock="Left" Width="240" Margin="0,0,10,0">
+                    <TextBox x:Name="SearchTextBox"
+                             InputMethod.IsInputMethodEnabled="True"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="搜索文件名、标签（快捷键 Ctrl+F）" />
+                    <TextBlock IsHitTestVisible="False" Margin="{StaticResource Space.Lg}" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               FontSize="{StaticResource FontSize.Meta}"
+                               Text="搜索文件名、标签…（Ctrl+F）">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding Text, ElementName=SearchTextBox}" Value="" />
+                                            <Condition Binding="{Binding IsKeyboardFocused, ElementName=SearchTextBox}" Value="False" />
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
                 <Button DockPanel.Dock="Left" Content="🔍" Margin="0,0,10,0"
                         Command="{Binding SearchCommand}" />
 
@@ -418,16 +442,23 @@
                      Popup 里每一项都要 AutomationProperties.Name（同上，没有名字 UIA 找不着）。 -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
                             VerticalAlignment="Center" Margin="10,0,0,0">
-                    <ToggleButton x:Name="OverflowToggle" Content="⋯" Width="34" Height="30" Padding="{StaticResource Space.None}"
+                    <!-- 只有「⋯」时新用户不知道这里藏着去重 / 快速查看 / 缩略图大小，
+                         补一个看得见的「更多」；AutomationProperties.Name 保持不变，实机脚本按名字找。 -->
+                    <ToggleButton x:Name="OverflowToggle" Width="76" Height="30" Padding="{StaticResource Space.None}"
                                   Style="{StaticResource FilterToggleStyle}"
                                   AutomationProperties.Name="更多操作"
-                                  ToolTip="更多操作：去重、快速查看、缩略图大小" />
-                    <!-- HorizontalOffset 把弹出层右边缘对齐到 ⋯ 按钮右边缘：
+                                  ToolTip="更多功能：查找重复文件、快速查看、缩略图大小">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⋯" Margin="{StaticResource Space.Sm}" VerticalAlignment="Center" />
+                            <TextBlock Text="更多" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </ToggleButton>
+                    <!-- HorizontalOffset 把弹出层右边缘对齐到「更多」按钮右边缘：
                          Placement=Bottom 默认左对齐，按钮又永远贴在窗口最右，
-                         不偏移会整块跑到屏幕外被裁掉。Width 固定后 -156 是确定的。 -->
+                         不偏移会整块跑到屏幕外被裁掉。按钮 Width=76 固定后 -114 是确定的。 -->
                     <Popup x:Name="OverflowPopup"
                            PlacementTarget="{Binding ElementName=OverflowToggle}"
-                           Placement="Bottom" HorizontalOffset="-156"
+                           Placement="Bottom" HorizontalOffset="-114"
                            StaysOpen="False" AllowsTransparency="True"
                            IsOpen="{Binding IsChecked, ElementName=OverflowToggle, Mode=TwoWay}">
                         <Border Background="{DynamicResource PanelBrush}"
